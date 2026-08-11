@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools==83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atlanticus-configuration"
+version = "0.1.0"
+description = "Fail-fast configuration bootstrap for Atlanticus backend processes."
+requires-python = "==3.14.2"
+dependencies = [
+    "atlanticus-kernel==0.1.0",
+    "python-dotenv==1.2.2",
+]
+classifiers = [
+    "Private :: Do Not Upload",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["atlanticus.*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"atlanticus.configuration" = ["py.typed"]
