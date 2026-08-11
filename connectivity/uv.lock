@@ -100,12 +100,14 @@ name = "atlanticus-key-vault"
 version = "0.1.0"
 source = { editable = "key-vault" }
 dependencies = [
+    { name = "atlanticus-kernel" },
     { name = "azure-identity" },
     { name = "azure-keyvault-secrets" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "atlanticus-kernel", editable = "../backend/kernel" },
     { name = "azure-identity", specifier = "==1.25.3" },
     { name = "azure-keyvault-secrets", specifier = "==4.11.0" },
 ]
