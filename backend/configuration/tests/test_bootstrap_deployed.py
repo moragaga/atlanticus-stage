@@ -9,6 +9,7 @@ from atlanticus.configuration import (
     ConfigurationSource,
     ConfigurationSourceError,
     ConfigurationVariableSpec,
+    MissingConfigurationVariablesError,
     SecretResolutionError,
     SecretsManifest,
 )
@@ -228,3 +229,59 @@ def test_deployed_preserves_whitespace_only_values(tmp_path) -> None:
     assert configuration.require('STATIC_SPACE') == ' '
     assert configuration.require('SECRET_SPACE') == ' '
 
+
+
+def test_key_vault_source_is_automatically_sensitive(tmp_path) -> None:
+    resolver = FakeResolver({'secret-service-bus': 'resolved-secret'})
+    bootstrap = ConfigurationBootstrap(
+        environment=Environment.from_value('dev'),
+        specs=(ConfigurationVariableSpec(key='CONNECTION_STRING'),),
+        secrets_manifest=_manifest(tmp_path),
+        secret_resolver=resolver,
+    )
+
+    configuration = bootstrap.load(process_values={'ENVIRONMENT': 'dev'})
+
+    assert configuration.sensitive_keys == frozenset({'CONNECTION_STRING'})
+    assert configuration.to_dict()['CONNECTION_STRING'] == '***'
+    assert configuration.to_dict(mask_sensitive=False)['CONNECTION_STRING'] == 'resolved-secret'
+
+
+def test_deployed_preflight_reports_missing_before_resolving_secrets(tmp_path) -> None:
+    resolver = FakeResolver({'secret-service-bus': 'resolved-secret'})
+    bootstrap = ConfigurationBootstrap(
+        environment=Environment.from_value('dev'),
+        specs=(
+            ConfigurationVariableSpec(key='CONNECTION_STRING'),
+            ConfigurationVariableSpec(key='MISSING_REQUIRED'),
+        ),
+        secrets_manifest=_manifest(tmp_path),
+        secret_resolver=resolver,
+    )
+
+    with pytest.raises(MissingConfigurationVariablesError) as captured:
+        bootstrap.load(process_values={'ENVIRONMENT': 'dev'})
+
+    assert captured.value.variable_names == ('MISSING_REQUIRED',)
+    assert resolver.requests == []
+
+
+def test_deployed_preflight_allows_missing_optional_or_defaulted_specs(tmp_path) -> None:
+    resolver = FakeResolver({'secret-service-bus': 'resolved-secret'})
+    bootstrap = ConfigurationBootstrap(
+        environment=Environment.from_value('dev'),
+        specs=(
+            ConfigurationVariableSpec(key='CONNECTION_STRING'),
+            ConfigurationVariableSpec(key='OPTIONAL', required=False),
+            ConfigurationVariableSpec(key='WITH_DEFAULT', default='fallback'),
+        ),
+        secrets_manifest=_manifest(tmp_path),
+        secret_resolver=resolver,
+    )
+
+    configuration = bootstrap.load(process_values={'ENVIRONMENT': 'dev'})
+
+    assert configuration.get('OPTIONAL') is None
+    assert configuration.require('WITH_DEFAULT') == 'fallback'
+    assert configuration.sources['WITH_DEFAULT'] == ConfigurationSource.DEFAULT
+    assert resolver.requests == ['secret-service-bus']

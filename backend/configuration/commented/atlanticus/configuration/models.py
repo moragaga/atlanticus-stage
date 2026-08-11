@@ -197,13 +197,22 @@ def validate_variable_name(value: str) -> str:
 
 
 # La validación distingue ausencia de contenido, pero nunca modifica espacios ni otros caracteres.
-def normalize_configuration_value(value: object) -> str | None:
+def normalize_configuration_value(
+    value: object,
+    *,
+    variable_name: str | None = None,
+) -> str | None:
     """Valida valores de texto sin alterar su contenido."""
 
     if value is None:
         return None
     if not isinstance(value, str):
-        raise ConfigurationValueError('Configuration values must be strings.')
+        # Cuando se conoce la variable, el diagnóstico conserva la frontera exacta que falló.
+        if variable_name is None:
+            raise ConfigurationValueError('Configuration values must be strings.')
+        raise ConfigurationValueError(
+            f"Environment variable '{variable_name}' must contain a string value."
+        )
     if value == '':
         return None
     return value

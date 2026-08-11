@@ -13,6 +13,7 @@ from typing import Any
 
 from atlanticus.configuration.errors import SecretsManifestError
 from atlanticus.configuration.models import validate_variable_name
+from atlanticus.kernel import ENVIRONMENT_VARIABLE
 
 _REQUIRED_FIELDS = frozenset({'var_name', 'secret_name', 'value', 'exists_in_key_vault'})
 
@@ -35,6 +36,11 @@ class SecretManifestEntry:
             var_name = validate_variable_name(self.var_name)
         except ValueError as error:
             raise SecretsManifestError(str(error)) from None
+        # ENVIRONMENT se conoce antes de leer el manifiesto y no puede tener una segunda fuente.
+        if var_name == ENVIRONMENT_VARIABLE:
+            raise SecretsManifestError(
+                f"Secrets manifest cannot declare reserved variable '{ENVIRONMENT_VARIABLE}'."
+            )
         if type(self.exists_in_key_vault) is not bool:
             raise SecretsManifestError(
                 f"Secrets manifest variable '{var_name}' must define "

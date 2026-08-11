@@ -178,12 +178,17 @@ class DataSanitizer:
             if index >= self.max_items:
                 result['__truncated__'] = True
                 break
-            # Los nombres de campo permanecen completos. Además de mantener estable el contrato del
-            # payload, esto permite revisar la clave completa en vez de un prefijo truncado.
-            safe_key = str(item_key)
-            result[safe_key] = self._sanitize(
+            # Los mappings operacionales usan nombres JSON. Una clave de otro tipo degrada todo el
+            # mapping sin ejecutar str ni repr sobre un objeto potencialmente sensible.
+            if not isinstance(item_key, str):
+                return {
+                    'type': type(value).__name__,
+                    'summary': 'non_string_key',
+                }
+            # Los nombres string se conservan completos para evaluar correctamente su sensibilidad.
+            result[item_key] = self._sanitize(
                 item_value,
-                key=safe_key,
+                key=item_key,
                 depth=depth - 1,
             )
         return result

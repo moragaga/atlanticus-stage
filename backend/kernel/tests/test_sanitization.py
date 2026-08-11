@@ -28,6 +28,14 @@ class ObjectWithSensitiveRepr:
         return 'password=must-not-be-rendered'
 
 
+class ObjectWithUnsafeStringRepresentation:
+    def __str__(self) -> str:
+        raise AssertionError('__str__ must not be called')
+
+    def __repr__(self) -> str:
+        raise AssertionError('__repr__ must not be called')
+
+
 class DataSanitizerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.sanitizer = DataSanitizer()
@@ -125,6 +133,19 @@ class DataSanitizerTests(unittest.TestCase):
             },
         )
         self.assertNotIn('password', str(payload))
+
+    def test_mapping_with_non_string_key_does_not_render_the_key(self) -> None:
+        unsafe_key = ObjectWithUnsafeStringRepresentation()
+
+        payload = self.sanitizer.sanitize({unsafe_key: 'secret-value'})
+
+        self.assertEqual(
+            payload,
+            {
+                'type': 'dict',
+                'summary': 'non_string_key',
+            },
+        )
 
     def test_exception_is_summarized_without_its_message(self) -> None:
         payload = self.sanitizer.sanitize(

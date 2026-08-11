@@ -11,7 +11,7 @@ from atlanticus.configuration import (
     ConfigurationVariableSpec,
     MissingConfigurationVariablesError,
 )
-from atlanticus.kernel import Environment, InvalidEnvironmentError
+from atlanticus.kernel import Environment
 
 
 class FailingResolver:
@@ -70,15 +70,20 @@ def test_local_can_use_process_values_when_dotenv_does_not_exist(tmp_path) -> No
     assert configuration.to_dict() == {'ENVIRONMENT': 'local', 'TOPIC': 'events'}
 
 
-def test_environment_is_required_before_loading_dotenv(tmp_path) -> None:
-    (tmp_path / '.env').write_text('ENVIRONMENT=local\nTOPIC=events\n', encoding='utf-8')
+def test_local_environment_can_be_selected_from_dotenv(tmp_path) -> None:
+    dotenv_path = tmp_path / '.env'
+    dotenv_path.write_text('ENVIRONMENT=local\nTOPIC=events\n', encoding='utf-8')
 
-    with pytest.raises(InvalidEnvironmentError):
-        ConfigurationBootstrap.from_process(
-            specs=(ConfigurationVariableSpec(key='TOPIC'),),
-            process_values={},
-            dotenv_path=tmp_path / '.env',
-        )
+    bootstrap = ConfigurationBootstrap.from_process(
+        specs=(ConfigurationVariableSpec(key='TOPIC'),),
+        process_values={},
+        dotenv_path=dotenv_path,
+    )
+    configuration = bootstrap.load(process_values={})
+
+    assert configuration.environment == Environment.from_value('local')
+    assert configuration.require('TOPIC') == 'events'
+    assert configuration.sources['ENVIRONMENT'] == ConfigurationSource.DOTENV
 
 
 def test_missing_local_variables_are_reported_together(tmp_path) -> None:
@@ -159,7 +164,7 @@ def test_invalid_process_value_is_a_controlled_configuration_error() -> None:
         specs=(ConfigurationVariableSpec(key='TOPIC'),),
     )
 
-    with pytest.raises(ConfigurationValueError, match='strings'):
+    with pytest.raises(ConfigurationValueError, match='TOPIC'):
         bootstrap.load(process_values={'ENVIRONMENT': 'local', 'TOPIC': 123})  # type: ignore[dict-item]
 
 
@@ -172,7 +177,7 @@ def test_dotenv_read_failure_is_classified_as_source_error(tmp_path, monkeypatch
         dotenv_path=dotenv_path,
     )
 
-    def fail_read(_path):
+    def fail_read(_path, **_kwargs):
         raise OSError('sensitive physical detail')
 
     monkeypatch.setattr(bootstrap_module, 'dotenv_values', fail_read)
@@ -182,3 +187,43 @@ def test_dotenv_read_failure_is_classified_as_source_error(tmp_path, monkeypatch
 
     assert str(dotenv_path) in str(captured.value)
     assert 'sensitive physical detail' not in str(captured.value)
+
+
+def test_dotenv_interpolation_is_disabled(tmp_path, monkeypatch) -> None:
+    dotenv_path = tmp_path / '.env'
+    dotenv_path.write_text('URL=https://${DOMAIN}/api\n', encoding='utf-8')
+    monkeypatch.setenv('DOMAIN', 'ambient.example')
+    bootstrap = ConfigurationBootstrap.from_process(
+        specs=(ConfigurationVariableSpec(key='URL'),),
+        process_values={'ENVIRONMENT': 'local'},
+        dotenv_path=dotenv_path,
+    )
+
+    configuration = bootstrap.load(process_values={'ENVIRONMENT': 'local'})
+
+    assert configuration.require('URL') == 'https://${DOMAIN}/api'
+    assert configuration.sources['URL'] == ConfigurationSource.DOTENV
+
+
+def test_dotenv_cannot_select_a_deployed_environment(tmp_path) -> None:
+    dotenv_path = tmp_path / '.env'
+    dotenv_path.write_text('ENVIRONMENT=dev\nTOPIC=events\n', encoding='utf-8')
+
+    with pytest.raises(ConfigurationSourceError, match='process configuration'):
+        ConfigurationBootstrap.from_process(
+            specs=(ConfigurationVariableSpec(key='TOPIC'),),
+            process_values={},
+            dotenv_path=dotenv_path,
+        )
+
+
+def test_invalid_explicit_process_environment_does_not_fall_back_to_dotenv(tmp_path) -> None:
+    dotenv_path = tmp_path / '.env'
+    dotenv_path.write_text('ENVIRONMENT=local\nTOPIC=events\n', encoding='utf-8')
+
+    with pytest.raises(ConfigurationSourceError, match='ENVIRONMENT'):
+        ConfigurationBootstrap.from_process(
+            specs=(ConfigurationVariableSpec(key='TOPIC'),),
+            process_values={'ENVIRONMENT': 'invalid'},
+            dotenv_path=dotenv_path,
+        )

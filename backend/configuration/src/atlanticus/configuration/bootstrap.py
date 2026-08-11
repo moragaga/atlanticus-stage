@@ -92,7 +92,10 @@ class ConfigurationBootstrap:
         effective_values = os.environ if process_values is None else process_values
         if not isinstance(effective_values, Mapping):
             raise ConfigurationSourceError('Process configuration values must be a mapping.')
-        environment = Environment.from_mapping(effective_values)
+        environment, _ = _resolve_environment(
+            effective_values,
+            dotenv_path=dotenv_path,
+        )
         return cls(
             environment=environment,
             specs=specs,
@@ -111,12 +114,10 @@ class ConfigurationBootstrap:
         raw_process_values = os.environ if process_values is None else process_values
         if not isinstance(raw_process_values, Mapping):
             raise ConfigurationSourceError('Process configuration values must be a mapping.')
-        try:
-            effective_environment = Environment.from_mapping(raw_process_values)
-        except InvalidEnvironmentError:
-            raise ConfigurationSourceError(
-                f"Process configuration must define a valid '{ENVIRONMENT_VARIABLE}' value."
-            ) from None
+        effective_environment, environment_source = _resolve_environment(
+            raw_process_values,
+            dotenv_path=self.dotenv_path,
+        )
         if effective_environment != self.environment:
             raise ConfigurationSourceError(
                 f"Process '{ENVIRONMENT_VARIABLE}' does not match the bootstrap environment."
@@ -126,7 +127,11 @@ class ConfigurationBootstrap:
             candidates, candidate_sources = self._load_local(effective_process_values)
         else:
             candidates, candidate_sources = self._load_deployed()
-        return self._resolve_specs(candidates, candidate_sources)
+        return self._resolve_specs(
+            candidates,
+            candidate_sources,
+            environment_source=environment_source,
+        )
 
     def _load_local(
         self,
@@ -135,7 +140,7 @@ class ConfigurationBootstrap:
         dotenv_data: Mapping[str, object] = {}
         try:
             if self.dotenv_path.is_file():
-                dotenv_data = dotenv_values(self.dotenv_path)
+                dotenv_data = dotenv_values(self.dotenv_path, interpolate=False)
         except OSError, UnicodeError:
             raise ConfigurationSourceError(
                 f'Local configuration file could not be read: {self.dotenv_path}.'
@@ -145,7 +150,7 @@ class ConfigurationBootstrap:
         sources = {
             key: ConfigurationSource.DOTENV
             for key, value in dotenv_data.items()
-            if normalize_configuration_value(value) is not None
+            if normalize_configuration_value(value, variable_name=key) is not None
         }
         for key, value in process_values.items():
             candidates[key] = value
@@ -160,11 +165,21 @@ class ConfigurationBootstrap:
                 f'A secrets manifest is required for environment {self.environment}.'
             )
 
+        missing = tuple(
+            spec.key
+            for spec in self.specs
+            if spec.required
+            and spec.default is None
+            and self.secrets_manifest.find(spec.key) is None
+        )
+        if missing:
+            raise MissingConfigurationVariablesError(missing)
+
         candidates: dict[str, object] = {}
         sources: dict[str, ConfigurationSource] = {}
-        requested_keys = {spec.key for spec in self.specs}
-        for entry in self.secrets_manifest.entries:
-            if entry.var_name not in requested_keys:
+        for spec in self.specs:
+            entry = self.secrets_manifest.find(spec.key)
+            if entry is None:
                 continue
             if entry.exists_in_key_vault:
                 if self.secret_resolver is None:
@@ -173,7 +188,10 @@ class ConfigurationBootstrap:
                     )
                 try:
                     value = self.secret_resolver.get_secret(entry.secret_name or '')
-                    validated_value = normalize_configuration_value(value)
+                    validated_value = normalize_configuration_value(
+                        value,
+                        variable_name=entry.var_name,
+                    )
                 except Exception:
                     raise SecretResolutionError(entry.var_name) from None
                 if validated_value is None:
@@ -191,14 +209,16 @@ class ConfigurationBootstrap:
         self,
         candidates: Mapping[str, object],
         candidate_sources: Mapping[str, ConfigurationSource],
+        *,
+        environment_source: ConfigurationSource,
     ) -> ResolvedConfiguration:
         values = {ENVIRONMENT_VARIABLE: str(self.environment)}
-        sources = {ENVIRONMENT_VARIABLE: ConfigurationSource.PROCESS}
+        sources = {ENVIRONMENT_VARIABLE: environment_source}
         sensitive_keys: set[str] = set()
         missing: list[str] = []
 
         for spec in self.specs:
-            value = normalize_configuration_value(candidates.get(spec.key))
+            value = normalize_configuration_value(candidates.get(spec.key), variable_name=spec.key)
             source = candidate_sources.get(spec.key)
             if value is None and spec.default is not None:
                 value = spec.default
@@ -209,7 +229,7 @@ class ConfigurationBootstrap:
                 continue
             values[spec.key] = value
             sources[spec.key] = source or ConfigurationSource.PROCESS
-            if spec.sensitive:
+            if spec.sensitive or source == ConfigurationSource.KEY_VAULT:
                 sensitive_keys.add(spec.key)
 
         if missing:
@@ -221,3 +241,48 @@ class ConfigurationBootstrap:
             sources=sources,
             sensitive_keys=frozenset(sensitive_keys),
         )
+
+
+def _resolve_environment(
+    process_values: Mapping[str, object],
+    *,
+    dotenv_path: str | Path,
+) -> tuple[Environment, ConfigurationSource]:
+    if ENVIRONMENT_VARIABLE in process_values:
+        try:
+            return Environment.from_mapping(process_values), ConfigurationSource.PROCESS
+        except InvalidEnvironmentError:
+            raise ConfigurationSourceError(
+                f"Process configuration must define a valid '{ENVIRONMENT_VARIABLE}' value."
+            ) from None
+
+    try:
+        local_path = Path(dotenv_path)
+    except TypeError:
+        raise ConfigurationSourceError('dotenv_path must be a string or Path.') from None
+    try:
+        if not local_path.is_file():
+            raise ConfigurationSourceError(
+                f"Process configuration must define '{ENVIRONMENT_VARIABLE}', "
+                'or local configuration must declare it in .env.'
+            )
+        dotenv_data = dotenv_values(local_path, interpolate=False)
+    except ConfigurationSourceError:
+        raise
+    except OSError, UnicodeError:
+        raise ConfigurationSourceError(
+            f'Local configuration file could not be read: {local_path}.'
+        ) from None
+
+    try:
+        environment = Environment.from_mapping(dotenv_data)
+    except InvalidEnvironmentError:
+        raise ConfigurationSourceError(
+            f"Local configuration must define a valid '{ENVIRONMENT_VARIABLE}' value."
+        ) from None
+    if not environment.is_local:
+        raise ConfigurationSourceError(
+            f"Deployed environment '{environment}' must define '{ENVIRONMENT_VARIABLE}' "
+            'in process configuration.'
+        )
+    return environment, ConfigurationSource.DOTENV

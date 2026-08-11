@@ -157,10 +157,14 @@ class DataSanitizer:
             if index >= self.max_items:
                 result['__truncated__'] = True
                 break
-            safe_key = str(item_key)
-            result[safe_key] = self._sanitize(
+            if not isinstance(item_key, str):
+                return {
+                    'type': type(value).__name__,
+                    'summary': 'non_string_key',
+                }
+            result[item_key] = self._sanitize(
                 item_value,
-                key=safe_key,
+                key=item_key,
                 depth=depth - 1,
             )
         return result

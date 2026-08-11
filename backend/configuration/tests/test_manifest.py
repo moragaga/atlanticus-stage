@@ -192,3 +192,15 @@ def test_manifest_constructor_requires_immutable_validated_entries() -> None:
 def test_manifest_path_type_is_validated() -> None:
     with pytest.raises(SecretsManifestError, match='path'):
         SecretsManifest.from_path(123)  # type: ignore[arg-type]
+
+
+def test_manifest_rejects_reserved_environment_variable(tmp_path) -> None:
+    entry = {
+        'var_name': 'ENVIRONMENT',
+        'secret_name': None,
+        'value': 'dev',
+        'exists_in_key_vault': False,
+    }
+
+    with pytest.raises(SecretsManifestError, match='ENVIRONMENT'):
+        SecretsManifest.from_path(_write_manifest(tmp_path, [entry]))
