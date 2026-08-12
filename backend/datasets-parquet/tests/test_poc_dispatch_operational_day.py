@@ -48,7 +48,6 @@ def _part(
         ),
     )
 
-
 def test_poc_dispatch_uses_flat_parts_manifest_and_shift_pruning(
     tmp_path: Path,
     clock: datetime,
@@ -118,7 +117,6 @@ def test_poc_dispatch_uses_flat_parts_manifest_and_shift_pruning(
     assert selected.artifact_count == 1
     assert inspected_paths == [expected_part]
 
-
 def test_signature_read_failure_is_exposed_as_parquet_read_error(
     tmp_path: Path,
     clock: datetime,
@@ -147,7 +145,6 @@ def test_signature_read_failure_is_exposed_as_parquet_read_error(
 
     with pytest.raises(ParquetReadError, match='could not read parquet artifact'):
         store.read(definition=dispatch_definition, target=target)
-
 
 def test_part_update_preserves_unmentioned_part_and_ignores_orphans(
     tmp_path: Path,
@@ -202,7 +199,6 @@ def test_part_update_preserves_unmentioned_part_and_ignores_orphans(
         for part in json.loads((target_path / 'current.json').read_text(encoding='utf-8'))['parts']
     }
 
-
 def test_incoming_schema_adds_and_removes_columns_without_rewriting_old_parts(
     tmp_path: Path,
     clock: datetime,
@@ -250,7 +246,6 @@ def test_incoming_schema_adds_and_removes_columns_without_rewriting_old_parts(
     assert sorted(table['new_value'].to_pylist(), key=lambda value: value is None) == [15.0, None]
     assert 'retired' not in table.column_names
 
-
 def test_empty_part_skips_the_entire_target_and_preserves_current_manifest(
     tmp_path: Path,
     clock: datetime,
@@ -292,7 +287,6 @@ def test_empty_part_skips_the_entire_target_and_preserves_current_manifest(
     assert result.status is PublicationStatus.SKIPPED
     assert (target_path / 'current.json').read_bytes() == before
 
-
 def test_empty_new_file_set_does_not_create_a_target(
     tmp_path: Path,
     clock: datetime,
@@ -319,7 +313,6 @@ def test_empty_new_file_set_does_not_create_a_target(
 
     assert result.status is PublicationStatus.SKIPPED
     assert not store.path_for(definition=dispatch_definition, target=target).exists()
-
 
 def test_parts_are_removed_only_when_their_keys_are_explicit(
     tmp_path: Path,
@@ -364,7 +357,6 @@ def test_parts_are_removed_only_when_their_keys_are_explicit(
     assert store.read(definition=dispatch_definition, target=target).table[
         'shift_id'
     ].to_pylist() == [26199002]
-
 
 def test_failed_manifest_commit_preserves_previous_part_set(
     tmp_path: Path,
@@ -413,7 +405,6 @@ def test_failed_manifest_commit_preserves_previous_part_set(
         'tonnage'
     ].to_pylist() == [100.0]
 
-
 def test_missing_referenced_part_is_corruption_not_partial_data(
     tmp_path: Path,
     clock: datetime,
@@ -439,7 +430,6 @@ def test_missing_referenced_part_is_corruption_not_partial_data(
 
     with pytest.raises(ParquetCorruptionError):
         store.read(definition=dispatch_definition, target=target)
-
 
 def test_modified_referenced_part_is_rejected_by_content_signature(
     tmp_path: Path,
@@ -487,7 +477,6 @@ def test_modified_referenced_part_is_rejected_by_content_signature(
     with pytest.raises(ParquetCorruptionError, match='signature'):
         store.read(definition=dispatch_definition, target=target)
 
-
 def test_type_change_requires_republishing_or_removing_incompatible_parts(
     tmp_path: Path,
     clock: datetime,
@@ -534,3 +523,35 @@ def test_type_change_requires_republishing_or_removing_incompatible_parts(
     assert sorted(
         store.read(definition=dispatch_definition, target=target).table['tonnage'].to_pylist()
     ) == [100.0, 200.0]
+
+
+def test_confirmed_part_schema_mismatch_is_classified_as_corruption(
+    tmp_path: Path,
+    clock: datetime,
+    dispatch_definition: DatasetDefinition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ParquetDatasetStore(root=tmp_path, clock=lambda: clock)
+    target = _target(dispatch_definition)
+    store.publish_parts(
+        definition=dispatch_definition,
+        target=target,
+        incoming_parts=(
+            _part(
+                dispatch_definition,
+                target,
+                shift_id='26199001',
+                tonnage=(100.0,),
+            ),
+        ),
+    )
+
+    def reject_physical_schema(**_kwargs: object) -> None:
+        raise ParquetSchemaError('controlled physical schema mismatch')
+
+    monkeypatch.setattr(store, '_validate_physical_schema', reject_physical_schema)
+
+    with pytest.raises(ParquetCorruptionError, match='current manifest') as captured:
+        store.read(definition=dispatch_definition, target=target)
+
+    assert isinstance(captured.value.__cause__, ParquetSchemaError)

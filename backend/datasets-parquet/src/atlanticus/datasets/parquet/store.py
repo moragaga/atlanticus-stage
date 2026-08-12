@@ -665,11 +665,16 @@ class ParquetDatasetStore:
                 content_signature=part.content_signature,
                 part_value=part.value,
             )
-            self._validate_physical_schema(
-                physical=artifact.schema,
-                logical=manifest.schema,
-                context=f'part {part.value}',
-            )
+            try:
+                self._validate_physical_schema(
+                    physical=artifact.schema,
+                    logical=manifest.schema,
+                    context=f'part {part.value}',
+                )
+            except ParquetSchemaError as error:
+                raise ParquetCorruptionError(
+                    f'parquet part schema does not match current manifest: {part.path}'
+                ) from error
             artifacts.append(artifact)
         return _ResolvedPublication(
             target=target,
@@ -723,7 +728,12 @@ class ParquetDatasetStore:
             raise ParquetCorruptionError(
                 f'parquet part row count does not match current manifest: {path.name}'
             )
-        self._validate_schema(schema)
+        try:
+            self._validate_schema(schema)
+        except ParquetSchemaError as error:
+            raise ParquetCorruptionError(
+                f'parquet artifact schema is invalid: {path.name}'
+            ) from error
         return _Artifact(
             path=path,
             schema=schema,
@@ -797,8 +807,8 @@ class ParquetDatasetStore:
             if field.name in table.column_names:
                 column = table[field.name]
                 if column.type != field.type:
-                    raise ParquetSchemaError(
-                        f'incompatible type for column {field.name}: {column.type} != {field.type}'
+                    raise ParquetCorruptionError(
+                        f'parquet artifact schema changed while scanning column {field.name}'
                     )
                 arrays.append(column)
             else:

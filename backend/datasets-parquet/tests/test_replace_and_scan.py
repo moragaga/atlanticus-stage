@@ -12,6 +12,7 @@ from atlanticus.datasets import DatasetDefinition, PublicationSkipReason, Public
 from atlanticus.datasets.parquet import (
     ColumnFilter,
     FilterOperator,
+    ParquetCorruptionError,
     ParquetDatasetStore,
     ParquetPublicationNotFoundError,
     ParquetSchemaError,
@@ -29,7 +30,6 @@ def _target(definition: DatasetDefinition, *, day: str = '21'):
 
 def _store(tmp_path: Path, clock: datetime) -> ParquetDatasetStore:
     return ParquetDatasetStore(root=tmp_path / 'data', clock=lambda: clock)
-
 
 def test_path_is_derived_only_from_validated_target(
     tmp_path: Path,
@@ -52,7 +52,6 @@ def test_path_is_derived_only_from_validated_target(
         / 'day=21'
     )
 
-
 def test_empty_replace_is_skipped_without_creating_the_target(
     tmp_path: Path,
     clock: datetime,
@@ -67,7 +66,6 @@ def test_empty_replace_is_skipped_without_creating_the_target(
     assert result.status is PublicationStatus.SKIPPED
     assert result.skip_reason is PublicationSkipReason.EMPTY_CONTENT
     assert not store.path_for(definition=pi_definition, target=target).exists()
-
 
 def test_replace_round_trip_and_scan_apply_projection_and_time_filter(
     tmp_path: Path,
@@ -114,7 +112,6 @@ def test_replace_round_trip_and_scan_apply_projection_and_time_filter(
     assert projected.table['tk10_nivel_inst'].to_pylist() == [11.0]
     assert projected.artifact_count == 1
 
-
 def test_identical_replace_is_unchanged(
     tmp_path: Path,
     pi_definition: DatasetDefinition,
@@ -135,7 +132,6 @@ def test_identical_replace_is_unchanged(
     assert first.status is PublicationStatus.COMMITTED
     assert second.status is PublicationStatus.UNCHANGED
     assert second.content_signature == first.content_signature
-
 
 def test_failed_atomic_replace_preserves_the_previous_parquet(
     tmp_path: Path,
@@ -164,7 +160,6 @@ def test_failed_atomic_replace_preserves_the_previous_parquet(
     target_path = store.path_for(definition=pi_definition, target=target)
     assert not tuple(target_path.glob('.*.tmp'))
 
-
 def test_replace_does_not_override_filesystem_permissions(
     tmp_path: Path,
     clock: datetime,
@@ -187,7 +182,6 @@ def test_replace_does_not_override_filesystem_permissions(
 
     assert store.read(definition=pi_definition, target=target).row_count == 1
 
-
 def test_missing_publication_is_not_treated_as_an_empty_table(
     tmp_path: Path,
     clock: datetime,
@@ -198,7 +192,6 @@ def test_missing_publication_is_not_treated_as_an_empty_table(
             definition=pi_definition,
             target=_target(pi_definition),
         )
-
 
 def test_multiple_targets_require_explicit_columns_and_align_new_columns(
     tmp_path: Path,
@@ -239,7 +232,6 @@ def test_multiple_targets_require_explicit_columns_and_align_new_columns(
     assert result.artifact_count == 2
     assert len(result.warnings) == 1
 
-
 def test_multiple_targets_reject_incompatible_types(
     tmp_path: Path,
     clock: datetime,
@@ -263,5 +255,57 @@ def test_multiple_targets_reject_incompatible_types(
         store.scan(
             definition=pi_definition,
             targets=(day_20, day_21),
+            columns=('value',),
+        )
+
+
+def test_confirmed_artifact_invalid_schema_is_classified_as_corruption(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path, clock)
+    target = _target(pi_definition)
+    store.replace(
+        definition=pi_definition,
+        target=target,
+        table=pa.table({'value': pa.array([1], type=pa.int64())}),
+    )
+
+    def reject_schema(_schema: pa.Schema) -> None:
+        raise ParquetSchemaError('controlled invalid physical schema')
+
+    monkeypatch.setattr(store, '_validate_schema', reject_schema)
+
+    with pytest.raises(ParquetCorruptionError, match='schema is invalid') as captured:
+        store.read(definition=pi_definition, target=target)
+
+    assert isinstance(captured.value.__cause__, ParquetSchemaError)
+
+def test_scan_type_change_after_inspection_is_classified_as_corruption(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path, clock)
+    target = _target(pi_definition)
+    store.replace(
+        definition=pi_definition,
+        target=target,
+        table=pa.table({'value': pa.array([1], type=pa.int64())}),
+    )
+
+    monkeypatch.setattr(
+        store_module.pq,
+        'read_table',
+        lambda *_args, **_kwargs: pa.table({'value': pa.array([1.0], type=pa.float64())}),
+    )
+
+    with pytest.raises(ParquetCorruptionError, match='schema changed while scanning'):
+        store.scan(
+            definition=pi_definition,
+            targets=(target,),
             columns=('value',),
         )

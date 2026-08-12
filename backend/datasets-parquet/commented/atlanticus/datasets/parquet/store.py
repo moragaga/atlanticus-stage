@@ -673,11 +673,18 @@ class ParquetDatasetStore:
                 content_signature=part.content_signature,
                 part_value=part.value,
             )
-            self._validate_physical_schema(
-                physical=artifact.schema,
-                logical=manifest.schema,
-                context=f'part {part.value}',
-            )
+            # En lectura, una incompatibilidad entre el artefacto confirmado y su manifiesto
+            # es corrupción de la publicación, no un error de validación del consumidor.
+            try:
+                self._validate_physical_schema(
+                    physical=artifact.schema,
+                    logical=manifest.schema,
+                    context=f'part {part.value}',
+                )
+            except ParquetSchemaError as error:
+                raise ParquetCorruptionError(
+                    f'parquet part schema does not match current manifest: {part.path}'
+                ) from error
             artifacts.append(artifact)
         return _ResolvedPublication(
             target=target,
@@ -733,7 +740,14 @@ class ParquetDatasetStore:
             raise ParquetCorruptionError(
                 f'parquet part row count does not match current manifest: {path.name}'
             )
-        self._validate_schema(schema)
+        # El schema proviene de un artefacto físico ya publicado; cualquier violación
+        # estructural se clasifica como corrupción de lectura.
+        try:
+            self._validate_schema(schema)
+        except ParquetSchemaError as error:
+            raise ParquetCorruptionError(
+                f'parquet artifact schema is invalid: {path.name}'
+            ) from error
         return _Artifact(
             path=path,
             schema=schema,
@@ -806,9 +820,10 @@ class ParquetDatasetStore:
         for field in output_schema:
             if field.name in table.column_names:
                 column = table[field.name]
+                # El footer inspeccionado y la tabla efectivamente leída deben coincidir.
                 if column.type != field.type:
-                    raise ParquetSchemaError(
-                        f'incompatible type for column {field.name}: {column.type} != {field.type}'
+                    raise ParquetCorruptionError(
+                        f'parquet artifact schema changed while scanning column {field.name}'
                     )
                 arrays.append(column)
             else:

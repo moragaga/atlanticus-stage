@@ -155,9 +155,21 @@ class DatasetRuntime:
             layout_type=FileSetLayout,
             operation='publish_parts',
         )
+        # El layout ya fue validado arriba; aquí recuperamos su dimensión autoritativa
+        # para rechazar claves estructuralmente inválidas antes de cualquier atajo por vacío.
+        layout = definition.get_materialization(target.materialization).layout
+        assert isinstance(layout, FileSetLayout)
         # Todas las partes se validan y convierten antes del único commit del manifiesto.
-        incoming = _normalize_parts(parts=parts, target=target)
-        removals = _normalize_removals(remove_parts=remove_parts, target=target)
+        incoming = _normalize_parts(
+            parts=parts,
+            target=target,
+            part_dimension=layout.part_dimension,
+        )
+        removals = _normalize_removals(
+            remove_parts=remove_parts,
+            target=target,
+            part_dimension=layout.part_dimension,
+        )
         overlap = {part.key for part in incoming} & set(removals)
         if overlap:
             identifiers = sorted(item.identifier for item in overlap)
@@ -318,6 +330,7 @@ def _normalize_parts(
     *,
     parts: Iterable[RuntimeDatasetPart],
     target: DatasetTarget,
+    part_dimension: str,
 ) -> tuple[RuntimeDatasetPart, ...]:
     # No se aceptan claves duplicadas porque una parte entrante es un reemplazo completo.
     if isinstance(parts, RuntimeDatasetPart | str | bytes):
@@ -334,6 +347,11 @@ def _normalize_parts(
         raise DatasetRuntimeValidationError('parts must contain only RuntimeDatasetPart values')
     if any(item.key.target != target for item in resolved):
         raise DatasetRuntimeValidationError('all parts must reference the requested target')
+    # Una parte puede apuntar al target correcto y aun así usar una dimensión equivocada.
+    if any(item.key.dimension != part_dimension for item in resolved):
+        raise DatasetRuntimeValidationError(
+            f'all parts must use layout part dimension {part_dimension!r}'
+        )
     keys = tuple(item.key for item in resolved)
     if len(set(keys)) != len(keys):
         raise DatasetRuntimeValidationError('parts must not contain duplicate keys')
@@ -344,6 +362,7 @@ def _normalize_removals(
     *,
     remove_parts: Iterable[DatasetPartKey],
     target: DatasetTarget,
+    part_dimension: str,
 ) -> tuple[DatasetPartKey, ...]:
     # Las eliminaciones son explícitas y deben pertenecer al mismo target de la publicación.
     if isinstance(remove_parts, DatasetPartKey | str | bytes):
@@ -360,6 +379,11 @@ def _normalize_removals(
         raise DatasetRuntimeValidationError('remove_parts must contain only DatasetPartKey values')
     if any(item.target != target for item in resolved):
         raise DatasetRuntimeValidationError('all removed parts must reference the requested target')
+    # Las eliminaciones obedecen la misma dimensión declarada por el FileSetLayout.
+    if any(item.dimension != part_dimension for item in resolved):
+        raise DatasetRuntimeValidationError(
+            f'all removed parts must use layout part dimension {part_dimension!r}'
+        )
     if len(set(resolved)) != len(resolved):
         raise DatasetRuntimeValidationError('remove_parts must not contain duplicates')
     return resolved

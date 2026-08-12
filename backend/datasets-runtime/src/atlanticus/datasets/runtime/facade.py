@@ -152,8 +152,18 @@ class DatasetRuntime:
             layout_type=FileSetLayout,
             operation='publish_parts',
         )
-        incoming = _normalize_parts(parts=parts, target=target)
-        removals = _normalize_removals(remove_parts=remove_parts, target=target)
+        layout = definition.get_materialization(target.materialization).layout
+        assert isinstance(layout, FileSetLayout)
+        incoming = _normalize_parts(
+            parts=parts,
+            target=target,
+            part_dimension=layout.part_dimension,
+        )
+        removals = _normalize_removals(
+            remove_parts=remove_parts,
+            target=target,
+            part_dimension=layout.part_dimension,
+        )
         overlap = {part.key for part in incoming} & set(removals)
         if overlap:
             identifiers = sorted(item.identifier for item in overlap)
@@ -309,6 +319,7 @@ def _normalize_parts(
     *,
     parts: Iterable[RuntimeDatasetPart],
     target: DatasetTarget,
+    part_dimension: str,
 ) -> tuple[RuntimeDatasetPart, ...]:
     if isinstance(parts, RuntimeDatasetPart | str | bytes):
         raise DatasetRuntimeValidationError(
@@ -324,6 +335,10 @@ def _normalize_parts(
         raise DatasetRuntimeValidationError('parts must contain only RuntimeDatasetPart values')
     if any(item.key.target != target for item in resolved):
         raise DatasetRuntimeValidationError('all parts must reference the requested target')
+    if any(item.key.dimension != part_dimension for item in resolved):
+        raise DatasetRuntimeValidationError(
+            f'all parts must use layout part dimension {part_dimension!r}'
+        )
     keys = tuple(item.key for item in resolved)
     if len(set(keys)) != len(keys):
         raise DatasetRuntimeValidationError('parts must not contain duplicate keys')
@@ -334,6 +349,7 @@ def _normalize_removals(
     *,
     remove_parts: Iterable[DatasetPartKey],
     target: DatasetTarget,
+    part_dimension: str,
 ) -> tuple[DatasetPartKey, ...]:
     if isinstance(remove_parts, DatasetPartKey | str | bytes):
         raise DatasetRuntimeValidationError(
@@ -349,6 +365,10 @@ def _normalize_removals(
         raise DatasetRuntimeValidationError('remove_parts must contain only DatasetPartKey values')
     if any(item.target != target for item in resolved):
         raise DatasetRuntimeValidationError('all removed parts must reference the requested target')
+    if any(item.dimension != part_dimension for item in resolved):
+        raise DatasetRuntimeValidationError(
+            f'all removed parts must use layout part dimension {part_dimension!r}'
+        )
     if len(set(resolved)) != len(resolved):
         raise DatasetRuntimeValidationError('remove_parts must not contain duplicates')
     return resolved
