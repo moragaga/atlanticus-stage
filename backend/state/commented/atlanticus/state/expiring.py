@@ -79,9 +79,14 @@ class ExpiringKeySet:
             now_epoch = self._now_epoch()
             entries = self._load_entries()
             removed = _purge_entries(entries, now_epoch)
-            if removed:
+            # La capacidad se vuelve a imponer en cada lectura para respetar cambios de configuración entre reinicios.
+            evicted = _enforce_max_entries(entries, self._max_entries)
+            if removed or evicted:
                 self._store.replace(self._key, {'entries': entries})
+            if removed:
                 self._emit_cleanup('state.expiring_set.purged', removed, len(entries))
+            if evicted:
+                self._emit_eviction(evicted, len(entries))
             return tuple(_hash_key(value) in entries for value in values)
 
     def add(self, raw_key: str) -> int:
@@ -109,14 +114,7 @@ class ExpiringKeySet:
             if removed:
                 self._emit_cleanup('state.expiring_set.purged', removed, len(entries))
             if evicted:
-                self._safe_log(
-                    EventSeverity.WARNING,
-                    'Expiring key set reached its configured capacity.',
-                    event_name='state.expiring_set.evicted',
-                    audience=EventAudience.OPERATIONS,
-                    metrics={'evicted_count': evicted, 'entry_count': len(entries)},
-                    attributes={'state_key': self._key.identifier},
-                )
+                self._emit_eviction(evicted, len(entries))
             return len(entries)
 
     def purge(self) -> int:
@@ -129,9 +127,14 @@ class ExpiringKeySet:
                 return 0
             entries = _parse_entries(document.value)
             removed = _purge_entries(entries, now_epoch)
-            if removed:
+            # Compactar también aplica la capacidad vigente, aunque no se agreguen claves nuevas.
+            evicted = _enforce_max_entries(entries, self._max_entries)
+            if removed or evicted:
                 self._store.replace(self._key, {'entries': entries})
+            if removed:
                 self._emit_cleanup('state.expiring_set.purged', removed, len(entries))
+            if evicted:
+                self._emit_eviction(evicted, len(entries))
             return removed
 
     def count(self) -> int:
@@ -141,9 +144,14 @@ class ExpiringKeySet:
             now_epoch = self._now_epoch()
             entries = self._load_entries()
             removed = _purge_entries(entries, now_epoch)
-            if removed:
+            # count() refleja la capacidad configurada actual, no la de la ejecución que escribió el archivo.
+            evicted = _enforce_max_entries(entries, self._max_entries)
+            if removed or evicted:
                 self._store.replace(self._key, {'entries': entries})
+            if removed:
                 self._emit_cleanup('state.expiring_set.purged', removed, len(entries))
+            if evicted:
+                self._emit_eviction(evicted, len(entries))
             return len(entries)
 
     def _load_entries(self) -> dict[str, float]:
@@ -170,7 +178,18 @@ class ExpiringKeySet:
             attributes={'state_key': self._key.identifier},
         )
 
-    # El evento describe el mantenimiento, pero su backend no participa del resultado funcional.
+    # La evicción es operacional porque una capacidad insuficiente afecta el horizonte efectivo de deduplicación.
+    def _emit_eviction(self, evicted: int, current: int) -> None:
+        self._safe_log(
+            EventSeverity.WARNING,
+            'Expiring key set reached its configured capacity.',
+            event_name='state.expiring_set.evicted',
+            audience=EventAudience.OPERATIONS,
+            metrics={'evicted_count': evicted, 'entry_count': current},
+            attributes={'state_key': self._key.identifier},
+        )
+
+    # El backend de observabilidad nunca participa del resultado funcional.
     def _safe_log(self, *args: Any, **kwargs: Any) -> None:
         try:
             self._logger.log(*args, **kwargs)
@@ -188,6 +207,11 @@ def _materialize_keys(raw_keys: Iterable[str]) -> tuple[str, ...]:
     for value in values:
         if not isinstance(value, str) or not value:
             raise StateValidationError('deduplication keys must be non-empty strings')
+        try:
+            # El hash requiere UTF-8 válido; se valida antes de leer o modificar el estado persistido.
+            value.encode('utf-8')
+        except UnicodeEncodeError as error:
+            raise StateValidationError('deduplication keys must be valid UTF-8 strings') from error
     return values
 
 

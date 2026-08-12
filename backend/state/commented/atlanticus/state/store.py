@@ -160,20 +160,22 @@ class AtomicStateStore:
         resolved_key = _require_state_key(key)
         started = monotonic()
         try:
-            if not isinstance(value, Mapping):
-                raise StateValidationError('state value must be a mapping')
-            document = StateDocument(
-                key=resolved_key,
-                updated_at_utc=self._resolve_now(),
-                value=dict(value),
-            )
-            content = encode_canonical_json(document.to_payload()) + b'\n'
-            if len(content) > self._max_document_bytes:
-                raise StateTooLargeError(
-                    f'state document {resolved_key.identifier} exceeds '
-                    f'{self._max_document_bytes} bytes'
+            # El mismo lock cubre reloj, serialización y commit: un thread tardío no puede publicar metadata más antigua.
+            with self._write_lock:
+                if not isinstance(value, Mapping):
+                    raise StateValidationError('state value must be a mapping')
+                document = StateDocument(
+                    key=resolved_key,
+                    updated_at_utc=self._resolve_now(),
+                    value=dict(value),
                 )
-            orphan_temporary_count = self._replace_bytes(self.path_for(resolved_key), content)
+                content = encode_canonical_json(document.to_payload()) + b'\n'
+                if len(content) > self._max_document_bytes:
+                    raise StateTooLargeError(
+                        f'state document {resolved_key.identifier} exceeds '
+                        f'{self._max_document_bytes} bytes'
+                    )
+                orphan_temporary_count = self._replace_bytes(self.path_for(resolved_key), content)
         except StateError as error:
             severity = (
                 EventSeverity.WARNING
@@ -218,27 +220,28 @@ class AtomicStateStore:
     def _replace_bytes(self, path: Path, content: bytes) -> int:
         temporary_path = path.with_name(f'.{path.name}.{uuid4().hex}.tmp')
         orphan_temporary_count = 0
-        with self._write_lock:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            orphan_temporary_count = _remove_orphan_temporaries(path)
+            descriptor = os.open(
+                temporary_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o640,
+            )
+            with os.fdopen(descriptor, 'wb') as file_handle:
+                file_handle.write(content)
+                file_handle.flush()
+                os.fsync(file_handle.fileno())
+            os.replace(temporary_path, path)
+            # El fsync del directorio hace durable también el rename, alineado con datasets-parquet.
+            _fsync_directory(path.parent)
+        except OSError as error:
+            raise StateWriteError(f'could not replace state document {path.name}') from error
+        finally:
             try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                orphan_temporary_count = _remove_orphan_temporaries(path)
-                descriptor = os.open(
-                    temporary_path,
-                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                    0o640,
-                )
-                with os.fdopen(descriptor, 'wb') as file_handle:
-                    file_handle.write(content)
-                    file_handle.flush()
-                    os.fsync(file_handle.fileno())
-                os.replace(temporary_path, path)
-            except OSError as error:
-                raise StateWriteError(f'could not replace state document {path.name}') from error
-            finally:
-                try:
-                    temporary_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         return orphan_temporary_count
 
     # La función siguiente concentra una operación verificable sin depender de estado implícito.
@@ -343,6 +346,17 @@ def _is_owned_temporary(path: Path, candidate: Path) -> bool:
 
 
 # La función siguiente concentra una operación verificable sin depender de estado implícito.
+
+
+# Windows no soporta la misma semántica de fsync sobre directorios; en POSIX se exige la garantía fuerte.
+def _fsync_directory(path: Path) -> None:
+    if os.name == 'nt':
+        return
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _utc_now() -> datetime:

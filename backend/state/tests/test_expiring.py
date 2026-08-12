@@ -111,3 +111,38 @@ def test_expiring_set_ignores_observability_failures(tmp_path: Path) -> None:
 
     assert key_set.add_many(('first', 'second')) == 1
     assert sum(key_set.contains_many(('first', 'second'))) == 1
+
+
+
+def test_reduced_capacity_is_enforced_during_read_operations(tmp_path: Path) -> None:
+    clock = MutableClock()
+    wide = _key_set(tmp_path, clock, max_entries=3)
+    wide.add('oldest')
+    clock.advance(1)
+    wide.add('middle')
+    clock.advance(1)
+    wide.add('newest')
+
+    narrowed = _key_set(tmp_path, clock, max_entries=2)
+
+    assert narrowed.contains_many(('oldest', 'middle', 'newest')) == (False, True, True)
+    assert narrowed.count() == 2
+
+
+def test_invalid_utf8_key_fails_before_state_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = MutableClock()
+    key_set = _key_set(tmp_path, clock)
+
+    def unexpected_read(*_: object, **__: object) -> object:
+        raise AssertionError('state must not be read for an invalid key')
+
+    def unexpected_replace(*_: object, **__: object) -> object:
+        raise AssertionError('state must not be written for an invalid key')
+
+    monkeypatch.setattr(key_set._store, 'read', unexpected_read)
+    monkeypatch.setattr(key_set._store, 'replace', unexpected_replace)
+
+    with pytest.raises(StateValidationError, match='UTF-8'):
+        key_set.contains_many(('valid', '\ud800'))

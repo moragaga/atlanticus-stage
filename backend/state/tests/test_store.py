@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -261,3 +262,70 @@ def test_warning_quality_is_a_valid_committed_state(tmp_path: Path) -> None:
         'quality_status': 'warning',
         'missing_count': 3,
     }
+
+
+
+def test_replace_serializes_clock_and_commit_order_between_threads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    timestamps = iter(
+        (
+            datetime(2026, 7, 20, 15, 0, tzinfo=UTC),
+            datetime(2026, 7, 20, 16, 0, tzinfo=UTC),
+        )
+    )
+    store = AtomicStateStore(
+        volume_path=tmp_path,
+        application='ada',
+        clock=lambda: next(timestamps),
+    )
+    original_replace_bytes = store._replace_bytes
+    first_waiting = Event()
+    second_committed = Event()
+
+    def coordinated_replace_bytes(path: Path, content: bytes) -> int:
+        if b'"revision":"older"' in content:
+            first_waiting.set()
+            second_committed.wait(timeout=0.2)
+            return original_replace_bytes(path, content)
+        result = original_replace_bytes(path, content)
+        second_committed.set()
+        return result
+
+    monkeypatch.setattr(store, '_replace_bytes', coordinated_replace_bytes)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        older = executor.submit(store.replace, _key(), {'revision': 'older'})
+        assert first_waiting.wait(timeout=1)
+        newer = executor.submit(store.replace, _key(), {'revision': 'newer'})
+        older.result(timeout=2)
+        newer.result(timeout=2)
+
+    committed = store.read(_key())
+    assert committed is not None
+    assert committed.updated_at_utc == datetime(2026, 7, 20, 16, 0, tzinfo=UTC)
+    assert committed.value == {'revision': 'newer'}
+
+
+def test_replace_fsyncs_parent_directory_after_atomic_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    replaced = Event()
+    original_replace = store_module.os.replace
+    synced_directories: list[Path] = []
+
+    def tracked_replace(source: Path, target: Path) -> None:
+        original_replace(source, target)
+        replaced.set()
+
+    def tracked_directory_fsync(path: Path) -> None:
+        assert replaced.is_set()
+        synced_directories.append(path)
+
+    monkeypatch.setattr(store_module.os, 'replace', tracked_replace)
+    monkeypatch.setattr(store_module, '_fsync_directory', tracked_directory_fsync)
+
+    store.replace(_key(), {'change_token': 'durable'})
+
+    assert synced_directories == [store.path_for(_key()).parent]
