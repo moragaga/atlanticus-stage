@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -109,20 +108,48 @@ class ParquetReadResult:
     def __post_init__(self) -> None:
         if not isinstance(self.table, pa.Table):
             raise ParquetValidationError('read result table must be a pyarrow.Table')
-        if not self.targets or not all(isinstance(item, DatasetTarget) for item in self.targets):
+        # Aunque el tipo público declara tuples, normalizamos en runtime para conservar la
+        # inmutabilidad real si un consumidor Python entrega una lista u otro iterable.
+        try:
+            targets = tuple(self.targets)
+        except TypeError as error:
+            raise ParquetValidationError(
+                'read result targets must contain DatasetTarget values'
+            ) from error
+        if not targets or not all(isinstance(item, DatasetTarget) for item in targets):
             raise ParquetValidationError('read result targets must contain DatasetTarget values')
-        if len(set(self.targets)) != len(self.targets):
+        if len(set(targets)) != len(targets):
             raise ParquetValidationError('read result targets must not contain duplicates')
+        # Strings no cuentan como colecciones de tokens: iterarlos produciría caracteres.
+        if isinstance(self.publication_tokens, str | bytes):
+            raise ParquetValidationError('publication_tokens must contain non-empty strings')
+        try:
+            publication_tokens = tuple(self.publication_tokens)
+        except TypeError as error:
+            raise ParquetValidationError(
+                'publication_tokens must contain non-empty strings'
+            ) from error
+        if isinstance(self.warnings, str | bytes):
+            raise ParquetValidationError('warnings must contain non-empty strings')
+        try:
+            warnings = tuple(self.warnings)
+        except TypeError as error:
+            raise ParquetValidationError('warnings must contain non-empty strings') from error
         for field, value in (
             ('artifact_count', self.artifact_count),
             ('size_bytes', self.size_bytes),
         ):
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 raise ParquetValidationError(f'{field} must be a non-negative integer')
-        if not all(isinstance(item, str) and item for item in self.publication_tokens):
+        if not all(isinstance(item, str) and item for item in publication_tokens):
             raise ParquetValidationError('publication_tokens must contain non-empty strings')
-        if not all(isinstance(item, str) and item for item in self.warnings):
+        if not all(isinstance(item, str) and item for item in warnings):
             raise ParquetValidationError('warnings must contain non-empty strings')
+        # El dataclass es frozen; object.__setattr__ se usa solo durante post-init para fijar la
+        # representación canónica inmutable.
+        object.__setattr__(self, 'targets', targets)
+        object.__setattr__(self, 'publication_tokens', publication_tokens)
+        object.__setattr__(self, 'warnings', warnings)
 
     @property
     def target_count(self) -> int:
@@ -171,14 +198,3 @@ class _ResolvedPublication:
     artifacts: tuple[_Artifact, ...]
     publication_token: str | None = None
     part_dimension: str | None = None
-
-
-def _validate_duration_seconds(value: float, *, field: str) -> float:
-    if (
-        not isinstance(value, int | float)
-        or isinstance(value, bool)
-        or not math.isfinite(value)
-        or value < 0
-    ):
-        raise ParquetValidationError(f'{field} must be a non-negative number')
-    return float(value)

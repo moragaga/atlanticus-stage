@@ -147,7 +147,7 @@ class ParquetDatasetStore:
                 item_count=artifact.item_count,
                 artifact_count=1,
                 size_bytes=artifact.size_bytes,
-                content_signature=_file_signature(artifact.path),
+                content_signature=_read_file_signature(artifact.path),
                 started=started,
             )
         artifact = self._replace_table(
@@ -224,7 +224,7 @@ class ParquetDatasetStore:
                         artifact_count=1,
                         size_bytes=artifact.size_bytes,
                         # Los artefactos únicos no tienen manifiesto que conserve esta firma.
-                        content_signature=_file_signature(artifact.path),
+                        content_signature=_read_file_signature(artifact.path),
                         started=started,
                     )
             artifact = self._replace_table(
@@ -403,8 +403,14 @@ class ParquetDatasetStore:
         resolved_filters = tuple(filters)
         if not all(isinstance(item, ColumnFilter) for item in resolved_filters):
             raise ParquetValidationError('filters must contain only ColumnFilter values')
+        # Los filtros de la dimensión física viajan a la resolución para descartar partes desde
+        # current.json antes de abrir, hashear o inspeccionar archivos Parquet.
         publications = tuple(
-            self._resolve_publication(definition=definition, target=target)
+            self._resolve_publication(
+                definition=definition,
+                target=target,
+                filters=resolved_filters,
+            )
             for target in resolved_targets
         )
         output_schema = self._resolve_scan_schema(
@@ -626,6 +632,7 @@ class ParquetDatasetStore:
         *,
         definition: DatasetDefinition,
         target: DatasetTarget,
+        filters: tuple[ColumnFilter, ...] = (),
     ) -> _ResolvedPublication:
         materialization = definition.get_materialization(target.materialization)
         definition.validate_target(target)
@@ -645,12 +652,19 @@ class ParquetDatasetStore:
             missing_ok=False,
         )
         assert manifest is not None
-        artifacts: list[_Artifact] = []
         for part in manifest.parts:
             self._validate_part_filename(
                 part=part,
                 part_dimension=manifest.part_dimension,
             )
+        # Primero se valida la identidad lógica de todas las entradas del manifiesto. Recién
+        # después se hace pruning y el I/O físico queda restringido a las partes seleccionadas.
+        selected_parts = self._select_manifest_parts(
+            manifest=manifest,
+            filters=filters,
+        )
+        artifacts: list[_Artifact] = []
+        for part in selected_parts:
             artifact = self._inspect_artifact(
                 path=target_path / part.path,
                 missing_is_publication=False,
@@ -701,7 +715,7 @@ class ParquetDatasetStore:
             )
         # Tamaño, filas y schema no demuestran que los bytes sean los confirmados. La firma enlaza
         # cada parte física con la identidad declarada en current.json.
-        if content_signature is not None and _file_signature(path) != content_signature:
+        if content_signature is not None and _read_file_signature(path) != content_signature:
             raise ParquetCorruptionError(
                 f'parquet part signature does not match current manifest: {path.name}'
             )
@@ -879,6 +893,26 @@ class ParquetDatasetStore:
             nullable=nullable,
             metadata=authoritative.metadata,
         )
+
+    # Esta selección opera solo con metadata ya cargada en memoria; no toca el filesystem.
+    def _select_manifest_parts(
+        self,
+        *,
+        manifest: _Manifest,
+        filters: tuple[ColumnFilter, ...],
+    ) -> tuple[_ManifestPart, ...]:
+        parts = manifest.parts
+        for item in filters:
+            if item.column == manifest.part_dimension and item.operator in {
+                FilterOperator.EQUAL,
+                FilterOperator.IN,
+            }:
+                parts = tuple(
+                    part
+                    for part in parts
+                    if _part_filter_matches(part_value=part.value, item=item)
+                )
+        return parts
 
     def _select_artifacts(
         self,
@@ -1288,6 +1322,15 @@ def _empty_table(schema: pa.Schema) -> pa.Table:
         [pa.array([], type=field.type) for field in schema],
         schema=schema,
     )
+
+
+# Las firmas usadas durante lectura traducen fallos del filesystem a la jerarquía pública del
+# adapter. Las firmas usadas durante escritura siguen siendo capturadas por el flujo de escritura.
+def _read_file_signature(path: Path) -> str:
+    try:
+        return _file_signature(path)
+    except OSError as error:
+        raise ParquetReadError(f'could not read parquet artifact: {path.name}') from error
 
 
 def _file_signature(path: Path) -> str:

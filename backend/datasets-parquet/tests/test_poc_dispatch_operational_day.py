@@ -16,6 +16,7 @@ from atlanticus.datasets.parquet import (
     ParquetCorruptionError,
     ParquetDatasetStore,
     ParquetPart,
+    ParquetReadError,
     ParquetSchemaError,
     ParquetValidationError,
     ParquetWriteError,
@@ -52,6 +53,7 @@ def test_poc_dispatch_uses_flat_parts_manifest_and_shift_pruning(
     tmp_path: Path,
     clock: datetime,
     dispatch_definition: DatasetDefinition,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store = ParquetDatasetStore(root=tmp_path, clock=lambda: clock)
     target = _target(dispatch_definition)
@@ -84,6 +86,18 @@ def test_poc_dispatch_uses_flat_parts_manifest_and_shift_pruning(
     assert all('/' not in part['path'] for part in manifest['parts'])
     assert all('--' in part['path'] for part in manifest['parts'])
 
+    expected_part = next(
+        part['path'] for part in manifest['parts'] if part['value'] == '26199002'
+    )
+    inspected_paths: list[str] = []
+    original_signature = store_module._file_signature
+
+    def track_signature(path: Path) -> str:
+        inspected_paths.append(path.name)
+        return original_signature(path)
+
+    monkeypatch.setattr(store_module, '_file_signature', track_signature)
+
     selected = store.scan(
         definition=dispatch_definition,
         targets=(target,),
@@ -102,6 +116,37 @@ def test_poc_dispatch_uses_flat_parts_manifest_and_shift_pruning(
         'tonnage': [120.0],
     }
     assert selected.artifact_count == 1
+    assert inspected_paths == [expected_part]
+
+
+def test_signature_read_failure_is_exposed_as_parquet_read_error(
+    tmp_path: Path,
+    clock: datetime,
+    dispatch_definition: DatasetDefinition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ParquetDatasetStore(root=tmp_path, clock=lambda: clock)
+    target = _target(dispatch_definition)
+    store.publish_parts(
+        definition=dispatch_definition,
+        target=target,
+        incoming_parts=(
+            _part(
+                dispatch_definition,
+                target,
+                shift_id='26199001',
+                tonnage=(100.0,),
+            ),
+        ),
+    )
+
+    def fail_signature(_path: Path) -> str:
+        raise PermissionError('controlled signature read failure')
+
+    monkeypatch.setattr(store_module, '_file_signature', fail_signature)
+
+    with pytest.raises(ParquetReadError, match='could not read parquet artifact'):
+        store.read(definition=dispatch_definition, target=target)
 
 
 def test_part_update_preserves_unmentioned_part_and_ignores_orphans(
