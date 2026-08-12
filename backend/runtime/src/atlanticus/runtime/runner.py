@@ -188,7 +188,8 @@ def _run_iterations(
     lease: ExecutionLease,
 ) -> RuntimeExecutionResult:
     started = time.monotonic()
-    durations: list[float] = []
+    iteration_count = 0
+    total_iteration_duration = 0.0
     work_iterations = 0
     empty_iterations = 0
     stop_reason = 'completed'
@@ -222,7 +223,7 @@ def _run_iterations(
                                 stop_reason = 'safe_execution_window_elapsed'
                             break
 
-                        iteration_number = len(durations) + 1
+                        iteration_number = iteration_count + 1
                         current_iteration = iteration_number
                         context._begin_iteration(iteration_number)
                         iteration_started = time.monotonic()
@@ -234,7 +235,8 @@ def _run_iterations(
                                 iteration(context)
                         lease.raise_if_unhealthy()
                         duration_seconds = time.monotonic() - iteration_started
-                        durations.append(duration_seconds)
+                        iteration_count += 1
+                        total_iteration_duration += duration_seconds
                         if resources_started:
                             resources.checkpoint()
 
@@ -277,7 +279,7 @@ def _run_iterations(
                             stop_reason = 'run_once'
                             break
 
-                        average_duration = sum(durations) / len(durations)
+                        average_duration = total_iteration_duration / iteration_count
                         sleep_seconds = max(0.0, definition.sleep_seconds - duration_seconds)
                         required_for_next = sleep_seconds + average_duration
                         if context.safe_remaining_seconds <= required_for_next:
@@ -313,7 +315,7 @@ def _run_iterations(
                     context=execution_context,
                     duration_ms=duration_seconds * 1000,
                     metrics=_execution_metrics(
-                        durations=durations,
+                        iteration_count=iteration_count,
                         work_iterations=work_iterations,
                         empty_iterations=empty_iterations,
                         resources=resources,
@@ -322,7 +324,7 @@ def _run_iterations(
                         'stop_reason': 'error',
                         **(
                             {'failed_iteration': current_iteration}
-                            if current_iteration > len(durations)
+                            if current_iteration > iteration_count
                             else {}
                         ),
                         **context._execution_facts(),
@@ -344,7 +346,7 @@ def _run_iterations(
                     context=execution_context,
                     duration_ms=duration_seconds * 1000,
                     metrics=_execution_metrics(
-                        durations=durations,
+                        iteration_count=iteration_count,
                         work_iterations=work_iterations,
                         empty_iterations=empty_iterations,
                         resources=resources,
@@ -353,7 +355,7 @@ def _run_iterations(
                         'stop_reason': cancellation_reason,
                         **(
                             {'cancelled_iteration': current_iteration}
-                            if current_iteration > len(durations)
+                            if current_iteration > iteration_count
                             else {}
                         ),
                         **context._execution_facts(),
@@ -365,7 +367,7 @@ def _run_iterations(
                 run_id=context.run_id,
                 correlation_id=context.correlation_id,
                 status=OperationStatus.WARNING,
-                iteration_count=len(durations),
+                iteration_count=iteration_count,
                 duration_seconds=round(duration_seconds, 6),
                 stop_reason=cancellation_reason,
             )
@@ -379,7 +381,7 @@ def _run_iterations(
                 context=execution_context,
                 duration_ms=duration_seconds * 1000,
                 metrics=_execution_metrics(
-                    durations=durations,
+                    iteration_count=iteration_count,
                     work_iterations=work_iterations,
                     empty_iterations=empty_iterations,
                     resources=resources,
@@ -395,7 +397,7 @@ def _run_iterations(
         run_id=context.run_id,
         correlation_id=context.correlation_id,
         status=OperationStatus.SUCCESS,
-        iteration_count=len(durations),
+        iteration_count=iteration_count,
         duration_seconds=round(time.monotonic() - started, 6),
         stop_reason=stop_reason,
     )
@@ -403,13 +405,13 @@ def _run_iterations(
 
 def _execution_metrics(
     *,
-    durations: list[float],
+    iteration_count: int,
     work_iterations: int,
     empty_iterations: int,
     resources: ResourceMonitor,
 ) -> dict[str, int | float]:
     metrics: dict[str, int | float] = {
-        'iterations': len(durations),
+        'iterations': iteration_count,
         'work_iterations': work_iterations,
         'empty_iterations': empty_iterations,
     }

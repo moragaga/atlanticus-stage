@@ -84,12 +84,12 @@ class CgroupResourceSampler:
         if current_v2 is not None:
             return current_v2, limit_v2, 'cgroup_v2'
 
-        current_v1 = self._read_int(
-            self._cgroup_root / 'memory/memory.usage_in_bytes'
-        ) or self._read_int(self._cgroup_root / 'memory.usage_in_bytes')
-        limit_v1 = self._read_limit(
-            self._cgroup_root / 'memory/memory.limit_in_bytes'
-        ) or self._read_limit(self._cgroup_root / 'memory.limit_in_bytes')
+        current_v1 = self._read_int(self._cgroup_root / 'memory/memory.usage_in_bytes')
+        if current_v1 is None:
+            current_v1 = self._read_int(self._cgroup_root / 'memory.usage_in_bytes')
+        limit_v1 = self._read_limit(self._cgroup_root / 'memory/memory.limit_in_bytes')
+        if limit_v1 is None:
+            limit_v1 = self._read_limit(self._cgroup_root / 'memory.limit_in_bytes')
         if current_v1 is not None:
             return current_v1, limit_v1, 'cgroup_v1'
 
@@ -140,9 +140,9 @@ class CgroupResourceSampler:
                         None if value is None else value / 1_000_000,
                         'cgroup_v2_cpu_stat',
                     )
-        value = self._read_int(self._cgroup_root / 'cpuacct/cpuacct.usage') or self._read_int(
-            self._cgroup_root / 'cpuacct.usage'
-        )
+        value = self._read_int(self._cgroup_root / 'cpuacct/cpuacct.usage')
+        if value is None:
+            value = self._read_int(self._cgroup_root / 'cpuacct.usage')
         return (None if value is None else value / 1_000_000_000, 'cgroup_v1_cpuacct')
 
     def _cpu_throttling(self) -> tuple[int | None, float | None]:

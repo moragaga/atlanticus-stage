@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from datetime import UTC, datetime, timedelta
-from threading import Event
+from threading import Event, Thread
 
 import pytest
 
+import atlanticus.runtime.lease as lease_module
 from atlanticus.runtime import ConcurrentExecutionError, LeaseRenewalError
 from atlanticus.runtime.lease import ExecutionLease
 
@@ -142,3 +145,125 @@ def test_heartbeat_failure_requests_stop_and_is_observable(tmp_path, monkeypatch
     assert isinstance(lease.failure, LeaseRenewalError)
     with pytest.raises(LeaseRenewalError, match='Lease renewal failed'):
         lease.raise_if_unhealthy()
+
+
+def test_initial_lease_creation_cannot_be_recovered_while_payload_is_still_being_written(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    first = _lease(tmp_path, run_id='run-1')
+    second = _lease(tmp_path, run_id='run-2')
+    write_started = Event()
+    allow_write = Event()
+    first_error: list[BaseException] = []
+    second_error: list[BaseException] = []
+    original_write = lease_module._write_descriptor
+
+    def blocking_write(descriptor: int, content: bytes) -> None:
+        if b'"run_id": "run-1"' in content:
+            write_started.set()
+            assert allow_write.wait(timeout=1)
+        original_write(descriptor, content)
+
+    def acquire_first() -> None:
+        try:
+            first.acquire()
+        except BaseException as error:
+            first_error.append(error)
+
+    def acquire_second() -> None:
+        try:
+            second.acquire()
+        except BaseException as error:
+            second_error.append(error)
+
+    monkeypatch.setattr(lease_module, '_write_descriptor', blocking_write)
+    first_thread = Thread(target=acquire_first)
+    second_thread = Thread(target=acquire_second)
+    first_thread.start()
+    assert write_started.wait(timeout=1)
+    second_thread.start()
+
+    assert not second.acquired
+    allow_write.set()
+    first_thread.join(timeout=1)
+    second_thread.join(timeout=1)
+
+    assert first_error == []
+    assert len(second_error) == 1
+    assert isinstance(second_error[0], ConcurrentExecutionError)
+    assert first.acquired is True
+    assert second.acquired is False
+    assert json.loads(first.path.read_text(encoding='utf-8'))['run_id'] == 'run-1'
+    assert first.release()
+
+
+def test_lease_fsyncs_directory_after_create_renew_and_release(tmp_path, monkeypatch) -> None:
+    lease = _lease(tmp_path, run_id='run-1')
+    calls = []
+
+    monkeypatch.setattr(lease_module, '_fsync_directory', lambda directory: calls.append(directory))
+
+    lease.acquire()
+    lease.renew()
+    assert lease.release()
+
+    assert calls == [lease.path.parent, lease.path.parent, lease.path.parent]
+
+
+def test_lease_recovers_invalid_utf8_payload_as_corrupt_state(tmp_path) -> None:
+    lease = _lease(tmp_path, run_id='run-2')
+    lease.path.parent.mkdir(parents=True, exist_ok=True)
+    lease.path.write_bytes(b'\xff\xfe\x00')
+
+    acquisition = lease.acquire()
+
+    assert acquisition.recovered is not None
+    assert acquisition.recovered.run_id is None
+    assert json.loads(lease.path.read_text(encoding='utf-8'))['run_id'] == 'run-2'
+    assert lease.release()
+
+
+def test_lease_rejects_relative_volume_path() -> None:
+    with pytest.raises(ValueError, match='absolute'):
+        ExecutionLease(
+            volume_path='relative-volume',
+            application='ada',
+            service_name='dispatch',
+            module_name='ada.processes.dispatch',
+            run_id='run-1',
+            lease_timeout_seconds=120,
+            renewal_seconds=30,
+            wait_seconds=0,
+        )
+
+
+def test_lease_context_manager_does_not_hide_business_error(tmp_path, monkeypatch) -> None:
+    lease = _lease(tmp_path, run_id='run-1')
+
+    def fail_release() -> bool:
+        raise OSError('cleanup failed')
+
+    monkeypatch.setattr(lease, 'start_renewal', lambda: None)
+    monkeypatch.setattr(lease, 'release', fail_release)
+
+    with pytest.raises(ValueError, match='business failure'):
+        with lease:
+            raise ValueError('business failure')
+
+    lease.path.unlink(missing_ok=True)
+
+
+def test_stale_recovery_guard_without_lease_does_not_block_zero_wait_acquisition(tmp_path) -> None:
+    lease = _lease(tmp_path, run_id='run-1', wait_seconds=0)
+    lease.path.parent.mkdir(parents=True, exist_ok=True)
+    guard = lease.path.parent / f'.{lease.path.stem}.recovery'
+    guard.write_text('', encoding='utf-8')
+    stale_at = time.time() - 10
+    os.utime(guard, (stale_at, stale_at))
+
+    acquisition = lease.acquire()
+
+    assert acquisition.waited_seconds >= 0
+    assert lease.acquired is True
+    assert lease.release()

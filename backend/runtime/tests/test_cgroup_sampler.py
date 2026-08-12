@@ -27,3 +27,27 @@ def test_cgroup_v2_limits_are_detected(tmp_path) -> None:
     assert sample.cpu_throttled_periods == 7
     assert sample.cpu_throttled_seconds == 0.25
     assert sample.memory_source == 'cgroup_v2'
+
+
+def test_cgroup_v1_zero_usage_is_not_replaced_by_fallback_value(tmp_path) -> None:
+    cgroup = tmp_path / 'cgroup'
+    proc = tmp_path / 'proc'
+    memory = cgroup / 'memory'
+    cpuacct = cgroup / 'cpuacct'
+    memory.mkdir(parents=True)
+    cpuacct.mkdir(parents=True)
+    proc.mkdir()
+    (memory / 'memory.usage_in_bytes').write_text('0\n', encoding='utf-8')
+    (cgroup / 'memory.usage_in_bytes').write_text('73400320\n', encoding='utf-8')
+    (memory / 'memory.limit_in_bytes').write_text('104857600\n', encoding='utf-8')
+    (cpuacct / 'cpuacct.usage').write_text('0\n', encoding='utf-8')
+    (cgroup / 'cpuacct.usage').write_text('1000000000\n', encoding='utf-8')
+
+    sampler = CgroupResourceSampler(cgroup_root=cgroup, proc_root=proc)
+    sample = sampler.sample()
+    cpu_usage_seconds, source = sampler._cpu_usage_seconds()
+
+    assert sample.memory_used_bytes == 0
+    assert sample.memory_source == 'cgroup_v1'
+    assert cpu_usage_seconds == 0
+    assert source == 'cgroup_v1_cpuacct'

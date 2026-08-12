@@ -23,11 +23,16 @@ def validate_path_segment(value: str, *, name: str) -> str:
 def resolve_application_root(volume_path: str | Path, *, application: str) -> Path:
     """Retorna la raíz funcional que contiene logs y datasets de una aplicación."""
 
-    raw_volume_path = str(volume_path).strip()
+    if not isinstance(volume_path, str | Path):
+        raise TypeError('volume_path must be a string or Path')
+    raw_volume_path = str(volume_path)
     if not raw_volume_path:
         raise ValueError('volume_path must not be empty')
+    resolved_volume_path = Path(raw_volume_path)
+    if not resolved_volume_path.is_absolute():
+        raise ValueError('volume_path must be an absolute path')
     application_segment = validate_path_segment(application, name='application')
-    return Path(raw_volume_path) / application_segment
+    return resolved_volume_path / application_segment
 
 
 def resolve_runtime_root(volume_path: str | Path, *, application: str) -> Path:

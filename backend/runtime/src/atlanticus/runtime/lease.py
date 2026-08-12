@@ -249,6 +249,7 @@ class ExecutionLease:
             except FileNotFoundError:
                 released = False
             else:
+                _fsync_directory(self._directory)
                 released = True
             self._acquired = False
             return released
@@ -262,7 +263,13 @@ class ExecutionLease:
         return self
 
     def __exit__(self, exc_type: Any, exc_value: Any, traceback_value: Any) -> None:
-        self.release()
+        if exc_type is None:
+            self.release()
+            return
+        try:
+            self.release()
+        except Exception:
+            return
 
     def _renewal_loop(self) -> None:
         while not self._renewal_stop.wait(self._renewal_seconds):
@@ -317,19 +324,36 @@ class ExecutionLease:
         }
 
     def _try_create(self, payload: dict[str, Any]) -> bool:
-        content = _encode_payload(payload)
-        try:
-            descriptor = os.open(self._path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o640)
-        except FileExistsError:
+        guard_descriptor = self._try_acquire_recovery_guard()
+        if guard_descriptor is None:
             return False
+        descriptor: int | None = None
         try:
-            _write_descriptor(descriptor, content)
-        except BaseException:
-            self._path.unlink(missing_ok=True)
-            raise
-        finally:
+            try:
+                descriptor = os.open(
+                    self._path,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                    0o640,
+                )
+            except FileExistsError:
+                return False
+            try:
+                _write_descriptor(descriptor, _encode_payload(payload))
+            except BaseException:
+                os.close(descriptor)
+                descriptor = None
+                self._path.unlink(missing_ok=True)
+                _fsync_directory(self._directory)
+                raise
             os.close(descriptor)
-        return True
+            descriptor = None
+            _fsync_directory(self._directory)
+            return True
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+            os.close(guard_descriptor)
+            self._recovery_guard.unlink(missing_ok=True)
 
     def _replace_payload(self, payload: dict[str, Any]) -> None:
         temporary_path = self._path.with_name(f'.{self._path.name}.{uuid4().hex}.tmp')
@@ -344,6 +368,7 @@ class ExecutionLease:
             os.close(descriptor)
             descriptor = None
             os.replace(temporary_path, self._path)
+            _fsync_directory(self._directory)
         finally:
             if descriptor is not None:
                 os.close(descriptor)
@@ -359,7 +384,12 @@ class ExecutionLease:
             if not self._is_expired(existing):
                 return None
             recovered = _recovered_lease(existing)
-            self._path.unlink(missing_ok=True)
+            try:
+                self._path.unlink()
+            except FileNotFoundError:
+                pass
+            else:
+                _fsync_directory(self._directory)
             return recovered
         finally:
             os.close(guard_descriptor)
@@ -377,16 +407,24 @@ class ExecutionLease:
                 age_seconds = time.time() - self._recovery_guard.stat().st_mtime
             except FileNotFoundError:
                 return None
-            if age_seconds > max(5.0, self._poll_seconds * 2):
-                self._recovery_guard.unlink(missing_ok=True)
-            return None
+            if age_seconds <= max(5.0, self._poll_seconds * 2):
+                return None
+            self._recovery_guard.unlink(missing_ok=True)
+            try:
+                return os.open(
+                    self._recovery_guard,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                    0o640,
+                )
+            except FileExistsError:
+                return None
 
     def _read_payload(self) -> dict[str, Any] | None:
         try:
             value = json.loads(self._path.read_text(encoding='utf-8'))
         except FileNotFoundError:
             return None
-        except json.JSONDecodeError:
+        except (UnicodeError, json.JSONDecodeError):
             return {}
         return value if isinstance(value, dict) else {}
 
@@ -420,6 +458,16 @@ def _write_descriptor(descriptor: int, content: bytes) -> None:
     os.fsync(descriptor)
 
 
+def _fsync_directory(directory: Path) -> None:
+    if os.name == 'nt':
+        return
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _recovered_lease(payload: dict[str, Any] | None) -> RecoveredLease:
     values = payload or {}
     process_id = values.get('process_id')
@@ -437,7 +485,7 @@ def _recovered_lease(payload: dict[str, Any] | None) -> RecoveredLease:
 
 
 def _optional_string(value: Any) -> str | None:
-    return value if isinstance(value, str) and value else None
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def _require_non_empty_string(value: str, name: str) -> None:

@@ -82,3 +82,14 @@ def test_job_definition_rejects_invalid_direct_types(field, value) -> None:
 
     with pytest.raises((TypeError, ValueError, RuntimeContractError)):
         JobDefinition(**values)
+
+
+def test_iteration_timeout_must_fit_inside_safe_execution_window() -> None:
+    with pytest.raises(RuntimeContractError, match='safe execution window'):
+        JobDefinition(
+            module_name='job',
+            service_name='job-service',
+            iteration_timeout_seconds=316,
+            execution_timeout_seconds=330,
+            shutdown_grace_seconds=15,
+        )
