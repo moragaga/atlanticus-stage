@@ -86,6 +86,20 @@ def test_empty_content_can_never_be_confirmed(targets, status: PublicationStatus
         )
 
 
+def test_warning_quality_requires_at_least_one_warning(targets) -> None:
+    with pytest.raises(DatasetValidationError):
+        DatasetPublicationResult(
+            target=targets[0],
+            status=PublicationStatus.COMMITTED,
+            quality=PublicationQuality.WARNING,
+            finished_at_utc=datetime(2026, 7, 21, 12, 0, tzinfo=UTC),
+            duration_ms=0,
+            item_count=1,
+            artifact_count=1,
+            warning_count=0,
+        )
+
+
 def test_empty_content_is_skipped_without_write_metadata(targets) -> None:
     result = DatasetPublicationResult.skipped_empty(
         target=targets[0],
@@ -166,6 +180,14 @@ def test_failure_does_not_expose_the_exception_message(targets) -> None:
     assert failure.error_type == 'OSError'
     assert failure.message == 'dataset publication failed'
     assert 'sensitive-token' not in failure.message
+
+
+def test_failure_from_exception_rejects_non_exception_values(targets) -> None:
+    with pytest.raises(DatasetValidationError):
+        DatasetPublicationFailure.from_exception(
+            target=targets[0],
+            error=123,  # type: ignore[arg-type]
+        )
 
 
 def test_batch_rejects_duplicate_targets(targets) -> None:

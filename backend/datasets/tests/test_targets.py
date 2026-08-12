@@ -140,6 +140,21 @@ def test_partition_is_immutable_and_hashable() -> None:
     assert partition.as_dict() == {'operational_date': '2026-07-20'}
 
 
+def test_partition_rejects_mapping_as_name_value_pair() -> None:
+    with pytest.raises(DatasetTargetError):
+        DatasetPartition(
+            values=({'year': '2026', 'month': '08'},),  # type: ignore[arg-type]
+        )
+
+
+def test_partition_from_mapping_rejects_non_string_keys_cleanly() -> None:
+    with pytest.raises(DatasetTargetError):
+        DatasetPartition.from_mapping(
+            {1: '2026', 'operational_week': 'W30'},  # type: ignore[dict-item]
+            dimensions=('operational_year', 'operational_week'),
+        )
+
+
 def test_pi_sources_share_the_dataset_root_without_colliding() -> None:
     materialization = MaterializationDefinition(name='latest', layout=SingleArtifactLayout())
     web_api = DatasetDefinition(

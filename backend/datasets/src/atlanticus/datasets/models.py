@@ -69,7 +69,7 @@ class DatasetPartition:
             ) from error
         values: list[tuple[str, ...]] = []
         for item in source_values:
-            if isinstance(item, str | bytes):
+            if isinstance(item, str | bytes | Mapping):
                 raise DatasetTargetError('each partition value must contain a name and a value')
             try:
                 values.append(tuple(item))
@@ -111,17 +111,42 @@ class DatasetPartition:
 
         if not isinstance(values, Mapping):
             raise DatasetTargetError('partition must be a mapping')
+        for dimension, value in values.items():
+            if not isinstance(dimension, str):
+                raise DatasetTargetError('partition dimension names must be strings')
+            if not isinstance(value, str):
+                raise DatasetTargetError(
+                    f'partition value for {dimension} must be a string'
+                )
         if dimensions is None:
             return cls(values=tuple(values.items()))
+        if isinstance(dimensions, str | bytes):
+            raise DatasetTargetError('partition dimensions must be an iterable of names')
+        try:
+            expected_dimensions = tuple(dimensions)
+        except TypeError as error:
+            raise DatasetTargetError(
+                'partition dimensions must be an iterable of names'
+            ) from error
+        for dimension in expected_dimensions:
+            validate_dimension_name(
+                dimension,
+                field='partition dimension',
+                error_type=DatasetTargetError,
+            )
+        if len(set(expected_dimensions)) != len(expected_dimensions):
+            raise DatasetTargetError('partition dimensions must not contain duplicates')
         provided = set(values)
-        expected = set(dimensions)
+        expected = set(expected_dimensions)
         if provided != expected:
             missing = sorted(expected - provided)
             additional = sorted(provided - expected)
             raise DatasetTargetError(
                 f'partition dimensions do not match; missing={missing}, additional={additional}'
             )
-        return cls(values=tuple((dimension, values[dimension]) for dimension in dimensions))
+        return cls(
+            values=tuple((dimension, values[dimension]) for dimension in expected_dimensions)
+        )
 
     @property
     def dimensions(self) -> tuple[str, ...]:

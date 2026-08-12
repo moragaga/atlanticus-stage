@@ -79,6 +79,8 @@ class DatasetPublicationResult:
             raise DatasetValidationError('content_signature must be a non-empty string or None')
         if self.quality is PublicationQuality.SUCCESS and self.warning_count != 0:
             raise DatasetValidationError('success quality must not contain warnings')
+        if self.quality is PublicationQuality.WARNING and self.warning_count < 1:
+            raise DatasetValidationError('warning quality must contain at least one warning')
         if self.status is PublicationStatus.SKIPPED:
             self._validate_skipped()
         else:
@@ -164,6 +166,8 @@ class DatasetPublicationFailure:
     ) -> Self:
         """Reduce una excepción a información segura para el resumen del lote."""
 
+        if not isinstance(error, Exception):
+            raise DatasetValidationError('error must be an Exception')
         # El resumen conserva el tipo para diagnóstico sin copiar textos que puedan incluir secretos.
         return cls(
             target=target,
