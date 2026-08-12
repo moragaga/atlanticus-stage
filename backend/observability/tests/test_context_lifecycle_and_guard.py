@@ -186,7 +186,77 @@ def test_mapper_failure_never_changes_business_result(memory_sink: MemoryEventSi
         return 'business-value'
 
     assert read() == 'business-value'
-    assert [event['name'] for event in memory_sink.events][-2:] == [
-        'observability.mapper.failed',
-        'dependency.finished',
-    ]
+    names = [event['name'] for event in memory_sink.events]
+    assert 'observability.mapper.failed' in names
+    assert names[-1] == 'dependency.finished'
+
+
+def test_runtime_guard_ignores_invalid_parameter_attributes_and_executes_business(
+    memory_sink: MemoryEventSink,
+) -> None:
+    calls = 0
+
+    @runtime_guard(
+        operation='cosmos.read',
+        component='cosmos',
+        parameter_mapper=lambda args, kwargs: {object(): 'invalid'},
+    )
+    def read() -> str:
+        nonlocal calls
+        calls += 1
+        return 'business-value'
+
+    assert read() == 'business-value'
+    assert calls == 1
+    names = [event['name'] for event in memory_sink.events]
+    assert 'observability.mapper.failed' in names
+    assert names[-1] == 'dependency.finished'
+
+
+def test_runtime_guard_keeps_dependency_metadata_authoritative() -> None:
+    sink = MemoryEventSink()
+    bridge = _TraceBridge()
+    configure_observability(
+        settings=ObservabilitySettings.build(
+            application='app',
+            service='job',
+            environment='local',
+            instance_id='tests',
+        ),
+        sink=sink,
+        trace_bridge=bridge,
+    )
+    try:
+
+        @runtime_guard(
+            operation='cosmos.read',
+            component='cosmos',
+            parameter_mapper=lambda args, kwargs: {
+                'operation': 'fake.read',
+                'component': 'fake',
+                'atlanticus.span_kind': 'fake',
+                'partition': 'north',
+            },
+            result_mapper=lambda result: ResultSummary(
+                attributes={
+                    'operation': 'fake.result',
+                    'component': 'fake-result',
+                    'rows_source': 'query',
+                }
+            ),
+        )
+        def read() -> str:
+            return 'ok'
+
+        assert read() == 'ok'
+    finally:
+        close_observability()
+
+    finished = sink.events[-1]
+    assert finished['attributes']['operation'] == 'cosmos.read'
+    assert finished['attributes']['component'] == 'cosmos'
+    assert finished['attributes']['partition'] == 'north'
+    assert finished['attributes']['rows_source'] == 'query'
+    assert bridge.spans[-1]['attributes']['operation'] == 'cosmos.read'
+    assert bridge.spans[-1]['attributes']['component'] == 'cosmos'
+    assert bridge.spans[-1]['attributes']['atlanticus.span_kind'] == 'dependency'

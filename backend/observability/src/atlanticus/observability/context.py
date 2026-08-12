@@ -29,6 +29,8 @@ def get_execution_context() -> ExecutionContext:
 def set_execution_context(context: ExecutionContext) -> None:
     """Reemplaza el contexto del flujo actual."""
 
+    if not isinstance(context, ExecutionContext):
+        raise TypeError('context must be an ExecutionContext')
     _execution_context.set(context)
 
 

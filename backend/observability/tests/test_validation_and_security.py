@@ -211,3 +211,29 @@ def test_explicit_error_mapper_can_supply_a_controlled_message() -> None:
         close_observability()
 
     assert sink.events[-1]['error']['message'] == 'Dependency read failed'
+
+
+def test_set_execution_context_rejects_invalid_type() -> None:
+    from atlanticus.observability import set_execution_context
+
+    with pytest.raises(TypeError, match='context must be an ExecutionContext'):
+        set_execution_context('invalid')
+
+
+def test_unknown_attribute_object_is_not_deep_copied() -> None:
+    class _Opaque:
+        def __deepcopy__(self, memo):
+            raise AssertionError('__deepcopy__ must not be called')
+
+    event = ObservabilityEvent(
+        name='diagnostic.opaque',
+        category=EventCategory.DIAGNOSTIC,
+        attributes={'opaque': _Opaque()},
+    )
+
+    payload = event.to_dict(settings=_settings(), sanitizer=DataSanitizer())
+
+    assert payload['attributes']['opaque'] == {
+        'type': '_Opaque',
+        'summary': 'unsupported_object',
+    }

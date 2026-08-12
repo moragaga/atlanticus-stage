@@ -199,14 +199,15 @@ def test_console_text_renders_skipped_iteration_and_interrupted_execution() -> N
     assert 'daily-job interrupted' in lines[1]
 
 
-def test_dispatch_source_completion_is_part_of_operational_projection() -> None:
+def test_operational_data_event_does_not_require_domain_name_hardcoding() -> None:
     from atlanticus.observability import OperationalEventProjection
 
     event = ObservabilityEvent(
-        name='dispatch.source.completed',
-        category=EventCategory.DIAGNOSTIC,
+        name='source.completed',
+        category=EventCategory.DATA,
+        audience=EventAudience.OPERATIONS,
         attributes={
-            'source': 'std_shift_dumps',
+            'source': 'dataset',
             'rows': 42,
             'partitions_changed': 2,
             'new_data': True,
@@ -217,8 +218,71 @@ def test_dispatch_source_completion_is_part_of_operational_projection() -> None:
     projected = OperationalEventProjection().project(event, payload)
 
     assert projected is not None
-    assert projected['event'] == 'dispatch.source.completed'
-    assert projected['source'] == 'std_shift_dumps'
+    assert projected['event'] == 'source.completed'
+    assert projected['source'] == 'dataset'
     assert projected['rows'] == 42
     assert projected['partitions_changed'] == 2
     assert projected['new_data'] is True
+
+
+def test_dependency_failed_is_part_of_operational_projection() -> None:
+    from atlanticus.observability import ErrorInfo, OperationalEventProjection
+
+    event = ObservabilityEvent(
+        name='dependency.failed',
+        category=EventCategory.DEPENDENCY,
+        severity=EventSeverity.ERROR,
+        error=ErrorInfo(error_type='RuntimeError', message='RuntimeError raised'),
+        attributes={'operation': 'cosmos.read', 'component': 'cosmos'},
+    )
+    payload = event.to_dict(settings=_settings(), sanitizer=DataSanitizer())
+
+    projected = OperationalEventProjection().project(event, payload)
+
+    assert projected is not None
+    assert projected['event'] == 'dependency.failed'
+    assert projected['operation'] == 'cosmos.read'
+    assert 'component' not in projected
+    assert projected['error_type'] == 'RuntimeError'
+
+
+def test_observability_settings_identity_overrides_static_event_context() -> None:
+    from atlanticus.observability import (
+        ExecutionContext,
+        close_observability,
+        configure_observability,
+    )
+
+    sink = MemoryEventSink()
+    configure_observability(settings=_settings(), sink=sink)
+    try:
+        from atlanticus.observability import emit_event
+
+        emit_event(
+            ObservabilityEvent(
+                name='data.identity',
+                category=EventCategory.DATA,
+                context=ExecutionContext(
+                    application='fake-app',
+                    service='fake-service',
+                    module='fake-module',
+                    component='fake-component',
+                    environment='prd',
+                    instance_id='recovered-instance',
+                    process_id=777,
+                    run_id='run-1',
+                ),
+            )
+        )
+    finally:
+        close_observability()
+
+    context = sink.events[-1]['context']
+    assert context['application'] == 'payments'
+    assert context['service'] == 'daily-job'
+    assert context['module'] == 'daily_job'
+    assert context['component'] == 'runtime'
+    assert context['environment'] == 'local'
+    assert context['instance_id'] == 'recovered-instance'
+    assert context['process_id'] == 777
+    assert context['run_id'] == 'run-1'

@@ -20,6 +20,8 @@ def get_execution_context() -> ExecutionContext:
     return _execution_context.get() or ExecutionContext()
 def set_execution_context(context: ExecutionContext) -> None:
     """Reemplaza el contexto del flujo actual."""
+    if not isinstance(context, ExecutionContext):
+        raise TypeError('context must be an ExecutionContext')
     _execution_context.set(context)
 @contextmanager
 def context_scope(**values: Any) -> Iterator[ExecutionContext]:

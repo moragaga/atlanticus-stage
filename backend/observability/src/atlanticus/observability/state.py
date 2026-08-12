@@ -193,8 +193,7 @@ def _merge_context(
         **{
             key: value
             for key, value in values.items()
-            if key not in {'application', 'service', 'component', 'environment', 'instance_id'}
-            or value is not None
+            if key not in {'application', 'service', 'module', 'component', 'environment'}
         },
     )
 

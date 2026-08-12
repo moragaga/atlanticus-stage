@@ -25,6 +25,9 @@ R = TypeVar('R')
 ParameterMapper = Callable[[tuple[Any, ...], Mapping[str, Any]], Mapping[str, Any]]
 ResultMapper = Callable[[Any], ResultSummary]
 ErrorMapper = Callable[[BaseException], ErrorInfo]
+_RESERVED_DEPENDENCY_ATTRIBUTES = frozenset(
+    {'operation', 'component', 'atlanticus.span_kind'}
+)
 
 
 def _default_error(error: BaseException) -> ErrorInfo:
@@ -87,9 +90,8 @@ def runtime_guard(
                     with trace_span(
                         operation,
                         attributes={
+                            **_dependency_attributes(operation, component, attributes),
                             'atlanticus.span_kind': 'dependency',
-                            'component': component,
-                            **attributes,
                         },
                     ):
                         _emit_started(operation, component, attributes, emit_started, audience)
@@ -129,9 +131,8 @@ def runtime_guard(
                 with trace_span(
                     operation,
                     attributes={
+                        **_dependency_attributes(operation, component, attributes),
                         'atlanticus.span_kind': 'dependency',
-                        'component': component,
-                        **attributes,
                     },
                 ):
                     _emit_started(operation, component, attributes, emit_started, audience)
@@ -172,10 +173,50 @@ def _parameter_attributes(
     if mapper is None:
         return {}
     try:
-        return dict(mapper(args, kwargs))
+        mapped = mapper(args, kwargs)
+        if not isinstance(mapped, Mapping):
+            raise TypeError('parameter_mapper must return a mapping')
+        attributes = dict(mapped)
+        _validate_attribute_structure(attributes)
     except Exception as error:
         _emit_mapper_failure('parameter_mapper', error)
         return {}
+    return {
+        key: value
+        for key, value in attributes.items()
+        if key not in _RESERVED_DEPENDENCY_ATTRIBUTES
+    }
+
+
+def _validate_attribute_structure(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError('observability attribute keys must be non-empty strings')
+            _validate_attribute_structure(item)
+        return
+    if isinstance(value, list | tuple | set | frozenset):
+        for item in value:
+            _validate_attribute_structure(item)
+
+
+def _dependency_attributes(
+    operation: str,
+    component: str,
+    *attribute_sets: Mapping[str, Any],
+) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for attributes in attribute_sets:
+        merged.update(
+            {
+                key: value
+                for key, value in attributes.items()
+                if key not in _RESERVED_DEPENDENCY_ATTRIBUTES
+            }
+        )
+    merged['operation'] = operation
+    merged['component'] = component
+    return merged
 
 
 def _map_result(mapper: ResultMapper | None, result: Any) -> ResultSummary:
@@ -231,11 +272,7 @@ def _emit_started(
             name='dependency.started',
             category=EventCategory.DEPENDENCY,
             audience=audience,
-            attributes={
-                'operation': operation,
-                'component': component,
-                **attributes,
-            },
+            attributes=_dependency_attributes(operation, component, attributes),
         )
     )
 
@@ -260,12 +297,12 @@ def _emit_success(
             status=OperationStatus.WARNING if is_slow else OperationStatus.SUCCESS,
             duration_ms=duration_ms,
             metrics=dict(summary.metrics),
-            attributes={
-                'operation': operation,
-                'component': component,
-                **attributes,
-                **summary.attributes,
-            },
+            attributes=_dependency_attributes(
+                operation,
+                component,
+                attributes,
+                summary.attributes,
+            ),
         )
     )
 
@@ -287,11 +324,7 @@ def _emit_failure(
             severity=EventSeverity.ERROR,
             status=OperationStatus.ERROR,
             duration_ms=duration_ms,
-            attributes={
-                'operation': operation,
-                'component': component,
-                **attributes,
-            },
+            attributes=_dependency_attributes(operation, component, attributes),
             error=error,
         )
     )

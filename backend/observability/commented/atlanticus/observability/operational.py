@@ -27,7 +27,7 @@ _OPERATIONAL_NAMES = frozenset(
         'resource.pressure.open_at_monitor_stop',
         'observability.azure.bootstrap.failed',
         'dependency.slow',
-        'dispatch.source.completed',
+        'dependency.failed',
     }
 )
 _DENIED_OPERATIONAL_NAMES = frozenset({'resource.pressure.ongoing'})

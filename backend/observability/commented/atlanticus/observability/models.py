@@ -7,7 +7,6 @@ import os
 import socket
 import traceback as traceback_module
 from collections.abc import Mapping
-from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -98,7 +97,7 @@ def _freeze_value(value: Any) -> Any:
         return value
     if isinstance(value, Decimal | UUID | Path | Enum):
         return value
-    return deepcopy(value)
+    return value
 
 
 def _freeze_mapping(value: Any, name: str) -> Mapping[str, Any]:
