@@ -49,7 +49,6 @@ class AzureObservabilityExtension:
     trace_bridge: TraceBridge
 
     def __post_init__(self) -> None:
-        # La extensión sale completamente compuesta; una pieza inválida falla antes de ser inyectada.
         if not isinstance(self.settings, AzureObservabilitySettings):
             raise TypeError('settings must be an AzureObservabilitySettings')
         if not isinstance(self.sink, EventSink):
@@ -61,10 +60,11 @@ class AzureObservabilityExtension:
         return self.settings.mode is not AzureObservabilityMode.OFF
 
 
+# La construcción recibe sus variables de forma explícita y encapsula errores del proveedor sin filtrar causas sensibles.
 def build_azure_observability_extension(
     *,
     observability_settings: ObservabilitySettings,
-    environ: Mapping[str, str] | None = None,
+    environ: Mapping[str, str],
     volume_path: str | Path | None = None,
     backend_factory: AzureLogBackendFactory | None = None,
 ) -> AzureObservabilityExtension:
@@ -72,8 +72,8 @@ def build_azure_observability_extension(
 
     if not isinstance(observability_settings, ObservabilitySettings):
         raise TypeError('observability_settings must be an ObservabilitySettings')
-    if environ is not None and not isinstance(environ, Mapping):
-        raise TypeError('environ must be a mapping or None')
+    if not isinstance(environ, Mapping):
+        raise TypeError('environ must be a mapping')
     if volume_path is not None and not isinstance(volume_path, str | Path):
         raise TypeError('volume_path must be a string, Path or None')
     if backend_factory is not None and not callable(backend_factory):
@@ -88,7 +88,7 @@ def build_azure_observability_extension(
         )
 
     projection = OperationalEventProjection()
-    # Slim y diagnostic comparten los mismos eventos JSON. El perfil sólo decide si añade tracing.
+    # Preview escribe la misma proyección que export, pero en el volumen local.
     if azure_settings.mode is AzureObservabilityMode.PREVIEW:
         resolved_volume = (
             Path(volume_path) if volume_path is not None else observability_settings.volume_path
@@ -110,10 +110,10 @@ def build_azure_observability_extension(
             )
         except AzureObservabilityBootstrapError:
             raise
-        except Exception as error:
+        except Exception:
             raise AzureObservabilityBootstrapError(
                 'Azure observability preview bootstrap failed'
-            ) from error
+            ) from None
 
     factory = backend_factory or _default_backend_factory
     backend = None
@@ -128,6 +128,7 @@ def build_azure_observability_extension(
                 connection_string=azure_settings.connection_string,
                 application=observability_settings.application,
                 service=observability_settings.service,
+                environment=str(observability_settings.environment),
                 flush_timeout_seconds=azure_settings.flush_timeout_seconds,
             )
             trace_bridge = bridge
@@ -136,11 +137,10 @@ def build_azure_observability_extension(
             sink=AzureMonitorEventSink(projection=projection, backend=backend),
             trace_bridge=trace_bridge,
         )
-    except Exception as error:
-        # El mensaje público es fijo para que una excepción del SDK no copie la connection string.
+    except Exception:
         _safe_close(bridge)
         _safe_close(backend)
-        raise AzureObservabilityBootstrapError('Azure observability bootstrap failed') from error
+        raise AzureObservabilityBootstrapError('Azure observability bootstrap failed') from None
 
 
 def _default_backend_factory(
@@ -171,7 +171,6 @@ def _validate_trace_bridge(trace_bridge: Any) -> None:
 
 
 def _safe_close(component: Any) -> None:
-    # Durante un bootstrap parcial intentamos liberar lo creado sin ocultar el error original.
     close = getattr(component, 'close', None)
     if not callable(close):
         return

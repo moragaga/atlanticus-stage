@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -33,6 +32,7 @@ class AzureObservabilityProfile(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+# Mantiene la configuración Azure separada de la observabilidad neutral y nunca expone el secreto en repr.
 class AzureObservabilitySettings:
     """Valores acotados de la extensión; la conexión nunca aparece en repr."""
 
@@ -42,8 +42,6 @@ class AzureObservabilitySettings:
     flush_timeout_seconds: float = 3.0
 
     def __post_init__(self) -> None:
-        # La construcción directa es parte del contrato público: no se aceptan textos en lugar de
-        # enums ni booleanos como números, aunque Python normalmente permita esas comparaciones.
         if not isinstance(self.mode, AzureObservabilityMode):
             raise TypeError('mode must be an AzureObservabilityMode')
         if not isinstance(self.profile, AzureObservabilityProfile):
@@ -58,27 +56,27 @@ class AzureObservabilitySettings:
         if self.connection_string is not None and not isinstance(self.connection_string, str):
             raise TypeError('connection_string must be a string or None')
         if self.mode is not AzureObservabilityMode.EXPORT:
-            # Fuera de export no necesitamos el secreto y evitamos retenerlo accidentalmente.
             object.__setattr__(self, 'connection_string', None)
             return
-        connection_string = self.connection_string.strip() if self.connection_string else ''
-        if not connection_string:
+        connection_string = self.connection_string
+        if connection_string is None or connection_string == '':
             raise AzureObservabilityConfigurationError(
                 f'{APPLICATION_INSIGHTS_CONNECTION_STRING_VARIABLE} is required in export mode'
             )
         object.__setattr__(self, 'connection_string', connection_string)
 
+    # La composición entrega un mapping explícito para evitar lecturas laterales de os.environ.
     @classmethod
     def from_sources(
         cls,
         *,
-        environ: Mapping[str, str] | None = None,
+        environ: Mapping[str, str],
     ) -> AzureObservabilitySettings:
         """Resuelve únicamente las variables globales de la extensión."""
 
-        values = os.environ if environ is None else environ
-        if not isinstance(values, Mapping):
-            raise TypeError('environ must be a mapping or None')
+        if not isinstance(environ, Mapping):
+            raise TypeError('environ must be a mapping')
+        values = environ
         mode = _parse_enum(
             AzureObservabilityMode,
             _read_value(values, AZURE_OBSERVABILITY_MODE_VARIABLE, AzureObservabilityMode.OFF),
@@ -95,7 +93,6 @@ class AzureObservabilitySettings:
         )
         connection_string = None
         if mode is AzureObservabilityMode.EXPORT:
-            # La variable secreta ni siquiera se consulta cuando Azure está apagado o en preview.
             connection_string = _read_value(
                 values,
                 APPLICATION_INSIGHTS_CONNECTION_STRING_VARIABLE,

@@ -57,11 +57,19 @@ def test_operational_projection_is_flat_and_keeps_shared_identity() -> None:
     assert 'max_wait_time_seconds' not in projected
 
 
-def test_dependency_noise_is_not_exported_as_operational_log() -> None:
-    event = ObservabilityEvent(
+def test_dependency_started_is_noise_but_failed_is_operational() -> None:
+    started = ObservabilityEvent(
+        name='dependency.started',
+        category=EventCategory.DEPENDENCY,
+    )
+    failed = ObservabilityEvent(
         name='dependency.failed',
         category=EventCategory.DEPENDENCY,
         severity=EventSeverity.ERROR,
     )
 
-    assert _project(event) is None
+    assert _project(started) is None
+    projected = _project(failed)
+    assert projected is not None
+    assert projected['event'] == 'dependency.failed'
+    assert projected['level'] == 'error'

@@ -128,13 +128,6 @@ class OpenTelemetryLogBackend:
         self._logger.log(
             _LOG_LEVELS[severity],
             json.dumps(payload, ensure_ascii=False, separators=(',', ':'), sort_keys=True),
-            extra={
-                'atlanticus_event_name': payload.get('event', 'unknown'),
-                'atlanticus_application': payload.get('application', 'unknown'),
-                'atlanticus_environment': payload.get('environment', 'unknown'),
-                'atlanticus_service': payload.get('service', 'unknown'),
-                'atlanticus_run_id': payload.get('run_id', 'unknown'),
-            },
         )
 
     def close(self) -> None:

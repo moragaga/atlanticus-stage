@@ -91,6 +91,24 @@ def test_from_sources_does_not_read_connection_string_when_export_is_disabled() 
     assert settings.connection_string is None
 
 
+
+def test_connection_string_is_preserved_exactly() -> None:
+    connection_string = '  InstrumentationKey=secret  '
+
+    settings = AzureObservabilitySettings.from_sources(
+        environ={
+            'ATLANTICUS_AZURE_OBSERVABILITY_MODE': 'export',
+            'APPLICATION_INSIGHTS_CONNECTION_STRING': connection_string,
+        }
+    )
+
+    assert settings.connection_string == connection_string
+
+
+def test_from_sources_requires_an_explicit_mapping() -> None:
+    with pytest.raises(TypeError, match='environ must be a mapping'):
+        AzureObservabilitySettings.from_sources(environ=None)
+
 def test_environment_values_must_be_strings() -> None:
     with pytest.raises(AzureObservabilityConfigurationError, match='must be a string'):
         AzureObservabilitySettings.from_sources(environ={'ATLANTICUS_AZURE_OBSERVABILITY_MODE': 1})

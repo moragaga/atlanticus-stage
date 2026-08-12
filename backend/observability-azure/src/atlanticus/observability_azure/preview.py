@@ -49,6 +49,13 @@ class AzurePreviewWriter:
             raise TypeError('durable must be a bool')
         if not isinstance(file_name, str) or not file_name.strip():
             raise ValueError('file_name must be a non-empty string')
+        if (
+            file_name in {'.', '..'}
+            or '/' in file_name
+            or '\\' in file_name
+            or Path(file_name).name != file_name
+        ):
+            raise ValueError('file_name must be a basename')
         directory = resolve_observability_day_directory(
             self._volume_path,
             application=settings.application,

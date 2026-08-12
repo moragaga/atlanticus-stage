@@ -14,8 +14,8 @@ class _Logger:
         self.records = []
         self.removed = []
 
-    def log(self, level, message, *, extra) -> None:
-        self.records.append((level, message, extra))
+    def log(self, level, message) -> None:
+        self.records.append((level, message))
 
     def removeHandler(self, handler) -> None:
         self.removed.append(handler)
@@ -58,16 +58,9 @@ def test_emit_places_the_complete_compact_json_in_the_log_body() -> None:
 
     backend.emit(payload, EventSeverity.ERROR)
 
-    level, message, dimensions = backend._logger.records[0]
+    level, message = backend._logger.records[0]
     assert level == logging.ERROR
     assert json.loads(message) == payload
-    assert dimensions == {
-        'atlanticus_event_name': 'execution.completed',
-        'atlanticus_application': 'ada',
-        'atlanticus_environment': 'dev',
-        'atlanticus_service': 'dispatch-job',
-        'atlanticus_run_id': 'run-1',
-    }
 
 
 def test_close_is_idempotent_and_emit_after_close_is_rejected() -> None:

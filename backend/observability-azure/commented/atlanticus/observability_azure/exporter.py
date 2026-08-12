@@ -29,6 +29,7 @@ _LOG_LEVELS = {
 class AzureLogBackend(Protocol):
     """Backend pequeño que permite probar la proyección sin red."""
 
+    # El cuerpo JSON ya contiene toda la metadata operacional; no la duplicamos como atributos extra.
     def emit(self, payload: Mapping[str, Any], severity: EventSeverity) -> None:
         """Exporta un payload previamente sanitizado y filtrado."""
 
@@ -36,6 +37,7 @@ class AzureLogBackend(Protocol):
         """Intenta sincronizar la cola dentro de su límite configurado."""
 
 
+# El sink proyecta primero y solo entrega al backend eventos operacionales ya sanitizados.
 class AzureMonitorEventSink(EventSink):
     """Materializa una sola vez y delega el envío al backend OpenTelemetry."""
 
@@ -60,7 +62,6 @@ class AzureMonitorEventSink(EventSink):
     ) -> None:
         if self._closed:
             raise RuntimeError('Azure monitor event sink is closed')
-        # La sanitización ocurre antes de proyectar y antes de cruzar la frontera del backend Azure.
         payload = event.to_dict(settings=settings, sanitizer=sanitizer)
         projected = self._projection.project(event, payload)
         if projected is not None:
@@ -126,18 +127,9 @@ class OpenTelemetryLogBackend:
             raise TypeError('payload must be a mapping')
         if not isinstance(severity, EventSeverity):
             raise TypeError('severity must be an EventSeverity')
-        # El cuerpo contiene el JSON completo para parse_json(message). Las dimensiones duplicadas
-        # son deliberadamente pocas para controlar cardinalidad y costo.
         self._logger.log(
             _LOG_LEVELS[severity],
             json.dumps(payload, ensure_ascii=False, separators=(',', ':'), sort_keys=True),
-            extra={
-                'atlanticus_event_name': payload.get('event', 'unknown'),
-                'atlanticus_application': payload.get('application', 'unknown'),
-                'atlanticus_environment': payload.get('environment', 'unknown'),
-                'atlanticus_service': payload.get('service', 'unknown'),
-                'atlanticus_run_id': payload.get('run_id', 'unknown'),
-            },
         )
 
     def close(self) -> None:
@@ -145,7 +137,6 @@ class OpenTelemetryLogBackend:
             return
         self._closed = True
         self._logger.removeHandler(self._handler)
-        # Shutdown se intenta incluso si el flush falla, evitando dejar recursos del SDK abiertos.
         try:
             self._provider.force_flush(timeout_millis=self._flush_timeout_millis)
         finally:

@@ -12,18 +12,7 @@ from typing import Any
 from atlanticus.observability import ExecutionContext, ObservabilitySettings, SpanError, SpanHandle
 from atlanticus.observability_azure.preview import AzurePreviewWriter
 
-_IGNORED_SUCCESS_SPANS = frozenset(
-    {
-        'execution',
-        'iteration',
-        'service_bus.receiver.open',
-        'service_bus.receiver.receive_one',
-        'service_bus.delivery.complete',
-        'service_bus.delivery.abandon',
-        'service_bus.delivery.dead_letter',
-        'service_bus.delivery.renew_lock',
-    }
-)
+_IGNORED_SUCCESS_SPANS = frozenset({'execution', 'iteration'})
 _SLOW_SPAN_THRESHOLD_MS = 2_000
 _MAX_TRACE_TEXT_LENGTH = 256
 _TRACE_ATTRIBUTE_NAMES = ('component', 'source')
@@ -38,15 +27,18 @@ def _should_emit_span(name: str, duration_ms: float, error: SpanError | None) ->
 def _compact_span_values(
     *,
     name: str,
+    application: str,
+    environment: str,
+    service: str,
     context: ExecutionContext,
     attributes: Mapping[str, str],
     duration_ms: float,
     error: SpanError | None,
 ) -> dict[str, Any]:
     values: dict[str, Any] = {
-        'application': context.application,
-        'environment': context.environment,
-        'service': context.service,
+        'application': application,
+        'environment': environment,
+        'service': service,
         'run_id': context.run_id,
         'iteration': context.iteration,
         'span': name,
@@ -126,6 +118,9 @@ class _PreviewSpanHandle:
             'time': ended_at.isoformat(),
             **_compact_span_values(
                 name=self._name,
+                application=self._settings.application,
+                environment=str(self._settings.environment),
+                service=self._settings.service,
                 context=self._context,
                 attributes=self._attributes,
                 duration_ms=duration_ms,
@@ -194,12 +189,18 @@ class _AzureMonitorSpanHandle:
         tracer: Any,
         status_type: Any,
         name: str,
+        application: str,
+        environment: str,
+        service: str,
         context: ExecutionContext,
         attributes: Mapping[str, str],
     ) -> None:
         self._tracer = tracer
         self._status_type = status_type
         self._name = name
+        self._application = application
+        self._environment = environment
+        self._service = service
         self._context = context
         self._attributes = dict(attributes)
         self._started_monotonic = time.monotonic()
@@ -219,6 +220,9 @@ class _AzureMonitorSpanHandle:
             return
         values = _compact_span_values(
             name=self._name,
+            application=self._application,
+            environment=self._environment,
+            service=self._service,
             context=self._context,
             attributes=self._attributes,
             duration_ms=duration_ms,
@@ -254,11 +258,13 @@ class AzureMonitorTraceBridge:
         connection_string: str,
         application: str,
         service: str,
+        environment: str,
         flush_timeout_seconds: float,
     ) -> None:
         _require_text(connection_string, 'connection_string')
         _require_text(application, 'application')
         _require_text(service, 'service')
+        _require_text(environment, 'environment')
         _validate_timeout(flush_timeout_seconds)
 
         from azure.monitor.opentelemetry.exporter import AzureMonitorTraceExporter
@@ -269,6 +275,9 @@ class AzureMonitorTraceBridge:
         from opentelemetry.trace import StatusCode
 
         self._flush_timeout_millis = int(flush_timeout_seconds * 1000)
+        self._application = application
+        self._environment = environment
+        self._service = service
         resource = Resource.create(
             {
                 'service.namespace': application,
@@ -310,6 +319,9 @@ class AzureMonitorTraceBridge:
             tracer=self._tracer,
             status_type=self._status_type,
             name=resolved_name,
+            application=self._application,
+            environment=self._environment,
+            service=self._service,
             context=resolved_context,
             attributes=resolved_attributes,
         )

@@ -63,7 +63,7 @@ class AzureObservabilityExtension:
 def build_azure_observability_extension(
     *,
     observability_settings: ObservabilitySettings,
-    environ: Mapping[str, str] | None = None,
+    environ: Mapping[str, str],
     volume_path: str | Path | None = None,
     backend_factory: AzureLogBackendFactory | None = None,
 ) -> AzureObservabilityExtension:
@@ -71,8 +71,8 @@ def build_azure_observability_extension(
 
     if not isinstance(observability_settings, ObservabilitySettings):
         raise TypeError('observability_settings must be an ObservabilitySettings')
-    if environ is not None and not isinstance(environ, Mapping):
-        raise TypeError('environ must be a mapping or None')
+    if not isinstance(environ, Mapping):
+        raise TypeError('environ must be a mapping')
     if volume_path is not None and not isinstance(volume_path, str | Path):
         raise TypeError('volume_path must be a string, Path or None')
     if backend_factory is not None and not callable(backend_factory):
@@ -108,10 +108,10 @@ def build_azure_observability_extension(
             )
         except AzureObservabilityBootstrapError:
             raise
-        except Exception as error:
+        except Exception:
             raise AzureObservabilityBootstrapError(
                 'Azure observability preview bootstrap failed'
-            ) from error
+            ) from None
 
     factory = backend_factory or _default_backend_factory
     backend = None
@@ -126,6 +126,7 @@ def build_azure_observability_extension(
                 connection_string=azure_settings.connection_string,
                 application=observability_settings.application,
                 service=observability_settings.service,
+                environment=str(observability_settings.environment),
                 flush_timeout_seconds=azure_settings.flush_timeout_seconds,
             )
             trace_bridge = bridge
@@ -134,10 +135,10 @@ def build_azure_observability_extension(
             sink=AzureMonitorEventSink(projection=projection, backend=backend),
             trace_bridge=trace_bridge,
         )
-    except Exception as error:
+    except Exception:
         _safe_close(bridge)
         _safe_close(backend)
-        raise AzureObservabilityBootstrapError('Azure observability bootstrap failed') from error
+        raise AzureObservabilityBootstrapError('Azure observability bootstrap failed') from None
 
 
 def _default_backend_factory(

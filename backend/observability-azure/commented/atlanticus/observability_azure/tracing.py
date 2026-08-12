@@ -12,18 +12,8 @@ from typing import Any
 from atlanticus.observability import ExecutionContext, ObservabilitySettings, SpanError, SpanHandle
 from atlanticus.observability_azure.preview import AzurePreviewWriter
 
-_IGNORED_SUCCESS_SPANS = frozenset(
-    {
-        'execution',
-        'iteration',
-        'service_bus.receiver.open',
-        'service_bus.receiver.receive_one',
-        'service_bus.delivery.complete',
-        'service_bus.delivery.abandon',
-        'service_bus.delivery.dead_letter',
-        'service_bus.delivery.renew_lock',
-    }
-)
+# Solo excluimos spans de lifecycle naturalmente largos; ninguna dependencia concreta se hardcodea aquí.
+_IGNORED_SUCCESS_SPANS = frozenset({'execution', 'iteration'})
 _SLOW_SPAN_THRESHOLD_MS = 2_000
 _MAX_TRACE_TEXT_LENGTH = 256
 _TRACE_ATTRIBUTE_NAMES = ('component', 'source')
@@ -35,18 +25,22 @@ def _should_emit_span(name: str, duration_ms: float, error: SpanError | None) ->
     return name not in _IGNORED_SUCCESS_SPANS and duration_ms >= _SLOW_SPAN_THRESHOLD_MS
 
 
+# La identidad estática proviene del bridge; el contexto aporta únicamente datos dinámicos de la ejecución.
 def _compact_span_values(
     *,
     name: str,
+    application: str,
+    environment: str,
+    service: str,
     context: ExecutionContext,
     attributes: Mapping[str, str],
     duration_ms: float,
     error: SpanError | None,
 ) -> dict[str, Any]:
     values: dict[str, Any] = {
-        'application': context.application,
-        'environment': context.environment,
-        'service': context.service,
+        'application': application,
+        'environment': environment,
+        'service': service,
         'run_id': context.run_id,
         'iteration': context.iteration,
         'span': name,
@@ -77,7 +71,6 @@ def _snapshot_span(
         raise TypeError('context must be an ExecutionContext')
     if not isinstance(attributes, Mapping):
         raise TypeError('attributes must be a mapping')
-    # Se toman sólo atributos técnicos conocidos. Credenciales y metadata libre nunca se propagan.
     selected: dict[str, str] = {}
     for key in _TRACE_ATTRIBUTE_NAMES:
         value = attributes.get(key)
@@ -115,7 +108,6 @@ class _PreviewSpanHandle:
 
     def end(self, error: SpanError | None = None) -> None:
         _validate_span_error(error)
-        # El lock convierte end en una operación idempotente incluso con cierres concurrentes.
         with self._lock:
             if self._ended:
                 return
@@ -128,6 +120,9 @@ class _PreviewSpanHandle:
             'time': ended_at.isoformat(),
             **_compact_span_values(
                 name=self._name,
+                application=self._settings.application,
+                environment=str(self._settings.environment),
+                service=self._settings.service,
                 context=self._context,
                 attributes=self._attributes,
                 duration_ms=duration_ms,
@@ -171,7 +166,6 @@ class AzurePreviewTraceBridge:
         with self._lock:
             if self._closed:
                 raise RuntimeError('Azure preview trace bridge is closed')
-        # El snapshot impide que una lista o diccionario externo cambie el span después de iniciarlo.
         resolved_name, resolved_context, resolved_attributes = _snapshot_span(
             name,
             context,
@@ -197,12 +191,18 @@ class _AzureMonitorSpanHandle:
         tracer: Any,
         status_type: Any,
         name: str,
+        application: str,
+        environment: str,
+        service: str,
         context: ExecutionContext,
         attributes: Mapping[str, str],
     ) -> None:
         self._tracer = tracer
         self._status_type = status_type
         self._name = name
+        self._application = application
+        self._environment = environment
+        self._service = service
         self._context = context
         self._attributes = dict(attributes)
         self._started_monotonic = time.monotonic()
@@ -222,6 +222,9 @@ class _AzureMonitorSpanHandle:
             return
         values = _compact_span_values(
             name=self._name,
+            application=self._application,
+            environment=self._environment,
+            service=self._service,
             context=self._context,
             attributes=self._attributes,
             duration_ms=duration_ms,
@@ -248,6 +251,7 @@ class _AzureMonitorSpanHandle:
         span.end(end_time=ended_time_ns)
 
 
+# El bridge conserva identidad autoritativa para que un contexto accidentalmente inconsistente no falsee Azure.
 class AzureMonitorTraceBridge:
     """Exporta sólo errores y spans lentos accionables en perfil diagnóstico."""
 
@@ -257,11 +261,13 @@ class AzureMonitorTraceBridge:
         connection_string: str,
         application: str,
         service: str,
+        environment: str,
         flush_timeout_seconds: float,
     ) -> None:
         _require_text(connection_string, 'connection_string')
         _require_text(application, 'application')
         _require_text(service, 'service')
+        _require_text(environment, 'environment')
         _validate_timeout(flush_timeout_seconds)
 
         from azure.monitor.opentelemetry.exporter import AzureMonitorTraceExporter
@@ -272,13 +278,15 @@ class AzureMonitorTraceBridge:
         from opentelemetry.trace import StatusCode
 
         self._flush_timeout_millis = int(flush_timeout_seconds * 1000)
+        self._application = application
+        self._environment = environment
+        self._service = service
         resource = Resource.create(
             {
                 'service.namespace': application,
                 'service.name': service,
             }
         )
-        # ALWAYS_ON no implica exportar todo: el handle crea spans sólo cuando son fallidos o lentos.
         self._provider = TracerProvider(resource=resource, sampler=ALWAYS_ON)
         exporter = AzureMonitorTraceExporter(
             connection_string=connection_string,
@@ -314,6 +322,9 @@ class AzureMonitorTraceBridge:
             tracer=self._tracer,
             status_type=self._status_type,
             name=resolved_name,
+            application=self._application,
+            environment=self._environment,
+            service=self._service,
             context=resolved_context,
             attributes=resolved_attributes,
         )

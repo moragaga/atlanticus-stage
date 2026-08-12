@@ -164,14 +164,15 @@ def test_trace_backend_exports_only_selected_context(monkeypatch) -> None:
         connection_string='InstrumentationKey=fake',
         application='ada',
         service='dispatch-job',
+        environment='dev',
         flush_timeout_seconds=3,
     )
     handle = bridge.start_span(
         'blob.download',
         context=ExecutionContext(
-            application='ada',
-            environment='dev',
-            service='dispatch-job',
+            application='fake-application',
+            environment='prd',
+            service='fake-service',
             run_id='run-1',
         ),
         attributes={
@@ -183,6 +184,9 @@ def test_trace_backend_exports_only_selected_context(monkeypatch) -> None:
     handle.end(SpanError(error_type='TimeoutError', message='TimeoutError raised'))
 
     span = _TracerProvider.instance.tracer.spans[0]
+    assert span.kwargs['attributes']['atlanticus.application'] == 'ada'
+    assert span.kwargs['attributes']['atlanticus.environment'] == 'dev'
+    assert span.kwargs['attributes']['atlanticus.service'] == 'dispatch-job'
     assert span.kwargs['attributes']['atlanticus.component'] == 'atlanticus.connectivity.blob'
     assert span.kwargs['attributes']['atlanticus.source'] == 'primary'
     assert 'credential_scope' not in str(span.kwargs)

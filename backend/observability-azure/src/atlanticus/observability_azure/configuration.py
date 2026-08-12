@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -58,8 +57,8 @@ class AzureObservabilitySettings:
         if self.mode is not AzureObservabilityMode.EXPORT:
             object.__setattr__(self, 'connection_string', None)
             return
-        connection_string = self.connection_string.strip() if self.connection_string else ''
-        if not connection_string:
+        connection_string = self.connection_string
+        if connection_string is None or connection_string == '':
             raise AzureObservabilityConfigurationError(
                 f'{APPLICATION_INSIGHTS_CONNECTION_STRING_VARIABLE} is required in export mode'
             )
@@ -69,13 +68,13 @@ class AzureObservabilitySettings:
     def from_sources(
         cls,
         *,
-        environ: Mapping[str, str] | None = None,
+        environ: Mapping[str, str],
     ) -> AzureObservabilitySettings:
         """Resuelve únicamente las variables globales de la extensión."""
 
-        values = os.environ if environ is None else environ
-        if not isinstance(values, Mapping):
-            raise TypeError('environ must be a mapping or None')
+        if not isinstance(environ, Mapping):
+            raise TypeError('environ must be a mapping')
+        values = environ
         mode = _parse_enum(
             AzureObservabilityMode,
             _read_value(values, AZURE_OBSERVABILITY_MODE_VARIABLE, AzureObservabilityMode.OFF),

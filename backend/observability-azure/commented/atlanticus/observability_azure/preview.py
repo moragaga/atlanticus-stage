@@ -19,6 +19,7 @@ from atlanticus.observability import (
 )
 
 
+# El writer restringe el nombre a un archivo del directorio diario para impedir escapes de ruta.
 class AzurePreviewWriter:
     """Comparte una única escritura atómica entre logs y spans de preview."""
 
@@ -49,7 +50,14 @@ class AzurePreviewWriter:
             raise TypeError('durable must be a bool')
         if not isinstance(file_name, str) or not file_name.strip():
             raise ValueError('file_name must be a non-empty string')
-        # Preview usa la ruta diaria ya definida por observability, pero archivos propios de Azure.
+        # Un basename válido puede tener extensión, pero no separadores ni componentes . o ...
+        if (
+            file_name in {'.', '..'}
+            or '/' in file_name
+            or '\\' in file_name
+            or Path(file_name).name != file_name
+        ):
+            raise ValueError('file_name must be a basename')
         directory = resolve_observability_day_directory(
             self._volume_path,
             application=settings.application,
@@ -85,7 +93,6 @@ class AzurePreviewSink(EventSink):
         settings: ObservabilitySettings,
         sanitizer: DataSanitizer,
     ) -> None:
-        # Se ejecuta la misma proyección que en export para que preview sea una simulación fiel.
         payload = event.to_dict(settings=settings, sanitizer=sanitizer)
         projected = self._projection.project(event, payload)
         if projected is None:

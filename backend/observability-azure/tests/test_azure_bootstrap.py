@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+import traceback
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -18,6 +19,7 @@ from atlanticus.observability import (
 )
 from atlanticus.observability_azure import (
     AzureObservabilityBootstrapError,
+    AzurePreviewWriter,
     build_azure_observability_extension,
 )
 
@@ -110,9 +112,9 @@ def test_diagnostic_preview_keeps_only_compact_actionable_spans(tmp_path) -> Non
     failed = extension.trace_bridge.start_span(
         'blob.sas.download_stream',
         context=ExecutionContext(
-            application='ada',
-            environment='dev',
-            service='dispatch-job',
+            application='fake-application',
+            environment='prd',
+            service='fake-service',
             run_id='run-1',
             iteration=2,
         ),
@@ -223,6 +225,7 @@ def test_backend_factory_contract_is_validated_and_error_is_safe(tmp_path) -> No
 
     assert secret not in str(captured.value)
     assert secret not in repr(captured.value)
+    assert secret not in ''.join(traceback.format_exception(captured.value))
 
 
 def test_partial_backend_is_closed_without_masking_bootstrap_error(tmp_path, monkeypatch) -> None:
@@ -250,6 +253,7 @@ def test_partial_backend_is_closed_without_masking_bootstrap_error(tmp_path, mon
 
     assert backend.closed
     assert 'must-not-leak' not in str(captured.value)
+    assert 'must-not-leak' not in ''.join(traceback.format_exception(captured.value))
 
 
 def test_diagnostic_span_snapshots_selected_attributes_and_closes_once(tmp_path) -> None:
@@ -291,3 +295,73 @@ def test_diagnostic_span_snapshots_selected_attributes_and_closes_once(tmp_path)
     assert len(records[0]['source']) == 256
     assert records[0]['source'].endswith('…')
     assert 'credential_scope' not in records[0]
+
+
+def test_preview_bootstrap_suppresses_sensitive_exception_context(tmp_path, monkeypatch) -> None:
+    class _FailingPreviewWriter:
+        def __init__(self, volume_path):
+            raise RuntimeError('InstrumentationKey=must-not-leak')
+
+    monkeypatch.setattr(
+        'atlanticus.observability_azure.bootstrap.AzurePreviewWriter',
+        _FailingPreviewWriter,
+    )
+
+    with pytest.raises(AzureObservabilityBootstrapError) as captured:
+        build_azure_observability_extension(
+            observability_settings=_settings(tmp_path),
+            environ={'ATLANTICUS_AZURE_OBSERVABILITY_MODE': 'preview'},
+        )
+
+    formatted = ''.join(traceback.format_exception(captured.value))
+    assert 'must-not-leak' not in formatted
+
+
+@pytest.mark.parametrize('file_name', ['../escape.jsonl', 'nested/file.jsonl', 'nested\\file.jsonl', '.', '..'])
+def test_preview_writer_rejects_non_basename_file_names(tmp_path, file_name) -> None:
+    writer = AzurePreviewWriter(tmp_path)
+
+    with pytest.raises(ValueError, match='basename'):
+        writer.append(
+            {'event': 'test'},
+            settings=_settings(tmp_path),
+            event_day=date.today(),
+            file_name=file_name,
+        )
+
+
+def test_slow_service_bus_span_is_not_hardcoded_out(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path)
+    extension = build_azure_observability_extension(
+        observability_settings=settings,
+        environ={
+            'ATLANTICUS_AZURE_OBSERVABILITY_MODE': 'preview',
+            'ATLANTICUS_AZURE_OBSERVABILITY_PROFILE': 'diagnostic',
+        },
+    )
+    ticks = iter((10.0, 12.5))
+    monkeypatch.setattr(
+        'atlanticus.observability_azure.tracing.time.monotonic',
+        lambda: next(ticks),
+    )
+
+    handle = extension.trace_bridge.start_span(
+        'service_bus.receiver.receive_one',
+        context=ExecutionContext(
+            application='fake-application',
+            environment='prd',
+            service='fake-service',
+            run_id='run-1',
+        ),
+        attributes={'component': 'atlanticus.connectivity.service_bus'},
+    )
+    handle.end()
+
+    span = json.loads(
+        (_day_directory(tmp_path) / 'azure-diagnostic-spans.jsonl').read_text().splitlines()[0]
+    )
+    assert span['span'] == 'service_bus.receiver.receive_one'
+    assert span['status'] == 'slow'
+    assert span['application'] == 'ada'
+    assert span['environment'] == 'dev'
+    assert span['service'] == 'dispatch-job'
