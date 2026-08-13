@@ -23,6 +23,7 @@ atlanticus-http = { workspace = true }
 atlanticus-key-vault = { workspace = true }
 atlanticus-cosmos = { workspace = true }
 atlanticus-service-bus = { workspace = true }
+atlanticus-sql = { workspace = true }
 
 [tool.uv.workspace]
 members = [
@@ -30,6 +31,7 @@ members = [
     "key-vault",
     "cosmos",
     "service-bus",
+    "sql",
 ]
 
 [tool.ruff]
@@ -61,6 +63,7 @@ testpaths = [
     "key-vault/tests",
     "cosmos/tests",
     "service-bus/tests",
+    "sql/tests",
 ]
 addopts = "-q"
 markers = [

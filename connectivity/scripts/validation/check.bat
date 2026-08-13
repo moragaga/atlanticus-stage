@@ -11,6 +11,7 @@ set "SEL_HTTP=0"
 set "SEL_KEY_VAULT=0"
 set "SEL_COSMOS=0"
 set "SEL_SERVICE_BUS=0"
+set "SEL_SQL=0"
 
 :parse_args
 if "%~1"=="" goto args_done
@@ -48,6 +49,12 @@ if /I "%~1"=="service-bus" (
     shift
     goto parse_args
 )
+if /I "%~1"=="sql" (
+    set "SEL_SQL=1"
+    set "HAS_MODULES=1"
+    shift
+    goto parse_args
+)
 
 echo Unknown validation module: %~1 1>&2
 goto usage
@@ -59,6 +66,7 @@ if "%HAS_MODULES%"=="0" (
     set "SEL_KEY_VAULT=1"
     set "SEL_COSMOS=1"
     set "SEL_SERVICE_BUS=1"
+    set "SEL_SQL=1"
 )
 
 where uv >nul 2>&1
@@ -73,7 +81,7 @@ if "%CLEAN%"=="1" (
     set "CACHE_ARG=--no-cache"
     if exist ".venv" rmdir /s /q ".venv"
     if exist "dist" rmdir /s /q "dist"
-    for %%P in (http-client key-vault cosmos service-bus) do (
+    for %%P in (http-client key-vault cosmos service-bus sql) do (
         if exist "%%P\build" rmdir /s /q "%%P\build"
         if exist "%%P\.pytest_cache" rmdir /s /q "%%P\.pytest_cache"
         if exist "%%P\.ruff_cache" rmdir /s /q "%%P\.ruff_cache"
@@ -100,6 +108,7 @@ if "%ALL%"=="1" (
     if "!SEL_KEY_VAULT!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-key-vault"
     if "!SEL_COSMOS!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-cosmos"
     if "!SEL_SERVICE_BUS!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-service-bus"
+    if "!SEL_SQL!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-sql"
 
     call :run uv sync --python "%PYTHON_BIN%" --no-python-downloads %CACHE_ARG% --only-group dev --frozen
     if errorlevel 1 exit /b 1
@@ -116,6 +125,8 @@ if "!SEL_COSMOS!"=="1" call :normalize_and_check_ruff cosmos
 if errorlevel 1 exit /b 1
 if "!SEL_SERVICE_BUS!"=="1" call :normalize_and_check_ruff service-bus
 if errorlevel 1 exit /b 1
+if "!SEL_SQL!"=="1" call :normalize_and_check_ruff sql
+if errorlevel 1 exit /b 1
 
 if "!SEL_HTTP!"=="1" call :check_module http-client atlanticus.connectivity.http
 if errorlevel 1 exit /b 1
@@ -124,6 +135,8 @@ if errorlevel 1 exit /b 1
 if "!SEL_COSMOS!"=="1" call :check_module cosmos atlanticus.connectivity.cosmos
 if errorlevel 1 exit /b 1
 if "!SEL_SERVICE_BUS!"=="1" call :check_module service-bus atlanticus.connectivity.service_bus
+if errorlevel 1 exit /b 1
+if "!SEL_SQL!"=="1" call :check_module sql atlanticus.connectivity.sql
 if errorlevel 1 exit /b 1
 
 if exist "dist" rmdir /s /q "dist"
@@ -142,6 +155,9 @@ if "!SEL_COSMOS!"=="1" set /a SELECTED_COUNT+=1
 if "!SEL_SERVICE_BUS!"=="1" call :build_module service-bus
 if errorlevel 1 exit /b 1
 if "!SEL_SERVICE_BUS!"=="1" set /a SELECTED_COUNT+=1
+if "!SEL_SQL!"=="1" call :build_module sql
+if errorlevel 1 exit /b 1
+if "!SEL_SQL!"=="1" set /a SELECTED_COUNT+=1
 
 set /a WHEEL_COUNT=0
 if exist "dist\*.whl" (
@@ -199,10 +215,25 @@ if "%DOCKER%"=="1" (
         docker image rm atlanticus-service-bus-integration:local >nul 2>&1
         if not "!SERVICE_BUS_DOCKER_CODE!"=="0" exit /b !SERVICE_BUS_DOCKER_CODE!
     )
+    if "!SEL_SQL!"=="1" (
+        where docker >nul 2>&1
+        if errorlevel 1 (
+            echo docker is required for SQL integration tests. 1>&2
+            exit /b 1
+        )
+        docker compose -f docker\sql\compose.yaml down -v --remove-orphans >nul 2>&1
+        docker image rm atlanticus-sql-integration:local >nul 2>&1
+        call :run docker compose -f docker\sql\compose.yaml up --build --abort-on-container-exit --exit-code-from sql-integration
+        set "SQL_DOCKER_CODE=!errorlevel!"
+        if not "!SQL_DOCKER_CODE!"=="0" docker compose -f docker\sql\compose.yaml logs sql-server sql-integration
+        docker compose -f docker\sql\compose.yaml down -v --remove-orphans >nul 2>&1
+        docker image rm atlanticus-sql-integration:local >nul 2>&1
+        if not "!SQL_DOCKER_CODE!"=="0" exit /b !SQL_DOCKER_CODE!
+    )
 )
 
 if "%ALL%"=="1" (
-    echo Connectivity validation passed: 4 packages, 4 wheels.
+    echo Connectivity validation passed: 5 packages, 5 wheels.
 ) else if "!SELECTED_COUNT!"=="1" (
     echo Connectivity validation passed: 1 selected package, 1 wheel.
 ) else (
@@ -251,6 +282,6 @@ exit /b %errorlevel%
 
 :usage
 echo Usage: %~nx0 [module ...] [--clean] [--docker] 1>&2
-echo Modules: http-client key-vault cosmos service-bus 1>&2
+echo Modules: http-client key-vault cosmos service-bus sql 1>&2
 echo No modules validates the complete migrated connectivity workspace. 1>&2
 exit /b 2

@@ -1,0 +1,35 @@
+name: atlanticus-sql-integration
+
+services:
+  sql-server:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    platform: linux/amd64
+    hostname: sql-server
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${ATLANTICUS_SQL_SA_PASSWORD:-Atlanticus_Sql_2026!}"
+    volumes:
+      - sql-server-data:/var/opt/mssql
+    restart: "no"
+    mem_limit: 2g
+    cpus: 1.00
+
+  sql-integration:
+    image: atlanticus-sql-integration:local
+    build:
+      context: ../../..
+      dockerfile: connectivity/docker/sql/Dockerfile
+    init: true
+    depends_on:
+      - sql-server
+    environment:
+      ATLANTICUS_RUN_SQL_INTEGRATION: "1"
+      ATLANTICUS_SQL_SERVER: "sql-server,1433"
+      ATLANTICUS_SQL_SA_PASSWORD: "${ATLANTICUS_SQL_SA_PASSWORD:-Atlanticus_Sql_2026!}"
+      ATLANTICUS_SQL_READER_PASSWORD: "${ATLANTICUS_SQL_READER_PASSWORD:-Atlanticus_Read_2026!}"
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.50
+
+volumes:
+  sql-server-data:

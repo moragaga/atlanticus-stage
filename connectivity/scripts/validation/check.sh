@@ -4,7 +4,7 @@ set -eo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$ROOT"
 
-PACKAGES="http-client key-vault cosmos service-bus"
+PACKAGES="http-client key-vault cosmos service-bus sql"
 SELECTED=""
 ORDERED_SELECTED=""
 CLEAN=0
@@ -20,6 +20,7 @@ Modules:
   key-vault
   cosmos
   service-bus
+  sql
 
 No modules validates the complete migrated connectivity workspace.
 --docker adds integration tests for selected modules that provide them.
@@ -39,6 +40,7 @@ distribution_name() {
     key-vault) echo "atlanticus-key-vault" ;;
     cosmos) echo "atlanticus-cosmos" ;;
     service-bus) echo "atlanticus-service-bus" ;;
+    sql) echo "atlanticus-sql" ;;
   esac
 }
 
@@ -48,6 +50,7 @@ import_name() {
     key-vault) echo "atlanticus.connectivity.key_vault" ;;
     cosmos) echo "atlanticus.connectivity.cosmos" ;;
     service-bus) echo "atlanticus.connectivity.service_bus" ;;
+    sql) echo "atlanticus.connectivity.sql" ;;
   esac
 }
 
@@ -59,7 +62,7 @@ for arg in "$@"; do
     --docker)
       DOCKER=1
       ;;
-    http-client|key-vault|cosmos|service-bus)
+    http-client|key-vault|cosmos|service-bus|sql)
       if ! contains_module "$SELECTED" "$arg"; then
         SELECTED="$SELECTED $arg"
       fi
@@ -279,10 +282,33 @@ if [[ "$DOCKER" -eq 1 ]]; then
       exit "$service_bus_docker_code"
     fi
   fi
+  if contains_module "$ORDERED_SELECTED" "sql"; then
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "docker is required for SQL integration tests." >&2
+      exit 1
+    fi
+    docker compose -f docker/sql/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-sql-integration:local >/dev/null 2>&1 || true
+    set +e
+    run docker compose -f docker/sql/compose.yaml up \
+      --build \
+      --abort-on-container-exit \
+      --exit-code-from sql-integration
+    sql_docker_code=$?
+    set -e
+    if [[ "$sql_docker_code" -ne 0 ]]; then
+      docker compose -f docker/sql/compose.yaml logs sql-server sql-integration || true
+    fi
+    docker compose -f docker/sql/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-sql-integration:local >/dev/null 2>&1 || true
+    if [[ "$sql_docker_code" -ne 0 ]]; then
+      exit "$sql_docker_code"
+    fi
+  fi
 fi
 
 if [[ "$ALL" -eq 1 ]]; then
-  echo "Connectivity validation passed: 4 packages, 4 wheels."
+  echo "Connectivity validation passed: 5 packages, 5 wheels."
 elif [[ "$selected_count" -eq 1 ]]; then
   echo "Connectivity validation passed: 1 selected package, 1 wheel."
 else
