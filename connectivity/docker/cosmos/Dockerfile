@@ -14,11 +14,11 @@ COPY backend/observability/pyproject.toml backend/observability/README.md /works
 COPY backend/observability/src /workspace/backend/observability/src
 
 COPY connectivity/pyproject.toml connectivity/uv.lock /workspace/connectivity/
-COPY connectivity/http-client/pyproject.toml connectivity/http-client/README.md /workspace/connectivity/http-client/
-COPY connectivity/http-client/src /workspace/connectivity/http-client/src
-COPY connectivity/http-client/tests /workspace/connectivity/http-client/tests
+COPY connectivity/http-client/pyproject.toml /workspace/connectivity/http-client/pyproject.toml
 COPY connectivity/key-vault/pyproject.toml /workspace/connectivity/key-vault/pyproject.toml
 COPY connectivity/cosmos/pyproject.toml /workspace/connectivity/cosmos/pyproject.toml
+COPY connectivity/cosmos/src /workspace/connectivity/cosmos/src
+COPY connectivity/cosmos/tests /workspace/connectivity/cosmos/tests
 
 WORKDIR /workspace/connectivity
 
@@ -26,10 +26,10 @@ RUN uv sync \
         --only-group dev \
         --frozen \
     && uv sync \
-        --package atlanticus-http \
+        --package atlanticus-cosmos \
         --no-default-groups \
         --inexact \
         --frozen \
         --no-editable
 
-ENTRYPOINT [".venv/bin/python", "-m", "pytest", "-q", "-m", "integration", "http-client/tests/integration"]
+ENTRYPOINT [".venv/bin/python", "-m", "pytest", "-q", "-m", "integration", "cosmos/tests/integration"]

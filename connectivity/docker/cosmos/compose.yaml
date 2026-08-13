@@ -1,0 +1,32 @@
+name: atlanticus-cosmos-integration
+
+services:
+  cosmos-emulator:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest
+    hostname: cosmos-emulator
+    environment:
+      PROTOCOL: "http"
+      GATEWAY_PUBLIC_ENDPOINT: "cosmos-emulator"
+      ENABLE_EXPLORER: "false"
+      ENABLE_TELEMETRY: "false"
+      LOG_LEVEL: "warn"
+    restart: "no"
+    mem_limit: 2g
+    cpus: 1.00
+
+  cosmos-integration:
+    image: atlanticus-cosmos-integration:local
+    build:
+      context: ../../..
+      dockerfile: connectivity/docker/cosmos/Dockerfile
+    init: true
+    depends_on:
+      - cosmos-emulator
+    environment:
+      ATLANTICUS_RUN_COSMOS_INTEGRATION: "1"
+      ATLANTICUS_COSMOS_READY_URL: "http://cosmos-emulator:8080/ready"
+      ATLANTICUS_COSMOS_ENDPOINT: "http://cosmos-emulator:8081"
+      ATLANTICUS_COSMOS_KEY: "${ATLANTICUS_COSMOS_KEY:-C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==}"
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.50

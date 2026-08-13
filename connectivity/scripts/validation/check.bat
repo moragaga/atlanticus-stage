@@ -9,6 +9,7 @@ set "ALL=0"
 set "HAS_MODULES=0"
 set "SEL_HTTP=0"
 set "SEL_KEY_VAULT=0"
+set "SEL_COSMOS=0"
 
 :parse_args
 if "%~1"=="" goto args_done
@@ -34,6 +35,12 @@ if /I "%~1"=="key-vault" (
     shift
     goto parse_args
 )
+if /I "%~1"=="cosmos" (
+    set "SEL_COSMOS=1"
+    set "HAS_MODULES=1"
+    shift
+    goto parse_args
+)
 
 echo Unknown validation module: %~1 1>&2
 goto usage
@@ -43,6 +50,7 @@ if "%HAS_MODULES%"=="0" (
     set "ALL=1"
     set "SEL_HTTP=1"
     set "SEL_KEY_VAULT=1"
+    set "SEL_COSMOS=1"
 )
 
 where uv >nul 2>&1
@@ -57,7 +65,7 @@ if "%CLEAN%"=="1" (
     set "CACHE_ARG=--no-cache"
     if exist ".venv" rmdir /s /q ".venv"
     if exist "dist" rmdir /s /q "dist"
-    for %%P in (http-client key-vault) do (
+    for %%P in (http-client key-vault cosmos) do (
         if exist "%%P\build" rmdir /s /q "%%P\build"
         if exist "%%P\.pytest_cache" rmdir /s /q "%%P\.pytest_cache"
         if exist "%%P\.ruff_cache" rmdir /s /q "%%P\.ruff_cache"
@@ -82,6 +90,7 @@ if "%ALL%"=="1" (
     set "SYNC_PACKAGES="
     if "!SEL_HTTP!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-http"
     if "!SEL_KEY_VAULT!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-key-vault"
+    if "!SEL_COSMOS!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-cosmos"
 
     call :run uv sync --python "%PYTHON_BIN%" --no-python-downloads %CACHE_ARG% --only-group dev --frozen
     if errorlevel 1 exit /b 1
@@ -100,11 +109,15 @@ if "%ALL%"=="1" (
     if errorlevel 1 exit /b 1
     if "!SEL_KEY_VAULT!"=="1" call :check_ruff key-vault
     if errorlevel 1 exit /b 1
+    if "!SEL_COSMOS!"=="1" call :check_ruff cosmos
+    if errorlevel 1 exit /b 1
 )
 
 if "!SEL_HTTP!"=="1" call :check_module http-client atlanticus.connectivity.http
 if errorlevel 1 exit /b 1
 if "!SEL_KEY_VAULT!"=="1" call :check_module key-vault atlanticus.connectivity.key_vault
+if errorlevel 1 exit /b 1
+if "!SEL_COSMOS!"=="1" call :check_module cosmos atlanticus.connectivity.cosmos
 if errorlevel 1 exit /b 1
 
 if exist "dist" rmdir /s /q "dist"
@@ -117,6 +130,9 @@ if "!SEL_HTTP!"=="1" set /a SELECTED_COUNT+=1
 if "!SEL_KEY_VAULT!"=="1" call :build_module key-vault
 if errorlevel 1 exit /b 1
 if "!SEL_KEY_VAULT!"=="1" set /a SELECTED_COUNT+=1
+if "!SEL_COSMOS!"=="1" call :build_module cosmos
+if errorlevel 1 exit /b 1
+if "!SEL_COSMOS!"=="1" set /a SELECTED_COUNT+=1
 
 set /a WHEEL_COUNT=0
 if exist "dist\*.whl" (
@@ -144,10 +160,25 @@ if "%DOCKER%"=="1" (
         if not "!DOCKER_CODE!"=="0" exit /b !DOCKER_CODE!
     )
     if "!SEL_KEY_VAULT!"=="1" echo No Docker integration is defined for key-vault; unit validation completed.
+    if "!SEL_COSMOS!"=="1" (
+        where docker >nul 2>&1
+        if errorlevel 1 (
+            echo docker is required for Cosmos integration tests. 1>&2
+            exit /b 1
+        )
+        docker compose -f docker\cosmos\compose.yaml down -v --remove-orphans >nul 2>&1
+        docker image rm atlanticus-cosmos-integration:local >nul 2>&1
+        call :run docker compose -f docker\cosmos\compose.yaml up --build --abort-on-container-exit --exit-code-from cosmos-integration
+        set "COSMOS_DOCKER_CODE=!errorlevel!"
+        if not "!COSMOS_DOCKER_CODE!"=="0" docker compose -f docker\cosmos\compose.yaml logs cosmos-emulator cosmos-integration
+        docker compose -f docker\cosmos\compose.yaml down -v --remove-orphans >nul 2>&1
+        docker image rm atlanticus-cosmos-integration:local >nul 2>&1
+        if not "!COSMOS_DOCKER_CODE!"=="0" exit /b !COSMOS_DOCKER_CODE!
+    )
 )
 
 if "%ALL%"=="1" (
-    echo Connectivity validation passed: 2 packages, 2 wheels.
+    echo Connectivity validation passed: 3 packages, 3 wheels.
 ) else if "!SELECTED_COUNT!"=="1" (
     echo Connectivity validation passed: 1 selected package, 1 wheel.
 ) else (
@@ -180,6 +211,6 @@ exit /b %errorlevel%
 
 :usage
 echo Usage: %~nx0 [module ...] [--clean] [--docker] 1>&2
-echo Modules: http-client key-vault 1>&2
+echo Modules: http-client key-vault cosmos 1>&2
 echo No modules validates the complete migrated connectivity workspace. 1>&2
 exit /b 2

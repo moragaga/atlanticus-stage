@@ -21,11 +21,13 @@ atlanticus-kernel = { path = "../backend/kernel", editable = true }
 atlanticus-observability = { path = "../backend/observability", editable = true }
 atlanticus-http = { workspace = true }
 atlanticus-key-vault = { workspace = true }
+atlanticus-cosmos = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "http-client",
     "key-vault",
+    "cosmos",
 ]
 
 [tool.ruff]
@@ -55,6 +57,7 @@ combine-as-imports = true
 testpaths = [
     "http-client/tests",
     "key-vault/tests",
+    "cosmos/tests",
 ]
 addopts = "-q"
 markers = [

@@ -4,7 +4,7 @@ set -eo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$ROOT"
 
-PACKAGES="http-client key-vault"
+PACKAGES="http-client key-vault cosmos"
 SELECTED=""
 ORDERED_SELECTED=""
 CLEAN=0
@@ -18,6 +18,7 @@ Usage: $0 [module ...] [--clean] [--docker]
 Modules:
   http-client
   key-vault
+  cosmos
 
 No modules validates the complete migrated connectivity workspace.
 --docker adds integration tests for selected modules that provide them.
@@ -35,6 +36,7 @@ distribution_name() {
   case "$1" in
     http-client) echo "atlanticus-http" ;;
     key-vault) echo "atlanticus-key-vault" ;;
+    cosmos) echo "atlanticus-cosmos" ;;
   esac
 }
 
@@ -42,6 +44,7 @@ import_name() {
   case "$1" in
     http-client) echo "atlanticus.connectivity.http" ;;
     key-vault) echo "atlanticus.connectivity.key_vault" ;;
+    cosmos) echo "atlanticus.connectivity.cosmos" ;;
   esac
 }
 
@@ -53,7 +56,7 @@ for arg in "$@"; do
     --docker)
       DOCKER=1
       ;;
-    http-client|key-vault)
+    http-client|key-vault|cosmos)
       if ! contains_module "$SELECTED" "$arg"; then
         SELECTED="$SELECTED $arg"
       fi
@@ -211,10 +214,33 @@ if [[ "$DOCKER" -eq 1 ]]; then
   if contains_module "$ORDERED_SELECTED" "key-vault"; then
     echo "No Docker integration is defined for key-vault; unit validation completed."
   fi
+  if contains_module "$ORDERED_SELECTED" "cosmos"; then
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "docker is required for Cosmos integration tests." >&2
+      exit 1
+    fi
+    docker compose -f docker/cosmos/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-cosmos-integration:local >/dev/null 2>&1 || true
+    set +e
+    run docker compose -f docker/cosmos/compose.yaml up \
+      --build \
+      --abort-on-container-exit \
+      --exit-code-from cosmos-integration
+    cosmos_docker_code=$?
+    set -e
+    if [[ "$cosmos_docker_code" -ne 0 ]]; then
+      docker compose -f docker/cosmos/compose.yaml logs cosmos-emulator cosmos-integration || true
+    fi
+    docker compose -f docker/cosmos/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-cosmos-integration:local >/dev/null 2>&1 || true
+    if [[ "$cosmos_docker_code" -ne 0 ]]; then
+      exit "$cosmos_docker_code"
+    fi
+  fi
 fi
 
 if [[ "$ALL" -eq 1 ]]; then
-  echo "Connectivity validation passed: 2 packages, 2 wheels."
+  echo "Connectivity validation passed: 3 packages, 3 wheels."
 elif [[ "$selected_count" -eq 1 ]]; then
   echo "Connectivity validation passed: 1 selected package, 1 wheel."
 else
