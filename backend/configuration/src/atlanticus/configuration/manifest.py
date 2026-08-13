@@ -201,8 +201,7 @@ def _optional_value(
         return None
     if not isinstance(value, str):
         raise SecretsManifestError(
-            f"Secrets manifest variable '{variable_name}' must define value "
-            'as a string or null.'
+            f"Secrets manifest variable '{variable_name}' must define value as a string or null."
         )
     if value == '':
         return None

@@ -115,9 +115,7 @@ class DatasetPartition:
             if not isinstance(dimension, str):
                 raise DatasetTargetError('partition dimension names must be strings')
             if not isinstance(value, str):
-                raise DatasetTargetError(
-                    f'partition value for {dimension} must be a string'
-                )
+                raise DatasetTargetError(f'partition value for {dimension} must be a string')
         if dimensions is None:
             return cls(values=tuple(values.items()))
         if isinstance(dimensions, str | bytes):
@@ -125,9 +123,7 @@ class DatasetPartition:
         try:
             expected_dimensions = tuple(dimensions)
         except TypeError as error:
-            raise DatasetTargetError(
-                'partition dimensions must be an iterable of names'
-            ) from error
+            raise DatasetTargetError('partition dimensions must be an iterable of names') from error
         for dimension in expected_dimensions:
             validate_dimension_name(
                 dimension,

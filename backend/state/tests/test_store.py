@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
-from threading import Event
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 import pytest
@@ -262,7 +262,6 @@ def test_warning_quality_is_a_valid_committed_state(tmp_path: Path) -> None:
         'quality_status': 'warning',
         'missing_count': 3,
     }
-
 
 
 def test_replace_serializes_clock_and_commit_order_between_threads(

@@ -424,7 +424,7 @@ class ExecutionLease:
             value = json.loads(self._path.read_text(encoding='utf-8'))
         except FileNotFoundError:
             return None
-        except (UnicodeError, json.JSONDecodeError):
+        except UnicodeError, json.JSONDecodeError:
             return {}
         return value if isinstance(value, dict) else {}
 

@@ -113,7 +113,6 @@ def test_expiring_set_ignores_observability_failures(tmp_path: Path) -> None:
     assert sum(key_set.contains_many(('first', 'second'))) == 1
 
 
-
 def test_reduced_capacity_is_enforced_during_read_operations(tmp_path: Path) -> None:
     clock = MutableClock()
     wide = _key_set(tmp_path, clock, max_entries=3)

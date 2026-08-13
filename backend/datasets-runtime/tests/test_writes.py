@@ -26,6 +26,7 @@ def _dispatch_target(definition: DatasetDefinition):
         partition={'year': '2026', 'month': '07', 'day': '21'},
     )
 
+
 def test_replace_accepts_dataframe_and_persists_no_index(
     dataset_runtime: DatasetRuntime,
     parquet_store: ParquetDatasetStore,
@@ -48,6 +49,7 @@ def test_replace_accepts_dataframe_and_persists_no_index(
     assert stored.column_names == ['timestamp', 'value']
     assert stored['value'].to_pylist() == [10.0]
     assert dataframe.index.name == 'source_index'
+
 
 def test_pi_poc_merges_pandas_and_incoming_nulls_replace_previous_values(
     dataset_runtime: DatasetRuntime,
@@ -98,6 +100,7 @@ def test_pi_poc_merges_pandas_and_incoming_nulls_replace_previous_values(
     assert merged['tk12_nivel_inst'].iloc[[1, 2]].tolist() == [21.0, 22.0]
     assert pd.isna(merged['tk12_nivel_inst'].iloc[0])
 
+
 def test_merge_validates_keys_before_the_store(
     dataset_runtime: DatasetRuntime,
     pi_definition: DatasetDefinition,
@@ -124,6 +127,7 @@ def test_merge_validates_keys_before_the_store(
             ),
             key_columns=('timestamp',),
         )
+
 
 def test_empty_replace_and_merge_skip_without_creating_target(
     dataset_runtime: DatasetRuntime,
@@ -161,6 +165,7 @@ def test_empty_replace_and_merge_skip_without_creating_target(
         definition=pi_definition,
         target=merge_target,
     ).exists()
+
 
 def test_dispatch_poc_publishes_mixed_pandas_and_arrow_parts_atomically(
     dataset_runtime: DatasetRuntime,
@@ -213,6 +218,7 @@ def test_dispatch_poc_publishes_mixed_pandas_and_arrow_parts_atomically(
     assert removed.status is PublicationStatus.COMMITTED
     assert remaining['shift_id'].to_pylist() == [26199002]
 
+
 def test_empty_part_skips_the_whole_composition_and_preserves_publication(
     dataset_runtime: DatasetRuntime,
     dispatch_definition: DatasetDefinition,
@@ -253,6 +259,7 @@ def test_empty_part_skips_the_whole_composition_and_preserves_publication(
 
     assert result.status is PublicationStatus.SKIPPED
     assert table['shift_id'].to_pylist() == [26199001]
+
 
 def test_empty_parts_request_is_skipped(
     dataset_runtime: DatasetRuntime,

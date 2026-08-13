@@ -151,7 +151,9 @@ def test_secret_resolver_must_return_a_non_empty_string(tmp_path) -> None:
         bootstrap.load(process_values={'ENVIRONMENT': 'uat'})
 
 
-def test_deployed_source_discriminator_ignores_the_inactive_field_and_preserves_values(tmp_path) -> None:
+def test_deployed_source_discriminator_ignores_the_inactive_field_and_preserves_values(
+    tmp_path,
+) -> None:
     path = tmp_path / 'secrets.json'
     path.write_text(
         json.dumps(
@@ -228,7 +230,6 @@ def test_deployed_preserves_whitespace_only_values(tmp_path) -> None:
 
     assert configuration.require('STATIC_SPACE') == ' '
     assert configuration.require('SECRET_SPACE') == ' '
-
 
 
 def test_key_vault_source_is_automatically_sensitive(tmp_path) -> None:

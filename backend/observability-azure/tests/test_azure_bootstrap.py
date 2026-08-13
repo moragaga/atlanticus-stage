@@ -317,7 +317,9 @@ def test_preview_bootstrap_suppresses_sensitive_exception_context(tmp_path, monk
     assert 'must-not-leak' not in formatted
 
 
-@pytest.mark.parametrize('file_name', ['../escape.jsonl', 'nested/file.jsonl', 'nested\\file.jsonl', '.', '..'])
+@pytest.mark.parametrize(
+    'file_name', ['../escape.jsonl', 'nested/file.jsonl', 'nested\\file.jsonl', '.', '..']
+)
 def test_preview_writer_rejects_non_basename_file_names(tmp_path, file_name) -> None:
     writer = AzurePreviewWriter(tmp_path)
 
