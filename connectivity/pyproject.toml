@@ -19,22 +19,12 @@ package = false
 [tool.uv.sources]
 atlanticus-kernel = { path = "../backend/kernel", editable = true }
 atlanticus-observability = { path = "../backend/observability", editable = true }
-atlanticus-blob = { workspace = true }
-atlanticus-service-bus = { workspace = true }
 atlanticus-http = { workspace = true }
-atlanticus-sql = { workspace = true }
-atlanticus-cosmos = { workspace = true }
-atlanticus-redis = { workspace = true }
 atlanticus-key-vault = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "blob",
-    "service-bus",
     "http-client",
-    "sql",
-    "cosmos",
-    "redis-store",
     "key-vault",
 ]
 
@@ -63,15 +53,10 @@ combine-as-imports = true
 
 [tool.pytest.ini_options]
 testpaths = [
-    "blob/tests",
-    "service-bus/tests",
     "http-client/tests",
-    "sql/tests",
-    "cosmos/tests",
-    "redis-store/tests",
     "key-vault/tests",
 ]
-addopts = "-q --import-mode=importlib"
+addopts = "-q"
 markers = [
     "integration: pruebas que requieren servicios externos dentro de Docker",
 ]

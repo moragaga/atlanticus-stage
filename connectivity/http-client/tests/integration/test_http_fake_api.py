@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import time
 from io import BytesIO
-from typing import Any
 
 import pytest
 
@@ -29,9 +28,9 @@ def test_public_bearer_and_basic_contracts_against_fake_api() -> None:
     _wait_until_ready()
 
     modes = (
-        ('public', _settings(suffix='PUBLIC', auth_mode=HttpAuthMode.NONE)),
-        ('bearer', _settings(suffix='BEARER', auth_mode=HttpAuthMode.BEARER)),
-        ('basic', _settings(suffix='BASIC', auth_mode=HttpAuthMode.BASIC)),
+        ('public', _settings(auth_mode=HttpAuthMode.NONE)),
+        ('bearer', _settings(auth_mode=HttpAuthMode.BEARER)),
+        ('basic', _settings(auth_mode=HttpAuthMode.BASIC)),
     )
     for route, settings in modes:
         with HttpClient(settings=settings) as client:
@@ -50,7 +49,7 @@ def test_public_bearer_and_basic_contracts_against_fake_api() -> None:
             assert payload['correlation_id'] == f'{route}-correlation'
             assert first.headers['x-fake-connection-id'] == second.headers['x-fake-connection-id']
 
-    public = HttpClient(settings=_settings(suffix='PUBLIC', auth_mode=HttpAuthMode.NONE))
+    public = HttpClient(settings=_settings(auth_mode=HttpAuthMode.NONE))
     with public:
         assert public.request_text('GET', 'public/text') == 'respuesta-atlanticus'
         assert public.request_bytes('GET', 'public/bytes') == b'\x00atlanticus-http\xff'
@@ -80,7 +79,7 @@ def test_public_bearer_and_basic_contracts_against_fake_api() -> None:
 def test_invalid_credentials_status_errors_and_timeout_are_safe_and_not_retried() -> None:
     _require_integration()
     _wait_until_ready()
-    admin = HttpClient(settings=_settings(suffix='PUBLIC', auth_mode=HttpAuthMode.NONE))
+    admin = HttpClient(settings=_settings(auth_mode=HttpAuthMode.NONE))
     with admin:
         admin.request_json('POST', 'admin/reset')
 
@@ -97,8 +96,8 @@ def test_invalid_credentials_status_errors_and_timeout_are_safe_and_not_retried(
         password='wrong-password',
         allow_insecure_http=True,
     )
-    valid_bearer = _settings(suffix='BEARER', auth_mode=HttpAuthMode.BEARER)
-    valid_basic = _settings(suffix='BASIC', auth_mode=HttpAuthMode.BASIC)
+    valid_bearer = _settings(auth_mode=HttpAuthMode.BEARER)
+    valid_basic = _settings(auth_mode=HttpAuthMode.BASIC)
     for settings, endpoint in (
         (invalid_bearer, 'bearer/json'),
         (invalid_basic, 'basic/json'),
@@ -112,7 +111,7 @@ def test_invalid_credentials_status_errors_and_timeout_are_safe_and_not_retried(
         assert captured.value.status_code == 401
         assert 'wrong-' not in repr(captured.value)
 
-    public = HttpClient(settings=_settings(suffix='PUBLIC', auth_mode=HttpAuthMode.NONE))
+    public = HttpClient(settings=_settings(auth_mode=HttpAuthMode.NONE))
     with public:
         for status_code in (404, 503):
             with pytest.raises(HttpStatusError) as captured:
@@ -139,27 +138,27 @@ def test_invalid_credentials_status_errors_and_timeout_are_safe_and_not_retried(
 
     assert captured.value.phase == HttpTimeoutPhase.READ
     assert captured.value.__cause__ is None
-    with HttpClient(settings=_settings(suffix='PUBLIC', auth_mode=HttpAuthMode.NONE)) as client:
+    with HttpClient(settings=_settings(auth_mode=HttpAuthMode.NONE)) as client:
         counts = client.request_json('GET', 'admin/counts')['counts']
     assert counts['public.slow'] == 1
 
 
-def _settings(*, suffix: str, auth_mode: HttpAuthMode) -> HttpSettings:
-    values: dict[str, Any] = {
-        f'HTTP_BASE_URL_{suffix}': _BASE_URL,
-        f'HTTP_AUTH_MODE_{suffix}': auth_mode.value,
-        f'HTTP_CONNECT_TIMEOUT_SECONDS_{suffix}': '2',
-        f'HTTP_READ_TIMEOUT_SECONDS_{suffix}': '2',
-        f'HTTP_WRITE_TIMEOUT_SECONDS_{suffix}': '2',
-        f'HTTP_POOL_TIMEOUT_SECONDS_{suffix}': '2',
-        f'HTTP_ALLOW_INSECURE_HTTP_{suffix}': 'true',
+def _settings(*, auth_mode: HttpAuthMode) -> HttpSettings:
+    values: dict[str, object] = {
+        'base_url': _BASE_URL,
+        'auth_mode': auth_mode,
+        'connect_timeout_seconds': 2.0,
+        'read_timeout_seconds': 2.0,
+        'write_timeout_seconds': 2.0,
+        'pool_timeout_seconds': 2.0,
+        'allow_insecure_http': True,
     }
     if auth_mode == HttpAuthMode.BEARER:
-        values[f'HTTP_BEARER_TOKEN_{suffix}'] = _BEARER_TOKEN
+        values['bearer_token'] = _BEARER_TOKEN
     if auth_mode == HttpAuthMode.BASIC:
-        values[f'HTTP_USERNAME_{suffix}'] = _BASIC_USERNAME
-        values[f'HTTP_PASSWORD_{suffix}'] = _BASIC_PASSWORD
-    return HttpSettings.from_mapping(values=values, suffix=suffix)
+        values['username'] = _BASIC_USERNAME
+        values['password'] = _BASIC_PASSWORD
+    return HttpSettings(**values)
 
 
 def _require_integration() -> None:

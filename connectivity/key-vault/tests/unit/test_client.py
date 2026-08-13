@@ -291,3 +291,35 @@ def test_constructor_exposes_no_credential_or_sdk_client_injection() -> None:
         KeyVaultClient(settings=_settings(), credential=object())  # type: ignore[call-arg]
     with pytest.raises(TypeError):
         KeyVaultClient(settings=_settings(), secret_client=object())  # type: ignore[call-arg]
+
+
+def test_secret_name_accepts_azure_max_length_and_rejects_longer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    max_name = 'A' * 127
+    _install_sdk(monkeypatch, values={max_name: 'secret'})
+    client = KeyVaultClient(settings=_settings())
+
+    assert client.get_secret(max_name) == 'secret'
+    with pytest.raises(KeyVaultConfigurationError):
+        client.get_secret('A' * 128)
+
+
+def test_constructor_rejects_invalid_settings() -> None:
+    with pytest.raises(KeyVaultConfigurationError):
+        KeyVaultClient(settings=object())  # type: ignore[arg-type]
+
+
+def test_open_authentication_failure_is_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def credential_factory() -> FakeCredential:
+        raise ClientAuthenticationError('private-credential-details')
+
+    monkeypatch.setattr(client_module, 'DefaultAzureCredential', credential_factory)
+    client = KeyVaultClient(settings=_settings())
+
+    with pytest.raises(KeyVaultAuthenticationError) as captured:
+        client.open()
+
+    assert 'private-credential-details' not in str(captured.value)

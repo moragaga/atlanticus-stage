@@ -82,6 +82,31 @@ def test_authentication_modes_send_only_the_expected_header(
     assert requests[0].headers.get('Authorization') == expected_authorization
 
 
+def test_basic_authentication_preserves_whitespace_in_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, request=request)
+
+    _install_transport(monkeypatch, handler)
+    settings = HttpSettings(
+        base_url='https://api.example.test',
+        auth_mode=HttpAuthMode.BASIC,
+        username=' api-user ',
+        password=' private-password ',
+    )
+
+    with HttpClient(settings=settings) as client:
+        client.request('GET', 'ready')
+
+    assert requests[0].headers['Authorization'] == (
+        'Basic IGFwaS11c2VyIDogcHJpdmF0ZS1wYXNzd29yZCA='
+    )
+
+
 def test_generic_request_supports_json_text_bytes_params_and_headers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -73,3 +73,30 @@ def test_settings_has_no_alternative_vault_name_factories() -> None:
     assert not hasattr(KeyVaultSettings, 'from_name')
     assert not hasattr(KeyVaultSettings, 'from_url')
     assert not hasattr(KeyVaultSettings, 'from_mapping')
+
+
+def test_settings_accepts_derived_vault_name_at_azure_max_length() -> None:
+    settings = KeyVaultSettings(
+        company_abrev='COMPANY1',
+        environment=Environment.from_value('dev'),
+        product_abrev='PRODUCT1',
+    )
+
+    assert settings.vault_name == 'company1-dev-kv-product1'
+    assert len(settings.vault_name) == 24
+
+
+def test_settings_rejects_non_string_components() -> None:
+    with pytest.raises(KeyVaultConfigurationError):
+        KeyVaultSettings(
+            company_abrev=object(),  # type: ignore[arg-type]
+            environment=Environment.from_value('dev'),
+            product_abrev='ADA',
+        )
+
+    with pytest.raises(KeyVaultConfigurationError):
+        KeyVaultSettings(
+            company_abrev='MLP',
+            environment=Environment.from_value('dev'),
+            product_abrev=object(),  # type: ignore[arg-type]
+        )

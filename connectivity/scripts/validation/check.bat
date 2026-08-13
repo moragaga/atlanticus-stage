@@ -1,0 +1,185 @@
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
+
+cd /d "%~dp0\..\.."
+
+set "CLEAN=0"
+set "DOCKER=0"
+set "ALL=0"
+set "HAS_MODULES=0"
+set "SEL_HTTP=0"
+set "SEL_KEY_VAULT=0"
+
+:parse_args
+if "%~1"=="" goto args_done
+if /I "%~1"=="--clean" (
+    set "CLEAN=1"
+    shift
+    goto parse_args
+)
+if /I "%~1"=="--docker" (
+    set "DOCKER=1"
+    shift
+    goto parse_args
+)
+if /I "%~1"=="http-client" (
+    set "SEL_HTTP=1"
+    set "HAS_MODULES=1"
+    shift
+    goto parse_args
+)
+if /I "%~1"=="key-vault" (
+    set "SEL_KEY_VAULT=1"
+    set "HAS_MODULES=1"
+    shift
+    goto parse_args
+)
+
+echo Unknown validation module: %~1 1>&2
+goto usage
+
+:args_done
+if "%HAS_MODULES%"=="0" (
+    set "ALL=1"
+    set "SEL_HTTP=1"
+    set "SEL_KEY_VAULT=1"
+)
+
+where uv >nul 2>&1
+if errorlevel 1 (
+    echo uv is required. 1>&2
+    exit /b 1
+)
+
+set "CACHE_ARG="
+if "%CLEAN%"=="1" (
+    if not defined UV_HTTP_TIMEOUT set "UV_HTTP_TIMEOUT=120"
+    set "CACHE_ARG=--no-cache"
+    if exist ".venv" rmdir /s /q ".venv"
+    if exist "dist" rmdir /s /q "dist"
+    for %%P in (http-client key-vault) do (
+        if exist "%%P\build" rmdir /s /q "%%P\build"
+        if exist "%%P\.pytest_cache" rmdir /s /q "%%P\.pytest_cache"
+        if exist "%%P\.ruff_cache" rmdir /s /q "%%P\.ruff_cache"
+        for /d %%D in ("%%P\*.egg-info") do if exist "%%~fD" rmdir /s /q "%%~fD"
+    )
+)
+
+set "PYTHON_BIN="
+for /f "usebackq delims=" %%P in (`uv python find 3.14.2 --no-python-downloads`) do set "PYTHON_BIN=%%P"
+if not defined PYTHON_BIN exit /b 1
+
+"%PYTHON_BIN%" -c "import sys; raise SystemExit(0 if sys.version_info[:3] == (3, 14, 2) else 1)"
+if errorlevel 1 exit /b 1
+
+call :run uv lock --python "%PYTHON_BIN%" --no-python-downloads %CACHE_ARG% --check
+if errorlevel 1 exit /b 1
+
+if "%ALL%"=="1" (
+    call :run uv sync --python "%PYTHON_BIN%" --no-python-downloads %CACHE_ARG% --all-packages --group dev --frozen --no-editable
+    if errorlevel 1 exit /b 1
+) else (
+    set "SYNC_PACKAGES="
+    if "!SEL_HTTP!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-http"
+    if "!SEL_KEY_VAULT!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-key-vault"
+
+    call :run uv sync --python "%PYTHON_BIN%" --no-python-downloads %CACHE_ARG% --only-group dev --frozen
+    if errorlevel 1 exit /b 1
+
+    call :run uv sync --python "%PYTHON_BIN%" --no-python-downloads %CACHE_ARG% !SYNC_PACKAGES! --no-default-groups --inexact --frozen --no-editable
+    if errorlevel 1 exit /b 1
+)
+
+if "%ALL%"=="1" (
+    call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check .
+    if errorlevel 1 exit /b 1
+    call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format --check .
+    if errorlevel 1 exit /b 1
+) else (
+    if "!SEL_HTTP!"=="1" call :check_ruff http-client
+    if errorlevel 1 exit /b 1
+    if "!SEL_KEY_VAULT!"=="1" call :check_ruff key-vault
+    if errorlevel 1 exit /b 1
+)
+
+if "!SEL_HTTP!"=="1" call :check_module http-client atlanticus.connectivity.http
+if errorlevel 1 exit /b 1
+if "!SEL_KEY_VAULT!"=="1" call :check_module key-vault atlanticus.connectivity.key_vault
+if errorlevel 1 exit /b 1
+
+if exist "dist" rmdir /s /q "dist"
+mkdir "dist"
+
+set /a SELECTED_COUNT=0
+if "!SEL_HTTP!"=="1" call :build_module http-client
+if errorlevel 1 exit /b 1
+if "!SEL_HTTP!"=="1" set /a SELECTED_COUNT+=1
+if "!SEL_KEY_VAULT!"=="1" call :build_module key-vault
+if errorlevel 1 exit /b 1
+if "!SEL_KEY_VAULT!"=="1" set /a SELECTED_COUNT+=1
+
+set /a WHEEL_COUNT=0
+if exist "dist\*.whl" (
+    for %%F in (dist\*.whl) do set /a WHEEL_COUNT+=1
+)
+if not "!WHEEL_COUNT!"=="!SELECTED_COUNT!" (
+    echo Expected !SELECTED_COUNT! wheels in dist, found !WHEEL_COUNT!. 1>&2
+    exit /b 1
+)
+
+if "%DOCKER%"=="1" (
+    if "!SEL_HTTP!"=="1" (
+        where docker >nul 2>&1
+        if errorlevel 1 (
+            echo docker is required for HTTP integration tests. 1>&2
+            exit /b 1
+        )
+        docker compose -f docker\http\compose.yaml down -v --remove-orphans >nul 2>&1
+        docker image rm atlanticus-http-integration:local >nul 2>&1
+        call :run docker compose -f docker\http\compose.yaml up --build --abort-on-container-exit --exit-code-from http-integration
+        set "DOCKER_CODE=!errorlevel!"
+        if not "!DOCKER_CODE!"=="0" docker compose -f docker\http\compose.yaml logs http-fake-api http-integration
+        docker compose -f docker\http\compose.yaml down -v --remove-orphans >nul 2>&1
+        docker image rm atlanticus-http-integration:local >nul 2>&1
+        if not "!DOCKER_CODE!"=="0" exit /b !DOCKER_CODE!
+    )
+    if "!SEL_KEY_VAULT!"=="1" echo No Docker integration is defined for key-vault; unit validation completed.
+)
+
+if "%ALL%"=="1" (
+    echo Connectivity validation passed: 2 packages, 2 wheels.
+) else if "!SELECTED_COUNT!"=="1" (
+    echo Connectivity validation passed: 1 selected package, 1 wheel.
+) else (
+    echo Connectivity validation passed: !SELECTED_COUNT! selected packages, !WHEEL_COUNT! wheels.
+)
+exit /b 0
+
+:check_ruff
+call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check "%~1"
+if errorlevel 1 exit /b 1
+call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format --check "%~1"
+exit /b %errorlevel%
+
+:check_module
+call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync pytest "%~1\tests\unit"
+if errorlevel 1 exit /b 1
+call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync python -c "import %~2"
+exit /b %errorlevel%
+
+:build_module
+if exist "%~1\build" rmdir /s /q "%~1\build"
+for /d %%D in ("%~1\*.egg-info") do if exist "%%~fD" rmdir /s /q "%%~fD"
+call :run uv build "%~1" --python "%PYTHON_BIN%" --no-python-downloads %CACHE_ARG% --wheel --out-dir dist
+exit /b %errorlevel%
+
+:run
+echo ^> %*
+%*
+exit /b %errorlevel%
+
+:usage
+echo Usage: %~nx0 [module ...] [--clean] [--docker] 1>&2
+echo Modules: http-client key-vault 1>&2
+echo No modules validates the complete migrated connectivity workspace. 1>&2
+exit /b 2

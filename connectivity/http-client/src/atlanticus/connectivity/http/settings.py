@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import math
-import re
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -13,27 +11,6 @@ from atlanticus.connectivity.http.errors import HttpConfigurationError
 from atlanticus.connectivity.http.models import HttpAuthMode
 
 _DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024
-_SUFFIX_PATTERN = re.compile(r'^[A-Z0-9]+(?:_[A-Z0-9]+)*$')
-_TRUE_VALUES = frozenset({'1', 'true', 'yes', 'on'})
-_FALSE_VALUES = frozenset({'0', 'false', 'no', 'off'})
-
-
-@dataclass(frozen=True, slots=True)
-class HttpConfigurationKeys:
-    """Claves exactas resueltas para una conexión HTTP concreta."""
-
-    base_url: str
-    auth_mode: str
-    bearer_token: str
-    username: str
-    password: str
-    connect_timeout_seconds: str
-    read_timeout_seconds: str
-    write_timeout_seconds: str
-    pool_timeout_seconds: str
-    max_response_bytes: str
-    verify_tls: str
-    allow_insecure_http: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +29,6 @@ class HttpSettings:
     max_response_bytes: int = _DEFAULT_MAX_RESPONSE_BYTES
     verify_tls: bool = True
     allow_insecure_http: bool = False
-    suffix: str | None = None
 
     def __post_init__(self) -> None:
         auth_mode = _require_auth_mode(self.auth_mode)
@@ -60,7 +36,6 @@ class HttpSettings:
         allow_insecure_http = _require_bool(self.allow_insecure_http, 'allow_insecure_http')
         object.__setattr__(self, 'verify_tls', verify_tls)
         object.__setattr__(self, 'allow_insecure_http', allow_insecure_http)
-        object.__setattr__(self, 'suffix', _normalize_configuration_suffix(self.suffix))
         object.__setattr__(
             self,
             'base_url',
@@ -83,9 +58,9 @@ class HttpSettings:
             _require_positive_integer(self.max_response_bytes, 'max_response_bytes'),
         )
 
-        bearer_token = _optional_text(self.bearer_token)
-        username = _optional_text(self.username)
-        password = _optional_text(self.password)
+        bearer_token = _optional_credential(self.bearer_token, 'bearer_token')
+        username = _optional_credential(self.username, 'username')
+        password = _optional_credential(self.password, 'password')
         _validate_authentication(
             auth_mode=auth_mode,
             bearer_token=bearer_token,
@@ -95,105 +70,6 @@ class HttpSettings:
         object.__setattr__(self, 'bearer_token', bearer_token)
         object.__setattr__(self, 'username', username)
         object.__setattr__(self, 'password', password)
-
-    @classmethod
-    def from_mapping(
-        cls,
-        *,
-        values: Mapping[str, Any],
-        suffix: str | None = None,
-    ) -> HttpSettings:
-        """Construye settings desde valores resueltos por otra capa."""
-
-        if not isinstance(values, Mapping):
-            raise HttpConfigurationError('values must be a mapping')
-        normalized_suffix = _normalize_configuration_suffix(suffix)
-        keys = _build_http_configuration_keys(suffix=normalized_suffix)
-        missing = tuple(
-            key
-            for key in (keys.base_url, keys.auth_mode)
-            if _optional_mapping_text(values, key) is None
-        )
-        if missing:
-            raise HttpConfigurationError('Missing HTTP configuration keys: ' + ', '.join(missing))
-
-        return cls(
-            base_url=_require_mapping_text(values, keys.base_url),
-            auth_mode=_parse_auth_mode(_require_mapping_text(values, keys.auth_mode)),
-            bearer_token=_optional_mapping_text(values, keys.bearer_token),
-            username=_optional_mapping_text(values, keys.username),
-            password=_optional_mapping_text(values, keys.password),
-            connect_timeout_seconds=_parse_mapping_number(
-                values,
-                keys.connect_timeout_seconds,
-                default=5.0,
-            ),
-            read_timeout_seconds=_parse_mapping_number(
-                values,
-                keys.read_timeout_seconds,
-                default=30.0,
-            ),
-            write_timeout_seconds=_parse_mapping_number(
-                values,
-                keys.write_timeout_seconds,
-                default=30.0,
-            ),
-            pool_timeout_seconds=_parse_mapping_number(
-                values,
-                keys.pool_timeout_seconds,
-                default=5.0,
-            ),
-            max_response_bytes=_parse_mapping_integer(
-                values,
-                keys.max_response_bytes,
-                default=_DEFAULT_MAX_RESPONSE_BYTES,
-            ),
-            verify_tls=_parse_mapping_bool(values, keys.verify_tls, default=True),
-            allow_insecure_http=_parse_mapping_bool(
-                values,
-                keys.allow_insecure_http,
-                default=False,
-            ),
-            suffix=normalized_suffix,
-        )
-
-
-def _build_http_configuration_keys(*, suffix: str | None = None) -> HttpConfigurationKeys:
-    normalized_suffix = _normalize_configuration_suffix(suffix)
-
-    def key(name: str) -> str:
-        base = f'HTTP_{name}'
-        return base if normalized_suffix is None else f'{base}_{normalized_suffix}'
-
-    return HttpConfigurationKeys(
-        base_url=key('BASE_URL'),
-        auth_mode=key('AUTH_MODE'),
-        bearer_token=key('BEARER_TOKEN'),
-        username=key('USERNAME'),
-        password=key('PASSWORD'),
-        connect_timeout_seconds=key('CONNECT_TIMEOUT_SECONDS'),
-        read_timeout_seconds=key('READ_TIMEOUT_SECONDS'),
-        write_timeout_seconds=key('WRITE_TIMEOUT_SECONDS'),
-        pool_timeout_seconds=key('POOL_TIMEOUT_SECONDS'),
-        max_response_bytes=key('MAX_RESPONSE_BYTES'),
-        verify_tls=key('VERIFY_TLS'),
-        allow_insecure_http=key('ALLOW_INSECURE_HTTP'),
-    )
-
-
-def _normalize_configuration_suffix(value: str | None) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise HttpConfigurationError('HTTP configuration suffix must be text')
-    normalized = value.strip().strip('_').upper()
-    if not normalized:
-        return None
-    if _SUFFIX_PATTERN.fullmatch(normalized) is None:
-        raise HttpConfigurationError(
-            'HTTP configuration suffix must contain only letters, numbers and single underscores'
-        )
-    return normalized
 
 
 def _normalize_base_url(value: str, *, allow_insecure_http: bool) -> str:
@@ -224,71 +100,6 @@ def _require_auth_mode(value: Any) -> HttpAuthMode:
     return value
 
 
-def _parse_auth_mode(value: str) -> HttpAuthMode:
-    normalized = value.strip().lower()
-    try:
-        return HttpAuthMode(normalized)
-    except ValueError:
-        raise HttpConfigurationError('auth_mode must be none, bearer or basic') from None
-
-
-def _parse_mapping_number(
-    values: Mapping[str, Any],
-    key: str,
-    *,
-    default: float,
-) -> float:
-    value = _optional_mapping_text(values, key)
-    if value is None:
-        return default
-    try:
-        parsed = float(value)
-    except ValueError:
-        raise HttpConfigurationError(f'{key} must be a number greater than zero') from None
-    if not math.isfinite(parsed) or parsed <= 0:
-        raise HttpConfigurationError(f'{key} must be a number greater than zero')
-    return parsed
-
-
-def _parse_mapping_integer(
-    values: Mapping[str, Any],
-    key: str,
-    *,
-    default: int,
-) -> int:
-    value = _optional_mapping_text(values, key)
-    if value is None:
-        return default
-    try:
-        parsed = int(value)
-    except ValueError:
-        raise HttpConfigurationError(f'{key} must be an integer greater than zero') from None
-    if str(parsed) != value and not (value.startswith('+') and str(parsed) == value[1:]):
-        raise HttpConfigurationError(f'{key} must be an integer greater than zero')
-    return _require_positive_integer(parsed, key)
-
-
-def _parse_mapping_bool(
-    values: Mapping[str, Any],
-    key: str,
-    *,
-    default: bool,
-) -> bool:
-    value = values.get(key)
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return default
-    if isinstance(value, bool):
-        return value
-    if not isinstance(value, str):
-        raise HttpConfigurationError(f'{key} must be a boolean')
-    normalized = value.strip().lower()
-    if normalized in _TRUE_VALUES:
-        return True
-    if normalized in _FALSE_VALUES:
-        return False
-    raise HttpConfigurationError(f'{key} must be a boolean')
-
-
 def _require_positive_number(value: Any, field_name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise HttpConfigurationError(f'{field_name} must be a number greater than zero')
@@ -310,21 +121,14 @@ def _require_bool(value: Any, field_name: str) -> bool:
     return value
 
 
-def _optional_mapping_text(values: Mapping[str, Any], key: str) -> str | None:
-    return _optional_text(values.get(key))
-
-
-def _require_mapping_text(values: Mapping[str, Any], key: str) -> str:
-    return _require_text(_optional_mapping_text(values, key), key)
-
-
-def _optional_text(value: Any) -> str | None:
+def _optional_credential(value: Any, field_name: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str):
-        raise HttpConfigurationError('HTTP text configuration values must be strings')
-    normalized = value.strip()
-    return normalized or None
+        raise HttpConfigurationError(f'{field_name} must be text or null')
+    if value == '':
+        return None
+    return value
 
 
 def _require_text(value: Any, field_name: str) -> str:
@@ -344,7 +148,7 @@ def _validate_authentication(
     password: str | None,
 ) -> None:
     if auth_mode == HttpAuthMode.NONE:
-        if any((bearer_token, username, password)):
+        if any(value is not None for value in (bearer_token, username, password)):
             raise HttpConfigurationError('auth_mode none does not accept credentials')
         return
     if auth_mode == HttpAuthMode.BEARER:

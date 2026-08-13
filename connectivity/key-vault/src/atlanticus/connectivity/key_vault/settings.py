@@ -31,9 +31,7 @@ class KeyVaultSettings:
     def vault_name(self) -> str:
         """Deriva el nombre oficial del vault para el ambiente actual."""
 
-        return (
-            f'{self.company_abrev}-{self.environment.name.value}-kv-{self.product_abrev}'.lower()
-        )
+        return f'{self.company_abrev}-{self.environment.name.value}-kv-{self.product_abrev}'.lower()
 
     @property
     def vault_url(self) -> str:

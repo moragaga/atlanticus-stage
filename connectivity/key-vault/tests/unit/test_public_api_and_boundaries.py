@@ -39,10 +39,7 @@ def test_package_dependencies_match_the_agreed_boundary() -> None:
 
 def test_package_does_not_define_an_explicit_key_vault_name_contract() -> None:
     package_root = _PACKAGE_ROOT / 'src' / 'atlanticus' / 'connectivity' / 'key_vault'
-    source = ''.join(
-        path.read_text(encoding='utf-8')
-        for path in package_root.glob('*.py')
-    )
+    source = ''.join(path.read_text(encoding='utf-8') for path in package_root.glob('*.py'))
 
     assert 'KEY_VAULT_NAME' not in source
     assert 'from_name' not in source

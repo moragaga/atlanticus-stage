@@ -45,8 +45,6 @@ def _safe_parameters(args: tuple[Any, ...], values: Mapping[str, Any]) -> Mappin
     safe: dict[str, Any] = {}
     if isinstance(settings, HttpSettings):
         safe['auth_mode'] = settings.auth_mode.value
-        if settings.suffix is not None:
-            safe['configuration_suffix'] = settings.suffix
     method = values.get('method')
     if isinstance(method, str):
         safe['method'] = method.strip().upper()
