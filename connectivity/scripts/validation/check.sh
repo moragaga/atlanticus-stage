@@ -4,7 +4,7 @@ set -eo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$ROOT"
 
-PACKAGES="http-client key-vault cosmos"
+PACKAGES="http-client key-vault cosmos service-bus"
 SELECTED=""
 ORDERED_SELECTED=""
 CLEAN=0
@@ -19,6 +19,7 @@ Modules:
   http-client
   key-vault
   cosmos
+  service-bus
 
 No modules validates the complete migrated connectivity workspace.
 --docker adds integration tests for selected modules that provide them.
@@ -37,6 +38,7 @@ distribution_name() {
     http-client) echo "atlanticus-http" ;;
     key-vault) echo "atlanticus-key-vault" ;;
     cosmos) echo "atlanticus-cosmos" ;;
+    service-bus) echo "atlanticus-service-bus" ;;
   esac
 }
 
@@ -45,6 +47,7 @@ import_name() {
     http-client) echo "atlanticus.connectivity.http" ;;
     key-vault) echo "atlanticus.connectivity.key_vault" ;;
     cosmos) echo "atlanticus.connectivity.cosmos" ;;
+    service-bus) echo "atlanticus.connectivity.service_bus" ;;
   esac
 }
 
@@ -56,7 +59,7 @@ for arg in "$@"; do
     --docker)
       DOCKER=1
       ;;
-    http-client|key-vault|cosmos)
+    http-client|key-vault|cosmos|service-bus)
       if ! contains_module "$SELECTED" "$arg"; then
         SELECTED="$SELECTED $arg"
       fi
@@ -237,10 +240,33 @@ if [[ "$DOCKER" -eq 1 ]]; then
       exit "$cosmos_docker_code"
     fi
   fi
+  if contains_module "$ORDERED_SELECTED" "service-bus"; then
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "docker is required for Service Bus integration tests." >&2
+      exit 1
+    fi
+    docker compose -f docker/service-bus/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-service-bus-integration:local >/dev/null 2>&1 || true
+    set +e
+    run docker compose -f docker/service-bus/compose.yaml up \
+      --build \
+      --abort-on-container-exit \
+      --exit-code-from service-bus-integration
+    service_bus_docker_code=$?
+    set -e
+    if [[ "$service_bus_docker_code" -ne 0 ]]; then
+      docker compose -f docker/service-bus/compose.yaml logs servicebus-mssql servicebus-emulator service-bus-integration || true
+    fi
+    docker compose -f docker/service-bus/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-service-bus-integration:local >/dev/null 2>&1 || true
+    if [[ "$service_bus_docker_code" -ne 0 ]]; then
+      exit "$service_bus_docker_code"
+    fi
+  fi
 fi
 
 if [[ "$ALL" -eq 1 ]]; then
-  echo "Connectivity validation passed: 3 packages, 3 wheels."
+  echo "Connectivity validation passed: 4 packages, 4 wheels."
 elif [[ "$selected_count" -eq 1 ]]; then
   echo "Connectivity validation passed: 1 selected package, 1 wheel."
 else

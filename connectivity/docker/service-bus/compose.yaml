@@ -1,0 +1,46 @@
+name: atlanticus-service-bus-integration
+
+services:
+  servicebus-mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    hostname: servicebus-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${ATLANTICUS_SERVICE_BUS_SQL_PASSWORD:-Atlanticus_Sb_2026!}"
+    volumes:
+      - servicebus-sql-data:/var/opt/mssql
+    restart: "no"
+
+  servicebus-emulator:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    hostname: servicebus-emulator
+    environment:
+      SQL_SERVER: servicebus-mssql
+      MSSQL_SA_PASSWORD: "${ATLANTICUS_SERVICE_BUS_SQL_PASSWORD:-Atlanticus_Sb_2026!}"
+      ACCEPT_EULA: "Y"
+      EMULATOR_HTTP_PORT: "5300"
+      SQL_WAIT_INTERVAL: "15"
+    volumes:
+      - ./config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+    depends_on:
+      - servicebus-mssql
+    restart: "no"
+
+  service-bus-integration:
+    image: atlanticus-service-bus-integration:local
+    build:
+      context: ../../..
+      dockerfile: connectivity/docker/service-bus/Dockerfile
+    init: true
+    depends_on:
+      - servicebus-emulator
+    environment:
+      ATLANTICUS_RUN_SERVICE_BUS_INTEGRATION: "1"
+      ATLANTICUS_SERVICE_BUS_READY_URL: "http://servicebus-emulator:5300/health"
+      ATLANTICUS_SERVICE_BUS_CONNECTION_STRING: "Endpoint=sb://servicebus-emulator;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+      ATLANTICUS_SERVICE_BUS_TOPIC_NAME: "atlanticus.events"
+      ATLANTICUS_SERVICE_BUS_SUBSCRIPTION_NAME: "atlanticus.integration"
+    restart: "no"
+
+volumes:
+  servicebus-sql-data:

@@ -19,6 +19,7 @@ COPY connectivity/http-client/src /workspace/connectivity/http-client/src
 COPY connectivity/http-client/tests /workspace/connectivity/http-client/tests
 COPY connectivity/key-vault/pyproject.toml /workspace/connectivity/key-vault/pyproject.toml
 COPY connectivity/cosmos/pyproject.toml /workspace/connectivity/cosmos/pyproject.toml
+COPY connectivity/service-bus/pyproject.toml /workspace/connectivity/service-bus/pyproject.toml
 
 WORKDIR /workspace/connectivity
 
