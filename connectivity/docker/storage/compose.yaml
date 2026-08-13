@@ -1,0 +1,25 @@
+name: atlanticus-storage-integration
+
+services:
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.36.0
+    command: azurite-blob --blobHost 0.0.0.0 --inMemoryPersistence --skipApiVersionCheck
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.50
+
+  storage-integration:
+    image: atlanticus-storage-integration:local
+    build:
+      context: ../../..
+      dockerfile: connectivity/docker/storage/Dockerfile
+    init: true
+    depends_on:
+      - azurite
+    environment:
+      ATLANTICUS_RUN_STORAGE_INTEGRATION: "1"
+      ATLANTICUS_STORAGE_ACCOUNT_URL: "http://azurite:10000/devstoreaccount1"
+      ATLANTICUS_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.50

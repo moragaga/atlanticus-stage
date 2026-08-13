@@ -27,6 +27,7 @@ COPY connectivity/key-vault/pyproject.toml /workspace/connectivity/key-vault/pyp
 COPY connectivity/cosmos/pyproject.toml /workspace/connectivity/cosmos/pyproject.toml
 COPY connectivity/service-bus/pyproject.toml /workspace/connectivity/service-bus/pyproject.toml
 COPY connectivity/sql/pyproject.toml connectivity/sql/README.md /workspace/connectivity/sql/
+COPY connectivity/storage/pyproject.toml /workspace/connectivity/storage/pyproject.toml
 COPY connectivity/sql/src /workspace/connectivity/sql/src
 COPY connectivity/sql/tests /workspace/connectivity/sql/tests
 

@@ -4,7 +4,7 @@ set -eo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$ROOT"
 
-PACKAGES="http-client key-vault cosmos service-bus sql"
+PACKAGES="http-client key-vault cosmos service-bus sql storage"
 SELECTED=""
 ORDERED_SELECTED=""
 CLEAN=0
@@ -21,6 +21,7 @@ Modules:
   cosmos
   service-bus
   sql
+  storage
 
 No modules validates the complete migrated connectivity workspace.
 --docker adds integration tests for selected modules that provide them.
@@ -41,6 +42,7 @@ distribution_name() {
     cosmos) echo "atlanticus-cosmos" ;;
     service-bus) echo "atlanticus-service-bus" ;;
     sql) echo "atlanticus-sql" ;;
+    storage) echo "atlanticus-storage" ;;
   esac
 }
 
@@ -51,6 +53,7 @@ import_name() {
     cosmos) echo "atlanticus.connectivity.cosmos" ;;
     service-bus) echo "atlanticus.connectivity.service_bus" ;;
     sql) echo "atlanticus.connectivity.sql" ;;
+    storage) echo "atlanticus.connectivity.storage" ;;
   esac
 }
 
@@ -62,7 +65,7 @@ for arg in "$@"; do
     --docker)
       DOCKER=1
       ;;
-    http-client|key-vault|cosmos|service-bus|sql)
+    http-client|key-vault|cosmos|service-bus|sql|storage)
       if ! contains_module "$SELECTED" "$arg"; then
         SELECTED="$SELECTED $arg"
       fi
@@ -305,10 +308,33 @@ if [[ "$DOCKER" -eq 1 ]]; then
       exit "$sql_docker_code"
     fi
   fi
+  if contains_module "$ORDERED_SELECTED" "storage"; then
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "docker is required for Storage integration tests." >&2
+      exit 1
+    fi
+    docker compose -f docker/storage/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-storage-integration:local >/dev/null 2>&1 || true
+    set +e
+    run docker compose -f docker/storage/compose.yaml up \
+      --build \
+      --abort-on-container-exit \
+      --exit-code-from storage-integration
+    storage_docker_code=$?
+    set -e
+    if [[ "$storage_docker_code" -ne 0 ]]; then
+      docker compose -f docker/storage/compose.yaml logs azurite storage-integration || true
+    fi
+    docker compose -f docker/storage/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-storage-integration:local >/dev/null 2>&1 || true
+    if [[ "$storage_docker_code" -ne 0 ]]; then
+      exit "$storage_docker_code"
+    fi
+  fi
 fi
 
 if [[ "$ALL" -eq 1 ]]; then
-  echo "Connectivity validation passed: 5 packages, 5 wheels."
+  echo "Connectivity validation passed: 6 packages, 6 wheels."
 elif [[ "$selected_count" -eq 1 ]]; then
   echo "Connectivity validation passed: 1 selected package, 1 wheel."
 else
