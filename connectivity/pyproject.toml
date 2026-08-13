@@ -25,6 +25,7 @@ atlanticus-cosmos = { workspace = true }
 atlanticus-service-bus = { workspace = true }
 atlanticus-sql = { workspace = true }
 atlanticus-storage = { workspace = true }
+atlanticus-redis = { workspace = true }
 
 [tool.uv.workspace]
 members = [
@@ -34,6 +35,7 @@ members = [
     "service-bus",
     "sql",
     "storage",
+    "redis",
 ]
 
 [tool.ruff]
@@ -67,6 +69,7 @@ testpaths = [
     "service-bus/tests",
     "sql/tests",
     "storage/tests",
+    "redis/tests",
 ]
 addopts = "-q"
 markers = [

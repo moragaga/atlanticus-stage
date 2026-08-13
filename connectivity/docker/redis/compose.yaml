@@ -1,0 +1,38 @@
+name: atlanticus-redis-integration
+
+services:
+  redis-server:
+    image: redis:8.8.0-alpine3.23
+    environment:
+      REDIS_PASSWORD: "Atlanticus_Redis_2026!"
+    command:
+      - sh
+      - -c
+      - exec redis-server --save '' --appendonly no --requirepass "$$REDIS_PASSWORD"
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    restart: "no"
+    mem_limit: 256m
+    cpus: 0.50
+
+  redis-integration:
+    image: atlanticus-redis-integration:local
+    build:
+      context: ../../..
+      dockerfile: connectivity/docker/redis/Dockerfile
+    init: true
+    depends_on:
+      redis-server:
+        condition: service_healthy
+    environment:
+      ATLANTICUS_RUN_REDIS_INTEGRATION: "1"
+      ATLANTICUS_REDIS_URL: "redis://redis-server:6379"
+      ATLANTICUS_REDIS_USERNAME: "default"
+      ATLANTICUS_REDIS_PASSWORD: "Atlanticus_Redis_2026!"
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.50

@@ -4,7 +4,7 @@ set -eo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$ROOT"
 
-PACKAGES="http-client key-vault cosmos service-bus sql storage"
+PACKAGES="http-client key-vault cosmos service-bus sql storage redis"
 SELECTED=""
 ORDERED_SELECTED=""
 CLEAN=0
@@ -22,6 +22,7 @@ Modules:
   service-bus
   sql
   storage
+  redis
 
 No modules validates the complete migrated connectivity workspace.
 --docker adds integration tests for selected modules that provide them.
@@ -43,6 +44,7 @@ distribution_name() {
     service-bus) echo "atlanticus-service-bus" ;;
     sql) echo "atlanticus-sql" ;;
     storage) echo "atlanticus-storage" ;;
+    redis) echo "atlanticus-redis" ;;
   esac
 }
 
@@ -54,6 +56,7 @@ import_name() {
     service-bus) echo "atlanticus.connectivity.service_bus" ;;
     sql) echo "atlanticus.connectivity.sql" ;;
     storage) echo "atlanticus.connectivity.storage" ;;
+    redis) echo "atlanticus.connectivity.redis" ;;
   esac
 }
 
@@ -65,7 +68,7 @@ for arg in "$@"; do
     --docker)
       DOCKER=1
       ;;
-    http-client|key-vault|cosmos|service-bus|sql|storage)
+    http-client|key-vault|cosmos|service-bus|sql|storage|redis)
       if ! contains_module "$SELECTED" "$arg"; then
         SELECTED="$SELECTED $arg"
       fi
@@ -331,10 +334,33 @@ if [[ "$DOCKER" -eq 1 ]]; then
       exit "$storage_docker_code"
     fi
   fi
+  if contains_module "$ORDERED_SELECTED" "redis"; then
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "docker is required for Redis integration tests." >&2
+      exit 1
+    fi
+    docker compose -f docker/redis/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-redis-integration:local >/dev/null 2>&1 || true
+    set +e
+    run docker compose -f docker/redis/compose.yaml up \
+      --build \
+      --abort-on-container-exit \
+      --exit-code-from redis-integration
+    redis_docker_code=$?
+    set -e
+    if [[ "$redis_docker_code" -ne 0 ]]; then
+      docker compose -f docker/redis/compose.yaml logs redis-server redis-integration || true
+    fi
+    docker compose -f docker/redis/compose.yaml down -v --remove-orphans >/dev/null 2>&1 || true
+    docker image rm atlanticus-redis-integration:local >/dev/null 2>&1 || true
+    if [[ "$redis_docker_code" -ne 0 ]]; then
+      exit "$redis_docker_code"
+    fi
+  fi
 fi
 
 if [[ "$ALL" -eq 1 ]]; then
-  echo "Connectivity validation passed: 6 packages, 6 wheels."
+  echo "Connectivity validation passed: 7 packages, 7 wheels."
 elif [[ "$selected_count" -eq 1 ]]; then
   echo "Connectivity validation passed: 1 selected package, 1 wheel."
 else
