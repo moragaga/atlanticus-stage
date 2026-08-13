@@ -47,4 +47,3 @@ def parse_runtime_options(
         debug=debug,
         run_once=bool(definition.run_once or arguments.run_once or debug),
     )
-

@@ -95,4 +95,3 @@ def _required_value(values: Mapping[str, str], name: str) -> str:
     if raw_value != raw_value.strip():
         raise RuntimeConfigurationError(f'{name} must not contain surrounding whitespace')
     return raw_value
-

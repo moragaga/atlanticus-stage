@@ -116,7 +116,9 @@ class ResolvedConfiguration:
         try:
             copied_sensitive_keys = frozenset(self.sensitive_keys)
         except TypeError:
-            raise ConfigurationValueError('Sensitive configuration keys must be iterable.') from None
+            raise ConfigurationValueError(
+                'Sensitive configuration keys must be iterable.'
+            ) from None
         if any(not isinstance(key, str) for key in copied_sensitive_keys):
             raise ConfigurationValueError('Sensitive configuration keys must be strings.')
         unknown_sensitive_keys = copied_sensitive_keys.difference(copied_values)

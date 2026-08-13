@@ -111,4 +111,3 @@ def _validate_path_identifier(name: str, value: str) -> None:
         raise RuntimeContractError(
             f'{name} must contain only letters, numbers, dots, underscores, or hyphens'
         )
-

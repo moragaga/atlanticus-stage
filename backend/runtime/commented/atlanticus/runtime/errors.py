@@ -40,4 +40,3 @@ class LeaseOwnershipLostError(AtlanticusRuntimeError):
 
 class LeaseRenewalError(AtlanticusRuntimeError):
     """Indica que el heartbeat no pudo confirmar una renovación segura."""
-

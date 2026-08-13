@@ -25,9 +25,7 @@ R = TypeVar('R')
 ParameterMapper = Callable[[tuple[Any, ...], Mapping[str, Any]], Mapping[str, Any]]
 ResultMapper = Callable[[Any], ResultSummary]
 ErrorMapper = Callable[[BaseException], ErrorInfo]
-_RESERVED_DEPENDENCY_ATTRIBUTES = frozenset(
-    {'operation', 'component', 'atlanticus.span_kind'}
-)
+_RESERVED_DEPENDENCY_ATTRIBUTES = frozenset({'operation', 'component', 'atlanticus.span_kind'})
 
 
 def _default_error(error: BaseException) -> ErrorInfo:

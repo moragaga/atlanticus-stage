@@ -212,4 +212,3 @@ class ResourceMonitor:
         except Exception:
             pass
         self._sampling_failure_reported = True
-

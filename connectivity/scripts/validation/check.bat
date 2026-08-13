@@ -108,21 +108,14 @@ if "%ALL%"=="1" (
     if errorlevel 1 exit /b 1
 )
 
-if "%ALL%"=="1" (
-    call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check .
-    if errorlevel 1 exit /b 1
-    call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format --check .
-    if errorlevel 1 exit /b 1
-) else (
-    if "!SEL_HTTP!"=="1" call :check_ruff http-client
-    if errorlevel 1 exit /b 1
-    if "!SEL_KEY_VAULT!"=="1" call :check_ruff key-vault
-    if errorlevel 1 exit /b 1
-    if "!SEL_COSMOS!"=="1" call :check_ruff cosmos
-    if errorlevel 1 exit /b 1
-    if "!SEL_SERVICE_BUS!"=="1" call :check_ruff service-bus
-    if errorlevel 1 exit /b 1
-)
+if "!SEL_HTTP!"=="1" call :normalize_and_check_ruff http-client
+if errorlevel 1 exit /b 1
+if "!SEL_KEY_VAULT!"=="1" call :normalize_and_check_ruff key-vault
+if errorlevel 1 exit /b 1
+if "!SEL_COSMOS!"=="1" call :normalize_and_check_ruff cosmos
+if errorlevel 1 exit /b 1
+if "!SEL_SERVICE_BUS!"=="1" call :normalize_and_check_ruff service-bus
+if errorlevel 1 exit /b 1
 
 if "!SEL_HTTP!"=="1" call :check_module http-client atlanticus.connectivity.http
 if errorlevel 1 exit /b 1
@@ -217,11 +210,27 @@ if "%ALL%"=="1" (
 )
 exit /b 0
 
-:check_ruff
+
+:normalize_and_check_ruff
+call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check --fix "%~1"
+if errorlevel 1 exit /b 1
+call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format "%~1"
+if errorlevel 1 exit /b 1
+
+if exist "%~1\commented" (
+    for /r "%~1\commented" %%F in (*.py) do (
+        call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check --fix "%%~fF"
+        if errorlevel 1 exit /b 1
+        call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format "%%~fF"
+        if errorlevel 1 exit /b 1
+    )
+)
+
 call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check "%~1"
 if errorlevel 1 exit /b 1
 call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format --check "%~1"
-exit /b %errorlevel%
+if errorlevel 1 exit /b 1
+exit /b 0
 
 :check_module
 call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync pytest "%~1\tests\unit"

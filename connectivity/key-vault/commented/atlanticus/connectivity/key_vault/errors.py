@@ -12,7 +12,7 @@ class KeyVaultConfigurationError(KeyVaultError, ValueError):
 
 
 class KeyVaultOperationError(KeyVaultError):
-# La jerarquía separa decisiones operacionales sin propagar mensajes potencialmente sensibles del SDK.
+    # La jerarquía separa decisiones operacionales sin propagar mensajes potencialmente sensibles del SDK.
     """Key Vault no pudo completar una operación."""
 
 

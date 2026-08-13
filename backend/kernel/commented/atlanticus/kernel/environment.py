@@ -4,10 +4,13 @@ from __future__ import annotations
 
 # ``os`` se usa solamente para leer el ambiente del proceso; el kernel no carga archivos .env.
 import os
+
 # ``Mapping`` permite probar el contrato con un diccionario sin modificar variables del proceso.
 from collections.abc import Mapping
+
 # La configuración se vuelve inmutable mediante una dataclass pequeña.
 from dataclasses import dataclass
+
 # ``StrEnum`` conserva valores de texto serializables y un conjunto cerrado.
 from enum import StrEnum
 

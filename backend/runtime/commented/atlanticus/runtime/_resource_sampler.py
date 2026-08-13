@@ -308,4 +308,3 @@ class CgroupResourceSampler:
             return path.read_text(encoding='utf-8', errors='replace').strip()
         except OSError:
             return None
-

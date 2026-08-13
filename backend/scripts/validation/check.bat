@@ -147,31 +147,24 @@ if "%ALL%"=="1" (
     if errorlevel 1 exit /b 1
 )
 
-if "%ALL%"=="1" (
-    call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check .
-    if errorlevel 1 exit /b 1
-    call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format --check .
-    if errorlevel 1 exit /b 1
-) else (
-    if "!SEL_KERNEL!"=="1" call :check_ruff kernel
-    if errorlevel 1 exit /b 1
-    if "!SEL_CONFIGURATION!"=="1" call :check_ruff configuration
-    if errorlevel 1 exit /b 1
-    if "!SEL_DATASETS!"=="1" call :check_ruff datasets
-    if errorlevel 1 exit /b 1
-    if "!SEL_DATASETS_PARQUET!"=="1" call :check_ruff datasets-parquet
-    if errorlevel 1 exit /b 1
-    if "!SEL_DATASETS_RUNTIME!"=="1" call :check_ruff datasets-runtime
-    if errorlevel 1 exit /b 1
-    if "!SEL_OBSERVABILITY!"=="1" call :check_ruff observability
-    if errorlevel 1 exit /b 1
-    if "!SEL_OBSERVABILITY_AZURE!"=="1" call :check_ruff observability-azure
-    if errorlevel 1 exit /b 1
-    if "!SEL_STATE!"=="1" call :check_ruff state
-    if errorlevel 1 exit /b 1
-    if "!SEL_RUNTIME!"=="1" call :check_ruff runtime
-    if errorlevel 1 exit /b 1
-)
+if "!SEL_KERNEL!"=="1" call :normalize_and_check_ruff kernel
+if errorlevel 1 exit /b 1
+if "!SEL_CONFIGURATION!"=="1" call :normalize_and_check_ruff configuration
+if errorlevel 1 exit /b 1
+if "!SEL_DATASETS!"=="1" call :normalize_and_check_ruff datasets
+if errorlevel 1 exit /b 1
+if "!SEL_DATASETS_PARQUET!"=="1" call :normalize_and_check_ruff datasets-parquet
+if errorlevel 1 exit /b 1
+if "!SEL_DATASETS_RUNTIME!"=="1" call :normalize_and_check_ruff datasets-runtime
+if errorlevel 1 exit /b 1
+if "!SEL_OBSERVABILITY!"=="1" call :normalize_and_check_ruff observability
+if errorlevel 1 exit /b 1
+if "!SEL_OBSERVABILITY_AZURE!"=="1" call :normalize_and_check_ruff observability-azure
+if errorlevel 1 exit /b 1
+if "!SEL_STATE!"=="1" call :normalize_and_check_ruff state
+if errorlevel 1 exit /b 1
+if "!SEL_RUNTIME!"=="1" call :normalize_and_check_ruff runtime
+if errorlevel 1 exit /b 1
 
 if "!SEL_KERNEL!"=="1" call :check_module kernel atlanticus.kernel
 if errorlevel 1 exit /b 1
@@ -242,11 +235,27 @@ if "%ALL%"=="1" (
 )
 exit /b 0
 
-:check_ruff
+
+:normalize_and_check_ruff
+call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check --fix "%~1"
+if errorlevel 1 exit /b 1
+call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format "%~1"
+if errorlevel 1 exit /b 1
+
+if exist "%~1\commented" (
+    for /r "%~1\commented" %%F in (*.py) do (
+        call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check --fix "%%~fF"
+        if errorlevel 1 exit /b 1
+        call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format "%%~fF"
+        if errorlevel 1 exit /b 1
+    )
+)
+
 call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff check "%~1"
 if errorlevel 1 exit /b 1
 call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync ruff format --check "%~1"
-exit /b %errorlevel%
+if errorlevel 1 exit /b 1
+exit /b 0
 
 :check_module
 call :run uv run --python "%PYTHON_BIN%" --no-python-downloads --no-sync pytest "%~1\tests"

@@ -123,7 +123,9 @@ class AtomicStateStore:
                 )
                 return None
             except OSError as error:
-                raise StateReadError(f'could not read state document {resolved_key.identifier}') from error
+                raise StateReadError(
+                    f'could not read state document {resolved_key.identifier}'
+                ) from error
             if len(content) > self._max_document_bytes:
                 raise StateTooLargeError(
                     f'state document {resolved_key.identifier} exceeds '

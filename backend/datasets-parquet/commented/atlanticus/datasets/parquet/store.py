@@ -923,9 +923,7 @@ class ParquetDatasetStore:
                 FilterOperator.IN,
             }:
                 parts = tuple(
-                    part
-                    for part in parts
-                    if _part_filter_matches(part_value=part.value, item=item)
+                    part for part in parts if _part_filter_matches(part_value=part.value, item=item)
                 )
         return parts
 

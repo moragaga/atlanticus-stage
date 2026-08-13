@@ -520,4 +520,3 @@ def _validate_non_negative_number(value: float, name: str) -> None:
         raise TypeError(f'{name} must be an int or float')
     if not math.isfinite(value) or value < 0:
         raise ValueError(f'{name} must be a finite value greater than or equal to zero')
-

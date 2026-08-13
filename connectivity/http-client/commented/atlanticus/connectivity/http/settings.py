@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 # Este módulo recibe valores finales desde composición; no conoce variables de entorno ni sufijos.
-
 import math
 from dataclasses import dataclass, field
 from typing import Any

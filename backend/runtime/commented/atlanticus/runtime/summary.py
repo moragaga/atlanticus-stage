@@ -117,4 +117,3 @@ class OperationalSummary:
             raise TypeError(f'operational field {key!r} must be a scalar value')
         if isinstance(value, str) and len(value) > 500:
             raise ValueError(f'operational field {key!r} must not exceed 500 characters')
-

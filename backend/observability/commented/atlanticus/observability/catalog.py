@@ -1,8 +1,12 @@
 # Espejo pedagógico: conserva exactamente el contrato ejecutable del módulo catalog.py.
 """Nombres estables reservados por el contrato público de eventos."""
+
 from enum import StrEnum
+
+
 class StandardEventName(StrEnum):
     """Catálogo inicial; los jobs pueden agregar nombres de dominio propios."""
+
     EXECUTION_STARTED = 'execution.started'
     EXECUTION_FINISHED = 'execution.finished'
     EXECUTION_FAILED = 'execution.failed'

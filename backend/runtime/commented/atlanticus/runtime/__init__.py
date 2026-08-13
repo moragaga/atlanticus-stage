@@ -34,4 +34,3 @@ __all__ = [
     '__version__',
     'execute_job',
 ]
-

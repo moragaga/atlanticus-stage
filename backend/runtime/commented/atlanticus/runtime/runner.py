@@ -647,4 +647,3 @@ def _close_runtime_observability(configured: bool) -> AtlanticusRuntimeError | N
     except Exception:
         return AtlanticusRuntimeError('Observability shutdown failed')
     return None
-

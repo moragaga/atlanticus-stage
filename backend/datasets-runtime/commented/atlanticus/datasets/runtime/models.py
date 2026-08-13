@@ -74,9 +74,7 @@ class DataFrameReadResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.dataframe, pd.DataFrame):
-            raise DatasetRuntimeValidationError(
-                'read result dataframe must be a pandas.DataFrame'
-            )
+            raise DatasetRuntimeValidationError('read result dataframe must be a pandas.DataFrame')
         _validate_metadata(
             targets=self.targets,
             artifact_count=self.artifact_count,
@@ -107,9 +105,7 @@ def _validate_metadata(
     if not isinstance(targets, tuple):
         raise DatasetRuntimeValidationError('read result targets must be a tuple')
     if not targets or not all(isinstance(item, DatasetTarget) for item in targets):
-        raise DatasetRuntimeValidationError(
-            'read result targets must contain DatasetTarget values'
-        )
+        raise DatasetRuntimeValidationError('read result targets must contain DatasetTarget values')
     if len(set(targets)) != len(targets):
         raise DatasetRuntimeValidationError('read result targets must not contain duplicates')
     for field, value in (('artifact_count', artifact_count), ('size_bytes', size_bytes)):
@@ -119,9 +115,7 @@ def _validate_metadata(
     if not isinstance(publication_tokens, tuple):
         raise DatasetRuntimeValidationError('publication_tokens must be a tuple')
     if not all(isinstance(item, str) and item for item in publication_tokens):
-        raise DatasetRuntimeValidationError(
-            'publication_tokens must contain non-empty strings'
-        )
+        raise DatasetRuntimeValidationError('publication_tokens must contain non-empty strings')
     if not isinstance(warnings, tuple):
         raise DatasetRuntimeValidationError('warnings must be a tuple')
     if not all(isinstance(item, str) and item for item in warnings):

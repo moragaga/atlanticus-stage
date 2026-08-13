@@ -309,4 +309,3 @@ def _validate_non_negative_number(value: int | float, name: str) -> None:
 def _validate_optional_non_negative_number(value: int | float | None, name: str) -> None:
     if value is not None:
         _validate_non_negative_number(value, name)
-

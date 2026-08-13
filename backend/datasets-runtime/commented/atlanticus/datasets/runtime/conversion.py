@@ -24,9 +24,7 @@ def to_arrow_table(data: TabularData, *, field: str = 'data') -> pa.Table:
         _validate_columns(data.column_names, field=field)
         return data
     if not isinstance(data, pd.DataFrame):
-        raise DatasetRuntimeValidationError(
-            f'{field} must be a pandas.DataFrame or pyarrow.Table'
-        )
+        raise DatasetRuntimeValidationError(f'{field} must be a pandas.DataFrame or pyarrow.Table')
     # Se valida antes de convertir para impedir que PyArrow normalice nombres inválidos.
     _validate_columns(data.columns, field=field)
     try:

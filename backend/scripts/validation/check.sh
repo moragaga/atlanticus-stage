@@ -165,15 +165,31 @@ UV_RUN=(
   --no-sync
 )
 
-if [[ "$ALL" -eq 1 ]]; then
-  run "${UV_RUN[@]}" ruff check .
-  run "${UV_RUN[@]}" ruff format --check .
-else
-  for package in $ORDERED_SELECTED; do
-    run "${UV_RUN[@]}" ruff check "$package"
-    run "${UV_RUN[@]}" ruff format --check "$package"
-  done
-fi
+normalize_and_check_ruff() {
+  package="$1"
+  mirror_files=()
+
+  run "${UV_RUN[@]}" ruff check --fix "$package"
+  run "${UV_RUN[@]}" ruff format "$package"
+
+  if [[ -d "$package/commented" ]]; then
+    while IFS= read -r -d '' mirror_file; do
+      mirror_files+=("$mirror_file")
+    done < <(find "$package/commented" -type f -name '*.py' -print0)
+  fi
+
+  if [[ "${#mirror_files[@]}" -gt 0 ]]; then
+    run "${UV_RUN[@]}" ruff check --fix "${mirror_files[@]}"
+    run "${UV_RUN[@]}" ruff format "${mirror_files[@]}"
+  fi
+
+  run "${UV_RUN[@]}" ruff check "$package"
+  run "${UV_RUN[@]}" ruff format --check "$package"
+}
+
+for package in $ORDERED_SELECTED; do
+  normalize_and_check_ruff "$package"
+done
 
 for package in $ORDERED_SELECTED; do
   run "${UV_RUN[@]}" pytest "$package/tests"

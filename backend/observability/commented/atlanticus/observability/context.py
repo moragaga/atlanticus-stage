@@ -1,6 +1,8 @@
 # Espejo pedagógico: conserva exactamente el contrato ejecutable del módulo context.py.
 """Scopes de contexto propagables entre funciones, tareas e hilos controlados."""
+
 from __future__ import annotations
+
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import Context, ContextVar, copy_context
@@ -8,21 +10,29 @@ from dataclasses import fields, replace
 from functools import wraps
 from typing import Any, TypeVar
 from uuid import uuid4
+
 from atlanticus.observability.models import ExecutionContext
+
 T = TypeVar('T')
 _UNSET = object()
 _execution_context: ContextVar[ExecutionContext | None] = ContextVar(
     'atlanticus_execution_context',
     default=None,
 )
+
+
 def get_execution_context() -> ExecutionContext:
     """Retorna el contexto activo, que siempre existe aunque esté vacío."""
     return _execution_context.get() or ExecutionContext()
+
+
 def set_execution_context(context: ExecutionContext) -> None:
     """Reemplaza el contexto del flujo actual."""
     if not isinstance(context, ExecutionContext):
         raise TypeError('context must be an ExecutionContext')
     _execution_context.set(context)
+
+
 @contextmanager
 def context_scope(**values: Any) -> Iterator[ExecutionContext]:
     """Aplica temporalmente campos conocidos sobre el contexto actual."""
@@ -36,6 +46,8 @@ def context_scope(**values: Any) -> Iterator[ExecutionContext]:
         yield updated
     finally:
         _execution_context.reset(token)
+
+
 @contextmanager
 def execution_scope(
     *,
@@ -50,6 +62,8 @@ def execution_scope(
         **values,
     ) as context:
         yield context
+
+
 @contextmanager
 def iteration_scope(iteration: int) -> Iterator[ExecutionContext]:
     """Asocia eventos a una iteración positiva."""
@@ -57,6 +71,8 @@ def iteration_scope(iteration: int) -> Iterator[ExecutionContext]:
         raise ValueError('iteration must be greater than zero')
     with context_scope(iteration=iteration) as context:
         yield context
+
+
 @contextmanager
 def operation_scope(
     *,
@@ -76,13 +92,19 @@ def operation_scope(
         values['concurrency_group'] = concurrency_group
     with context_scope(**values) as context:
         yield context
+
+
 def copied_execution_context() -> Context:
     """Captura el contexto actual para que un runtime pueda transferirlo a un hilo."""
     return copy_context()
+
+
 def with_current_context(function: Callable[..., T]) -> Callable[..., T]:
     """Envuelve una función para ejecutarla con una copia del contexto actual."""
     captured = copy_context()
+
     @wraps(function)
     def wrapper(*args: Any, **kwargs: Any) -> T:
         return captured.copy().run(function, *args, **kwargs)
+
     return wrapper

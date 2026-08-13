@@ -241,4 +241,3 @@ def _validate_stop_reason(reason: str) -> str:
 def _normalize_memory_key(key: str) -> str:
     _require_non_empty_string(key, 'key')
     return key.strip()
-
