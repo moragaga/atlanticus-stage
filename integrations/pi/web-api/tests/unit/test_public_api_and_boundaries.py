@@ -45,7 +45,7 @@ def test_public_api_is_explicit() -> None:
     ]
 
 
-def test_first_increment_exposes_points_only() -> None:
+def test_second_increment_keeps_resources_behind_client() -> None:
     settings = web_api.PiWebApiSettings
     assert 'streamsets' not in settings.__dataclass_fields__
     assert not hasattr(web_api, 'PiStreamResource')

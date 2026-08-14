@@ -6,6 +6,7 @@ from atlanticus.connectivity.http import HttpClient
 from atlanticus.integrations.pi.web_api.errors import PiWebApiConfigurationError
 from atlanticus.integrations.pi.web_api.points import PiPointResource
 from atlanticus.integrations.pi.web_api.settings import PiWebApiSettings
+from atlanticus.integrations.pi.web_api.streamsets import PiStreamSetResource
 from atlanticus.integrations.pi.web_api.transport import PiWebApiTransport
 
 
@@ -17,6 +18,7 @@ class PiWebApiClient:
         self._http_client = HttpClient(settings=settings.http)
         self._transport = PiWebApiTransport(http_client=self._http_client)
         self.points = PiPointResource(transport=self._transport, settings=settings)
+        self.streamsets = PiStreamSetResource(transport=self._transport, settings=settings)
 
     def __enter__(self) -> PiWebApiClient:
         self.open()
