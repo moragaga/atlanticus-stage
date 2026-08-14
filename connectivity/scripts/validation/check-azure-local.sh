@@ -4,7 +4,7 @@ set -eo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$ROOT"
 
-SUPPORTED="key-vault storage cosmos"
+SUPPORTED="key-vault storage cosmos redis"
 SELECTED=""
 CLEAN=0
 
@@ -16,6 +16,7 @@ Modules with Azure-local integration:
   key-vault
   storage
   cosmos
+  redis
 
 No modules runs every Azure-local integration currently registered.
 --clean also removes the Azure-local runner image before and after the gate.
@@ -34,7 +35,7 @@ for arg in "$@"; do
     --clean)
       CLEAN=1
       ;;
-    key-vault|storage|cosmos)
+    key-vault|storage|cosmos|redis)
       if ! contains_module "$SELECTED" "$arg"; then
         SELECTED="$SELECTED $arg"
       fi

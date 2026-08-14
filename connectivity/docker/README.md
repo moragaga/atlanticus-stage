@@ -25,46 +25,48 @@ reales, y copian de los demás miembros del workspace sólo la metadata mínima 
 
 ## Azure-local
 
-`docker/azure-local/` contiene la infraestructura compartida para la contra-validación dentro de un
-ecosistema Azure simulado. El gate es independiente:
+`docker/azure-local/` contiene la infraestructura compartida para contra-validar composición dentro
+de un ecosistema Azure simulado. El gate es independiente:
 
 ```bash
 ./scripts/validation/check-azure-local.sh
 ./scripts/validation/check-azure-local.sh key-vault
 ./scripts/validation/check-azure-local.sh storage
 ./scripts/validation/check-azure-local.sh cosmos
-./scripts/validation/check-azure-local.sh key-vault storage cosmos --clean
+./scripts/validation/check-azure-local.sh redis
+./scripts/validation/check-azure-local.sh key-vault storage cosmos redis --clean
 ```
 
-Floci-AZ se fija a una versión concreta y usa almacenamiento `memory`, de modo que cada ejecución
-parte de un estado efímero. El provisioning siembra sólo valores ficticios y nunca imprime su
-contenido. La adaptación de endpoint/transporte de Floci vive exclusivamente en infraestructura y
-tests; los contratos productivos no conocen Floci.
+Floci-AZ se fija a `0.10.0` y usa almacenamiento `memory`, de modo que cada ejecución parte de un
+estado efímero. El provisioning siembra sólo valores ficticios y nunca imprime su contenido. La
+adaptación de endpoint/transporte de Floci vive exclusivamente en infraestructura y tests; los
+contratos productivos no conocen Floci.
 
 Key Vault es la puerta de entrada del ambiente. Para Storage, el harness provisiona el container,
-siembra su connection string ficticia en Key Vault y el test debe recuperarla mediante
-`KeyVaultClient` antes de construir `StorageSettings` y ejecutar el smoke con `StorageClient`.
+siembra su connection string ficticia en Key Vault y el test la recupera mediante `KeyVaultClient`
+antes de construir `StorageSettings` y operar con `StorageClient`.
 
-Para Cosmos, el harness provisiona la base y el container mediante el endpoint con sufijo que
-Floci requiere para su SDK Python. Después siembra en Key Vault el endpoint raíz sin path y la key
-ficticia. El test recupera ambos secretos mediante `KeyVaultClient`, construye `CosmosSettings` con
-`allow_insecure_http=True`, valida `health_check()` y el contrato estructural del container mediante
-`CosmosProvisioner.validate_containers()`. El contrato productivo de Cosmos sigue rechazando
-endpoints con path.
+Para Cosmos, el harness provisiona database/container por REST específico de Floci. Después siembra
+endpoint y key ficticia en Key Vault. El test recupera ambos mediante `KeyVaultClient` y usa el
+`CosmosClient` real con `azure-cosmos==4.16.3` para validar health y contrato de container. CRUD,
+queries, ETag y paginación continúan certificados en el emulador oficial de Cosmos bajo la
+integración especializada.
 
-El CRUD de documentos no se repite en Azure-local mientras Floci 0.10.0 no demuestre compatibilidad
-con la versión `azure-cosmos` fijada por Atlanticus. La suite Python de Floci usa una versión anterior
-del SDK y, con la versión de Atlanticus, las operaciones de documentos pueden quedar iterando sobre
-`pkranges`. CRUD, consultas, ETag, paginación y lifecycle siguen certificados contra el emulador
-oficial Cosmos en `tests/integration/local/`. El runner Azure-local impone además un timeout por suite
-para que una incompatibilidad del emulador nunca bloquee indefinidamente el gate.
+Para Redis, Floci necesita acceso al Docker socket porque crea un sidecar Valkey real. El harness
+provisiona el cache mediante el plano ARM de Floci, espera `provisioningState=Succeeded` y guarda en
+Key Vault URL, username y password ficticios. El test recupera esos valores con `KeyVaultClient`,
+construye `RedisSettings` con `allow_insecure_transport=True` y usa el `RedisClient` productivo para
+PING, SET/GET, EXISTS, MGET, TTL/EXPIRE y DELETE. El sidecar comparte una red Docker explícita con el
+runner para que el hostname retornado por Floci sea resolvible sin publicar credenciales ni adaptar
+el cliente productivo.
 
-HTTP Client y SQL permanecen fuera de Azure-local: HTTP conserva su fake API especializada y SQL
-continúa validándose contra su contenedor SQL Server.
+HTTP Client, SQL y Service Bus permanecen fuera de Azure-local. HTTP conserva su fake API; SQL se
+valida contra SQL Server; Service Bus conserva el emulador oficial de Microsoft. En Floci 0.10.0 el
+Service Bus data plane permanece deliberadamente mocked por una incompatibilidad AMQP upstream, por
+lo que no se introduce un workaround Atlanticus para habilitarlo.
 
 Los futuros conectores Azure-local deben agregar sus pruebas bajo
-`<modulo>/tests/integration/azure_local/` y reutilizar la misma infraestructura compartida en vez de
-crear otro ecosistema independiente.
+`<modulo>/tests/integration/azure_local/` y reutilizar esta infraestructura compartida.
 
 ## Ejecución normal
 

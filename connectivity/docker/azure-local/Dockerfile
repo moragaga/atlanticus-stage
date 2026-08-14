@@ -28,6 +28,8 @@ COPY connectivity/storage/src /workspace/connectivity/storage/src
 COPY connectivity/storage/tests /workspace/connectivity/storage/tests
 COPY connectivity/cosmos/src /workspace/connectivity/cosmos/src
 COPY connectivity/cosmos/tests /workspace/connectivity/cosmos/tests
+COPY connectivity/redis/src /workspace/connectivity/redis/src
+COPY connectivity/redis/tests /workspace/connectivity/redis/tests
 COPY connectivity/docker/azure-local/provisioning /workspace/connectivity/docker/azure-local/provisioning
 COPY connectivity/docker/azure-local/run-connectivity.sh /workspace/connectivity/docker/azure-local/run-connectivity.sh
 
@@ -54,10 +56,17 @@ RUN uv sync \
         --inexact \
         --frozen \
         --no-editable \
+    && uv sync \
+        --package atlanticus-redis \
+        --no-default-groups \
+        --inexact \
+        --frozen \
+        --no-editable \
     && .venv/bin/python -m compileall -q \
         docker/azure-local/provisioning \
         key-vault/tests/integration/azure_local \
         storage/tests/integration/azure_local \
-        cosmos/tests/integration/azure_local
+        cosmos/tests/integration/azure_local \
+        redis/tests/integration/azure_local
 
 ENTRYPOINT ["/bin/bash", "docker/azure-local/run-connectivity.sh"]

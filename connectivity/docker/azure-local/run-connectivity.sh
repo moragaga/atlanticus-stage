@@ -45,3 +45,7 @@ fi
 if contains_target "cosmos"; then
   run_integration "cosmos/tests/integration/azure_local"
 fi
+
+if contains_target "redis"; then
+  run_integration "redis/tests/integration/azure_local"
+fi

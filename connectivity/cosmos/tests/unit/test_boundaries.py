@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
@@ -71,12 +72,20 @@ def test_azure_local_cosmos_provisioning_is_floci_rest_only() -> None:
     provisioning = (
         _CONNECTIVITY_ROOT / 'docker/azure-local/provisioning/provision_connectivity.py'
     ).read_text()
+    tree = ast.parse(provisioning)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == '_provision_cosmos'
+    )
+    cosmos_provisioning = ast.get_source_segment(provisioning, function)
+    assert cosmos_provisioning is not None
 
     assert 'from azure.cosmos' not in provisioning
     assert 'AzureCosmosClient' not in provisioning
     assert '_refresh_thread' not in provisioning
-    assert 'time.sleep(' not in provisioning
-    assert 'requests.Session()' in provisioning
-    assert "f'{endpoint}/dbs'" in provisioning
-    assert "f'{endpoint}/dbs/{database_name}/colls/'" in provisioning
+    assert 'time.sleep(' not in cosmos_provisioning
+    assert 'requests.Session()' in cosmos_provisioning
+    assert "f'{endpoint}/dbs'" in cosmos_provisioning
+    assert "f'{endpoint}/dbs/{database_name}/colls/'" in cosmos_provisioning
     assert 'response.status_code in {201, 409}' in provisioning

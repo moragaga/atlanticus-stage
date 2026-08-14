@@ -7,8 +7,14 @@ services:
     environment:
       FLOCI_AZ_HOSTNAME: "floci-az"
       FLOCI_AZ_STORAGE_MODE: "memory"
+      FLOCI_AZ_SERVICES_REDIS_MOCKED: "false"
+      FLOCI_AZ_SERVICES_DOCKER_NETWORK: "atlanticus-azure-local-integration"
     ports:
       - "${ATLANTICUS_FLOCI_PORT:-4577}:4577"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - azure-local
     restart: "no"
     mem_limit: 768m
     cpus: 1.00
@@ -27,6 +33,7 @@ services:
       ATLANTICUS_RUN_KEY_VAULT_AZURE_LOCAL_INTEGRATION: "1"
       ATLANTICUS_RUN_STORAGE_AZURE_LOCAL_INTEGRATION: "1"
       ATLANTICUS_RUN_COSMOS_AZURE_LOCAL_INTEGRATION: "1"
+      ATLANTICUS_RUN_REDIS_AZURE_LOCAL_INTEGRATION: "1"
       ATLANTICUS_FLOCI_AZ_ENDPOINT: "http://floci-az:4577"
       ATLANTICUS_FLOCI_AZ_ACCOUNT_NAME: "devstoreaccount1"
       ATLANTICUS_AZURE_LOCAL_KEY_VAULT_SECRET_NAME: "atlanticus-connectivity-smoke"
@@ -36,6 +43,16 @@ services:
       ATLANTICUS_AZURE_LOCAL_COSMOS_KEY_SECRET_NAME: "atlanticus-cosmos-primary-key"
       ATLANTICUS_AZURE_LOCAL_COSMOS_DATABASE_NAME: "atlanticus-cosmos-azure-local"
       ATLANTICUS_AZURE_LOCAL_COSMOS_CONTAINER_NAME: "items"
+      ATLANTICUS_AZURE_LOCAL_REDIS_CACHE_NAME: "atlanticus-redis-azure-local"
+      ATLANTICUS_AZURE_LOCAL_REDIS_URL_SECRET_NAME: "atlanticus-redis-primary-url"
+      ATLANTICUS_AZURE_LOCAL_REDIS_USERNAME_SECRET_NAME: "atlanticus-redis-primary-username"
+      ATLANTICUS_AZURE_LOCAL_REDIS_PASSWORD_SECRET_NAME: "atlanticus-redis-primary-password"
+    networks:
+      - azure-local
     restart: "no"
     mem_limit: 512m
     cpus: 0.50
+
+networks:
+  azure-local:
+    name: atlanticus-azure-local-integration

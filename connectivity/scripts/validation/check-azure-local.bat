@@ -7,6 +7,7 @@ set "CLEAN=0"
 set "RUN_KEY_VAULT=0"
 set "RUN_STORAGE=0"
 set "RUN_COSMOS=0"
+set "RUN_REDIS=0"
 set "HAS_MODULES=0"
 
 :parse_args
@@ -34,6 +35,12 @@ if /I "%~1"=="cosmos" (
     shift
     goto parse_args
 )
+if /I "%~1"=="redis" (
+    set "RUN_REDIS=1"
+    set "HAS_MODULES=1"
+    shift
+    goto parse_args
+)
 
 echo Unknown Azure-local validation module: %~1 1>&2
 goto usage
@@ -43,6 +50,7 @@ if "%HAS_MODULES%"=="0" (
     set "RUN_KEY_VAULT=1"
     set "RUN_STORAGE=1"
     set "RUN_COSMOS=1"
+    set "RUN_REDIS=1"
 )
 
 where docker >nul 2>&1
@@ -67,7 +75,14 @@ if "%RUN_COSMOS%"=="1" (
         set "TARGET=cosmos"
     )
 )
-if "%RUN_KEY_VAULT%"=="1" if "%RUN_STORAGE%"=="1" if "%RUN_COSMOS%"=="1" set "TARGET=all"
+if "%RUN_REDIS%"=="1" (
+    if defined TARGET (
+        set "TARGET=!TARGET!,redis"
+    ) else (
+        set "TARGET=redis"
+    )
+)
+if "%RUN_KEY_VAULT%"=="1" if "%RUN_STORAGE%"=="1" if "%RUN_COSMOS%"=="1" if "%RUN_REDIS%"=="1" set "TARGET=all"
 
 set "COMPOSE_FILE=docker\azure-local\compose.yaml"
 set "RUNNER_IMAGE=atlanticus-connectivity-azure-local-integration:local"
@@ -87,5 +102,5 @@ echo Azure-local connectivity validation passed: %TARGET%.
 exit /b 0
 
 :usage
-echo Usage: %~nx0 [key-vault] [storage] [cosmos] [--clean] 1>&2
+echo Usage: %~nx0 [key-vault] [storage] [cosmos] [redis] [--clean] 1>&2
 exit /b 2
