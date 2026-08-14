@@ -73,5 +73,5 @@ testpaths = [
 ]
 addopts = "-q"
 markers = [
-    "integration: pruebas que requieren servicios externos dentro de Docker",
+    "integration: pruebas que requieren servicios externos o un ecosistema Docker",
 ]

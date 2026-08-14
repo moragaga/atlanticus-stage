@@ -1,8 +1,12 @@
 # Integración Docker de Atlanticus Connectivity
 
-Las integraciones de Connectivity son modulares. Cada conector que requiere servicios externos mantiene su propio `docker/<modulo>/Dockerfile` y `docker/<modulo>/compose.yaml`; el gate `connectivity/scripts/validation/check.sh` decide qué integración levantar con `--docker`.
+Connectivity mantiene dos capas de integración Docker con responsabilidades distintas.
 
-## Módulos actuales
+## Integración local especializada
+
+Cada conector que requiere un servicio externo mantiene su propio `docker/<modulo>/Dockerfile` y
+`docker/<modulo>/compose.yaml`. El gate `scripts/validation/check.sh --docker` ejecuta las pruebas de
+`<modulo>/tests/integration/local/`.
 
 ```text
 docker/http/
@@ -13,23 +17,56 @@ docker/storage/
 docker/redis/
 ```
 
-Key Vault no requiere una integración Docker propia en esta etapa.
+Key Vault no tiene un emulador local especializado en esta capa. Sus unit/boundary tests continúan
+en el gate normal.
 
-Los runners usan `python:3.14.2-slim-bookworm`, sincronizan únicamente el paquete seleccionado y sus dependencias reales, y copian de los otros miembros del workspace sólo el `pyproject.toml` necesario para que UV resuelva el workspace. Los tests productivos se copian únicamente desde el módulo validado.
+Los runners usan Python 3.14.2, sincronizan únicamente el paquete seleccionado y sus dependencias
+reales, y copian de los demás miembros del workspace sólo la metadata mínima que UV necesita.
 
-## SQL
+## Azure-local
 
-SQL usa `mssql-python==1.13.0`. El runner no instala `unixODBC`, `msodbcsql17` ni `msodbcsql18`. El contenedor cliente no fija plataforma; sólo SQL Server local mantiene `linux/amd64` por la arquitectura de su imagen.
+`docker/azure-local/` contiene la infraestructura compartida para la contra-validación dentro de un
+ecosistema Azure simulado. El gate es independiente:
 
-## Storage
+```bash
+./scripts/validation/check-azure-local.sh
+./scripts/validation/check-azure-local.sh key-vault
+./scripts/validation/check-azure-local.sh storage
+./scripts/validation/check-azure-local.sh cosmos
+./scripts/validation/check-azure-local.sh key-vault storage cosmos --clean
+```
 
-Storage se valida contra Azurite y cubre connection string, SAS, CRUD, streams, metadata y listados por prefix.
+Floci-AZ se fija a una versión concreta y usa almacenamiento `memory`, de modo que cada ejecución
+parte de un estado efímero. El provisioning siembra sólo valores ficticios y nunca imprime su
+contenido. La adaptación de endpoint/transporte de Floci vive exclusivamente en infraestructura y
+tests; los contratos productivos no conocen Floci.
 
-## Redis
+Key Vault es la puerta de entrada del ambiente. Para Storage, el harness provisiona el container,
+siembra su connection string ficticia en Key Vault y el test debe recuperarla mediante
+`KeyVaultClient` antes de construir `StorageSettings` y ejecutar el smoke con `StorageClient`.
 
-Redis se valida contra una imagen oficial versionada. El servidor local usa password y transporte sin TLS únicamente dentro de la red Docker; el cliente exige `allow_insecure_transport=True` para ese escenario. El runner no fija plataforma.
+Para Cosmos, el harness provisiona la base y el container mediante el endpoint con sufijo que
+Floci requiere para su SDK Python. Después siembra en Key Vault el endpoint raíz sin path y la key
+ficticia. El test recupera ambos secretos mediante `KeyVaultClient`, construye `CosmosSettings` con
+`allow_insecure_http=True`, valida `health_check()` y el contrato estructural del container mediante
+`CosmosProvisioner.validate_containers()`. El contrato productivo de Cosmos sigue rechazando
+endpoints con path.
 
-## Ejecución
+El CRUD de documentos no se repite en Azure-local mientras Floci 0.10.0 no demuestre compatibilidad
+con la versión `azure-cosmos` fijada por Atlanticus. La suite Python de Floci usa una versión anterior
+del SDK y, con la versión de Atlanticus, las operaciones de documentos pueden quedar iterando sobre
+`pkranges`. CRUD, consultas, ETag, paginación y lifecycle siguen certificados contra el emulador
+oficial Cosmos en `tests/integration/local/`. El runner Azure-local impone además un timeout por suite
+para que una incompatibilidad del emulador nunca bloquee indefinidamente el gate.
+
+HTTP Client y SQL permanecen fuera de Azure-local: HTTP conserva su fake API especializada y SQL
+continúa validándose contra su contenedor SQL Server.
+
+Los futuros conectores Azure-local deben agregar sus pruebas bajo
+`<modulo>/tests/integration/azure_local/` y reutilizar la misma infraestructura compartida en vez de
+crear otro ecosistema independiente.
+
+## Ejecución normal
 
 Desde `connectivity/`:
 
@@ -39,4 +76,5 @@ Desde `connectivity/`:
 ./scripts/validation/check.sh --docker
 ```
 
-Sin `--docker`, el gate sólo ejecuta lock/sync, Ruff, unit tests, smoke imports y wheels. `--clean` agrega limpieza de entornos y artefactos; Docker se ejecuta únicamente cuando se solicita explícitamente. Cada integración elimina contenedores, volúmenes e imagen del runner al terminar.
+Sin `--docker`, el gate sólo ejecuta lock/sync, Ruff, unit tests, smoke imports y wheels. `--clean`
+agrega limpieza de entornos y artefactos; Docker se ejecuta únicamente cuando se solicita.

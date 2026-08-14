@@ -240,7 +240,7 @@ if [[ "$DOCKER" -eq 1 ]]; then
     fi
   fi
   if contains_module "$ORDERED_SELECTED" "key-vault"; then
-    echo "No Docker integration is defined for key-vault; unit validation completed."
+    echo "No specialized local Docker integration is defined for key-vault; use check-azure-local for the Floci-AZ cross-validation."
   fi
   if contains_module "$ORDERED_SELECTED" "cosmos"; then
     if ! command -v docker >/dev/null 2>&1; then

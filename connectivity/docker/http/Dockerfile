@@ -36,4 +36,4 @@ RUN uv sync \
         --frozen \
         --no-editable
 
-ENTRYPOINT [".venv/bin/python", "-m", "pytest", "-q", "-m", "integration", "http-client/tests/integration"]
+ENTRYPOINT [".venv/bin/python", "-m", "pytest", "-q", "-m", "integration", "http-client/tests/integration/local"]

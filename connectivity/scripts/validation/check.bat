@@ -216,7 +216,7 @@ if "%DOCKER%"=="1" (
         docker image rm atlanticus-http-integration:local >nul 2>&1
         if not "!DOCKER_CODE!"=="0" exit /b !DOCKER_CODE!
     )
-    if "!SEL_KEY_VAULT!"=="1" echo No Docker integration is defined for key-vault; unit validation completed.
+    if "!SEL_KEY_VAULT!"=="1" echo No specialized local Docker integration is defined for key-vault; use check-azure-local for the Floci-AZ cross-validation.
     if "!SEL_COSMOS!"=="1" (
         where docker >nul 2>&1
         if errorlevel 1 (

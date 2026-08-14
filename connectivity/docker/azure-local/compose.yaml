@@ -1,0 +1,41 @@
+name: atlanticus-azure-local-integration
+
+services:
+  floci-az:
+    image: floci/floci-az:0.10.0
+    hostname: floci-az
+    environment:
+      FLOCI_AZ_HOSTNAME: "floci-az"
+      FLOCI_AZ_STORAGE_MODE: "memory"
+    ports:
+      - "${ATLANTICUS_FLOCI_PORT:-4577}:4577"
+    restart: "no"
+    mem_limit: 768m
+    cpus: 1.00
+
+  connectivity-integration:
+    image: atlanticus-connectivity-azure-local-integration:local
+    build:
+      context: ../../..
+      dockerfile: connectivity/docker/azure-local/Dockerfile
+    init: true
+    depends_on:
+      floci-az:
+        condition: service_healthy
+    environment:
+      ATLANTICUS_AZURE_LOCAL_TARGET: "${ATLANTICUS_AZURE_LOCAL_TARGET:-all}"
+      ATLANTICUS_RUN_KEY_VAULT_AZURE_LOCAL_INTEGRATION: "1"
+      ATLANTICUS_RUN_STORAGE_AZURE_LOCAL_INTEGRATION: "1"
+      ATLANTICUS_RUN_COSMOS_AZURE_LOCAL_INTEGRATION: "1"
+      ATLANTICUS_FLOCI_AZ_ENDPOINT: "http://floci-az:4577"
+      ATLANTICUS_FLOCI_AZ_ACCOUNT_NAME: "devstoreaccount1"
+      ATLANTICUS_AZURE_LOCAL_KEY_VAULT_SECRET_NAME: "atlanticus-connectivity-smoke"
+      ATLANTICUS_AZURE_LOCAL_STORAGE_SECRET_NAME: "atlanticus-storage-primary-connection-string"
+      ATLANTICUS_AZURE_LOCAL_STORAGE_CONTAINER_NAME: "atlanticus-storage-azure-local"
+      ATLANTICUS_AZURE_LOCAL_COSMOS_ENDPOINT_SECRET_NAME: "atlanticus-cosmos-primary-endpoint"
+      ATLANTICUS_AZURE_LOCAL_COSMOS_KEY_SECRET_NAME: "atlanticus-cosmos-primary-key"
+      ATLANTICUS_AZURE_LOCAL_COSMOS_DATABASE_NAME: "atlanticus-cosmos-azure-local"
+      ATLANTICUS_AZURE_LOCAL_COSMOS_CONTAINER_NAME: "items"
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.50

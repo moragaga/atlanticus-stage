@@ -21,8 +21,15 @@ COPY connectivity/service-bus/pyproject.toml /workspace/connectivity/service-bus
 COPY connectivity/sql/pyproject.toml /workspace/connectivity/sql/pyproject.toml
 COPY connectivity/storage/pyproject.toml /workspace/connectivity/storage/pyproject.toml
 COPY connectivity/redis/pyproject.toml /workspace/connectivity/redis/pyproject.toml
+
+COPY connectivity/key-vault/src /workspace/connectivity/key-vault/src
+COPY connectivity/key-vault/tests /workspace/connectivity/key-vault/tests
 COPY connectivity/storage/src /workspace/connectivity/storage/src
 COPY connectivity/storage/tests /workspace/connectivity/storage/tests
+COPY connectivity/cosmos/src /workspace/connectivity/cosmos/src
+COPY connectivity/cosmos/tests /workspace/connectivity/cosmos/tests
+COPY connectivity/docker/azure-local/provisioning /workspace/connectivity/docker/azure-local/provisioning
+COPY connectivity/docker/azure-local/run-connectivity.sh /workspace/connectivity/docker/azure-local/run-connectivity.sh
 
 WORKDIR /workspace/connectivity
 
@@ -30,10 +37,27 @@ RUN uv sync \
         --only-group dev \
         --frozen \
     && uv sync \
+        --package atlanticus-key-vault \
+        --no-default-groups \
+        --inexact \
+        --frozen \
+        --no-editable \
+    && uv sync \
         --package atlanticus-storage \
         --no-default-groups \
         --inexact \
         --frozen \
-        --no-editable
+        --no-editable \
+    && uv sync \
+        --package atlanticus-cosmos \
+        --no-default-groups \
+        --inexact \
+        --frozen \
+        --no-editable \
+    && .venv/bin/python -m compileall -q \
+        docker/azure-local/provisioning \
+        key-vault/tests/integration/azure_local \
+        storage/tests/integration/azure_local \
+        cosmos/tests/integration/azure_local
 
-ENTRYPOINT [".venv/bin/python", "-m", "pytest", "-q", "-m", "integration", "storage/tests/integration/local"]
+ENTRYPOINT ["/bin/bash", "docker/azure-local/run-connectivity.sh"]

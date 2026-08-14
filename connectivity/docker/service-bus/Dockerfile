@@ -32,4 +32,4 @@ RUN uv sync \
         --frozen \
         --no-editable
 
-CMD ["uv", "run", "--no-sync", "pytest", "service-bus/tests/integration"]
+CMD ["uv", "run", "--no-sync", "pytest", "service-bus/tests/integration/local"]
