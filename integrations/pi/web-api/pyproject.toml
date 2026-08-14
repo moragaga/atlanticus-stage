@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools==83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atlanticus-pi-web-api"
+version = "0.1.0"
+description = "PI Web API integration for Atlanticus."
+requires-python = "==3.14.2"
+license = "LicenseRef-Proprietary"
+classifiers = [
+    "Private :: Do Not Upload",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = [
+    "atlanticus-http==0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["atlanticus.integrations.pi.web_api*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"atlanticus.integrations.pi.web_api" = ["py.typed"]
