@@ -65,3 +65,18 @@ def test_pinned_azure_cosmos_sdk_exposes_sync_close() -> None:
     pyproject = (_PACKAGE_ROOT / 'pyproject.toml').read_text()
     assert 'azure-cosmos==4.16.3' in pyproject
     assert callable(getattr(AzureCosmosSdkClient, 'close', None))
+
+
+def test_azure_local_cosmos_provisioning_is_floci_rest_only() -> None:
+    provisioning = (
+        _CONNECTIVITY_ROOT / 'docker/azure-local/provisioning/provision_connectivity.py'
+    ).read_text()
+
+    assert 'from azure.cosmos' not in provisioning
+    assert 'AzureCosmosClient' not in provisioning
+    assert '_refresh_thread' not in provisioning
+    assert 'time.sleep(' not in provisioning
+    assert 'requests.Session()' in provisioning
+    assert "f'{endpoint}/dbs'" in provisioning
+    assert "f'{endpoint}/dbs/{database_name}/colls/'" in provisioning
+    assert 'response.status_code in {201, 409}' in provisioning

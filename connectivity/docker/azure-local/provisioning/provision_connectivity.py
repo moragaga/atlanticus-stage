@@ -5,10 +5,9 @@ from __future__ import annotations
 import os
 import time
 
+import requests
 from azure.core.credentials import AccessToken, TokenCredential
 from azure.core.pipeline.transport import HttpRequest, HttpResponse, RequestsTransport
-from azure.cosmos import CosmosClient as AzureCosmosClient
-from azure.cosmos import PartitionKey
 from azure.keyvault.secrets import SecretClient
 from azure.storage.blob import BlobServiceClient
 
@@ -22,6 +21,7 @@ _COSMOS_ACCOUNT_KEY = (
     'bIZnqyMsEcaGQy67XIw/Jw=='
 )
 _COSMOS_PARTITION_KEY_PATH = '/scope'
+_FLOCI_HTTP_TIMEOUT_SECONDS = 5.0
 
 
 class _StaticTokenCredential(TokenCredential):
@@ -105,30 +105,56 @@ def _provision_storage() -> str:
     return connection_string
 
 
+def _require_floci_created_or_exists(response: requests.Response, *, resource: str) -> None:
+    if response.status_code in {201, 409}:
+        return
+    raise RuntimeError(
+        f'Azure-local Cosmos provisioning failed for {resource}: '
+        f'HTTP {response.status_code}.'
+    )
+
+
 def _provision_cosmos() -> None:
+    """Provisiona Cosmos por REST de Floci sin usar el SDK de Cosmos.
+
+    El provisioning pertenece al harness y puede conocer el routing específico de
+    Floci. La prueba Azure-local posterior usa el ``CosmosClient`` real de
+    Atlanticus con ``azure-cosmos==4.16.3``. Separar ambos evita que los threads
+    internos de health-check del SDK formen parte del lifecycle del provisioning.
+    """
+
     database_name = _required_environment('ATLANTICUS_AZURE_LOCAL_COSMOS_DATABASE_NAME')
     container_name = _required_environment('ATLANTICUS_AZURE_LOCAL_COSMOS_CONTAINER_NAME')
-    client = AzureCosmosClient(
-        url=_cosmos_provisioning_endpoint(),
-        credential=_COSMOS_ACCOUNT_KEY,
-        connection_mode='Gateway',
-        retry_write=0,
-    )
-    try:
-        database_ids = {item['id'] for item in client.list_databases()}
-        if database_name in database_ids:
-            database = client.get_database_client(database_name)
-        else:
-            database = client.create_database(database_name)
+    endpoint = _cosmos_provisioning_endpoint()
 
-        container_ids = {item['id'] for item in database.list_containers()}
-        if container_name not in container_ids:
-            database.create_container(
-                container_name,
-                partition_key=PartitionKey(path=_COSMOS_PARTITION_KEY_PATH),
-            )
-    finally:
-        client.close()
+    with requests.Session() as session:
+        database_response = session.post(
+            f'{endpoint}/dbs',
+            json={'id': database_name},
+            timeout=_FLOCI_HTTP_TIMEOUT_SECONDS,
+        )
+        _require_floci_created_or_exists(
+            database_response,
+            resource=f'database {database_name}',
+        )
+
+        container_response = session.post(
+            f'{endpoint}/dbs/{database_name}/colls/',
+            json={
+                'id': container_name,
+                'partitionKey': {
+                    'paths': [_COSMOS_PARTITION_KEY_PATH],
+                    'kind': 'Hash',
+                    'version': 2,
+                },
+            },
+            timeout=_FLOCI_HTTP_TIMEOUT_SECONDS,
+        )
+        _require_floci_created_or_exists(
+            container_response,
+            resource=f'container {database_name}/{container_name}',
+        )
+
     print(f'Azure-local Cosmos provisioned: {database_name}/{container_name}')
 
 
