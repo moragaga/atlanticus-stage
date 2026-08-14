@@ -13,12 +13,10 @@ from azure.storage.blob import BlobServiceClient
 
 _KEY_VAULT_SMOKE_VALUE = '  atlanticus-azure-local-connectivity  '
 _STORAGE_ACCOUNT_KEY = (
-    'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/'
-    'K1SZFPTOtr/KBHBeksoGMh0=='
+    'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMh0=='
 )
 _COSMOS_ACCOUNT_KEY = (
-    'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPM'
-    'bIZnqyMsEcaGQy67XIw/Jw=='
+    'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=='
 )
 _COSMOS_PARTITION_KEY_PATH = '/scope'
 _REDIS_SUBSCRIPTION_ID = '00000000-0000-0000-0000-000000000001'
@@ -49,7 +47,7 @@ class _ForceHttpTransport(RequestsTransport):
 
     def send(self, request: HttpRequest, **kwargs: object) -> HttpResponse:
         if request.url.startswith('https://'):
-            request.url = f"http://{request.url.removeprefix('https://')}"
+            request.url = f'http://{request.url.removeprefix("https://")}'
         return super().send(request, **kwargs)
 
 
@@ -77,7 +75,7 @@ def _endpoint() -> str:
 def _vault_url() -> str:
     endpoint = _endpoint()
     account_name = _required_environment('ATLANTICUS_FLOCI_AZ_ACCOUNT_NAME')
-    return f"https://{endpoint.removeprefix('http://')}/{account_name}-keyvault"
+    return f'https://{endpoint.removeprefix("http://")}/{account_name}-keyvault'
 
 
 def _storage_connection_string() -> str:
@@ -127,8 +125,7 @@ def _require_floci_created_or_exists(response: requests.Response, *, resource: s
     if response.status_code in {201, 409}:
         return
     raise RuntimeError(
-        f'Azure-local Cosmos provisioning failed for {resource}: '
-        f'HTTP {response.status_code}.'
+        f'Azure-local Cosmos provisioning failed for {resource}: HTTP {response.status_code}.'
     )
 
 
@@ -228,8 +225,7 @@ def _provision_redis() -> tuple[str, str, str]:
             )
             if status_response.status_code != 200:
                 raise RuntimeError(
-                    'Azure-local Redis readiness check failed: '
-                    f'HTTP {status_response.status_code}.'
+                    f'Azure-local Redis readiness check failed: HTTP {status_response.status_code}.'
                 )
             payload = status_response.json()
             properties = payload.get('properties') if isinstance(payload, dict) else None
