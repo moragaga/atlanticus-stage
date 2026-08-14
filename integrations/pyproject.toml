@@ -1,0 +1,21 @@
+[tool.uv.workspace]
+members = ["pi/contracts"]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.15.22",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+extend-exclude = ["*/commented/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+line-ending = "lf"
