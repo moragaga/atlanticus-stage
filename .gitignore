@@ -146,3 +146,5 @@ cython_debug/
 *sonar-project.properties
 local_sonarqube_scan.sh
 /.scannerwork
+
+artifacts
