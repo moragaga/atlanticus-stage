@@ -13,6 +13,7 @@ from atlanticus.connectivity.service_bus import (
     ServiceBusConnectionError,
     ServiceBusDeliveryState,
     ServiceBusMessageError,
+    ServiceBusReceiveError,
     ServiceBusSettings,
     ServiceBusSettlementError,
     ServiceBusTopicReceiver,
@@ -45,7 +46,10 @@ class FakeReceiver:
 
     def receive_messages(self, **values: Any) -> list[FakeRawMessage]:
         self.receive_calls.append(values)
-        return [] if not self.messages else [self.messages.pop(0)]
+        count = int(values['max_message_count'])
+        selected = self.messages[:count]
+        del self.messages[:count]
+        return selected
 
     def complete_message(self, message: FakeRawMessage) -> None:
         self.completed.append(message)
@@ -280,6 +284,68 @@ def test_context_close_does_not_hide_primary_exception(fake_sdk) -> None:
     with pytest.raises(RuntimeError, match='primary'):
         with ServiceBusTopicReceiver(settings=_settings()):
             raise RuntimeError('primary')
+
+
+def test_receive_batch_holds_multiple_deliveries_and_settles_individually(fake_sdk) -> None:
+    install, _ = fake_sdk
+    _, sdk_receiver = install([_raw('one'), _raw('two'), _raw('three')])
+
+    with ServiceBusTopicReceiver(settings=_settings()) as receiver:
+        deliveries = receiver.receive_batch(max_message_count=2)
+        assert [item.message.message_id for item in deliveries] == ['one', 'two']
+        with pytest.raises(ServiceBusSettlementError):
+            receiver.receive_batch(max_message_count=1)
+        deliveries[0].complete()
+        deliveries[1].abandon()
+        remaining = receiver.receive_batch(max_message_count=10)
+        assert [item.message.message_id for item in remaining] == ['three']
+        remaining[0].complete()
+
+    assert sdk_receiver.receive_calls == [
+        {'max_message_count': 2, 'max_wait_time': 3.0},
+        {'max_message_count': 10, 'max_wait_time': 3.0},
+    ]
+    assert [message.message_id for message in sdk_receiver.completed] == ['one', 'three']
+    assert [message.message_id for message in sdk_receiver.abandoned] == ['two']
+
+
+def test_receive_batch_rejects_invalid_limit(fake_sdk) -> None:
+    install, _ = fake_sdk
+    install([])
+    receiver = ServiceBusTopicReceiver(settings=_settings())
+
+    for value in (0, -1, True):
+        with pytest.raises(
+            ServiceBusReceiveError, match='max_message_count must be a positive integer'
+        ):
+            receiver.receive_batch(max_message_count=value)
+
+
+def test_receive_batch_abandons_all_messages_when_one_cannot_be_decoded(fake_sdk) -> None:
+    install, _ = fake_sdk
+    invalid = _raw('invalid')
+    invalid.application_properties = {b'\xff': 'invalid'}
+    _, sdk_receiver = install([_raw('valid'), invalid])
+
+    with ServiceBusTopicReceiver(settings=_settings()) as receiver:
+        with pytest.raises(ServiceBusMessageError):
+            receiver.receive_batch(max_message_count=2)
+
+    assert [message.message_id for message in sdk_receiver.abandoned] == ['valid', 'invalid']
+
+
+def test_close_abandons_every_unsettled_batch_delivery(fake_sdk) -> None:
+    install, _ = fake_sdk
+    _, sdk_receiver = install([_raw('one'), _raw('two')])
+    receiver = ServiceBusTopicReceiver(settings=_settings())
+
+    with receiver:
+        deliveries = receiver.receive_batch(max_message_count=2)
+        deliveries[0].complete()
+
+    assert deliveries[0].state == ServiceBusDeliveryState.COMPLETED
+    assert deliveries[1].state == ServiceBusDeliveryState.ABANDONED
+    assert [message.message_id for message in sdk_receiver.abandoned] == ['two']
 
 
 def test_authentication_error_is_mapped_without_sdk_details(

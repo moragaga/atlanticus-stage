@@ -1,5 +1,5 @@
-"""Receiver síncrono con una sola entrega PeekLock activa a la vez."""
-# Espejo pedagógico: conserva exactamente el contrato ejecutable y agrega contexto de diseño.
+# El receiver permite una adquisición individual o un lote PeekLock acotado; cada delivery se liquida por separado.
+"""Receiver síncrono PeekLock con adquisición individual o por lote acotado."""
 
 from __future__ import annotations
 
@@ -57,12 +57,15 @@ def _safe_error(error: BaseException) -> ErrorInfo:
 
 
 def _receive_result(value: Any) -> ResultSummary:
-    return ResultSummary(metrics={'message_count': 0 if value is None else 1})
+    if value is None:
+        return ResultSummary(metrics={'message_count': 0})
+    if isinstance(value, tuple):
+        return ResultSummary(metrics={'message_count': len(value)})
+    return ResultSummary(metrics={'message_count': 1})
 
 
-# El receiver fija PeekLock, cero prefetch y cero retries internos para mantener una sola entrega controlada.
 class ServiceBusTopicReceiver:
-    """Reutiliza un receiver PeekLock y conserva como máximo una entrega activa."""
+    """Reutiliza un receiver PeekLock y conserva solo las entregas adquiridas activas."""
 
     def __init__(self, *, settings: ServiceBusSettings) -> None:
         if not isinstance(settings, ServiceBusSettings):
@@ -70,7 +73,7 @@ class ServiceBusTopicReceiver:
         self.settings = settings
         self._client: Any | None = None
         self._receiver: Any | None = None
-        self._active_delivery: ServiceBusDelivery | None = None
+        self._active_deliveries: dict[int, ServiceBusDelivery] = {}
         self._closed = False
 
     def __enter__(self) -> ServiceBusTopicReceiver:
@@ -132,17 +135,39 @@ class ServiceBusTopicReceiver:
         error_mapper=_safe_error,
     )
     def receive_one(self) -> ServiceBusDelivery | None:
-        """Recibe cero o una entrega; otra lectura exige resolver primero la activa."""
+        """Recibe cero o una entrega y exige no conservar locks de una adquisición previa."""
 
-        if self._active_delivery is not None and self._active_delivery.can_settle:
-            raise ServiceBusSettlementError(
-                'Settle the active Service Bus delivery before receiving another message'
-            )
+        self._require_no_active_deliveries()
+        deliveries = self._receive(max_message_count=1)
+        return None if not deliveries else deliveries[0]
+
+    @runtime_guard(
+        operation='service_bus.receiver.receive_batch',
+        component=_COMPONENT,
+        parameter_mapper=_safe_parameters,
+        result_mapper=_receive_result,
+        error_mapper=_safe_error,
+    )
+    def receive_batch(self, *, max_message_count: int) -> tuple[ServiceBusDelivery, ...]:
+        """Recibe hasta ``max_message_count`` entregas PeekLock en una adquisición acotada."""
+
+        if (
+            not isinstance(max_message_count, int)
+            or isinstance(max_message_count, bool)
+            or max_message_count <= 0
+        ):
+            raise ServiceBusReceiveError('max_message_count must be a positive integer')
+        self._require_no_active_deliveries()
+        return self._receive(max_message_count=max_message_count)
+
+    def _receive(self, *, max_message_count: int) -> tuple[ServiceBusDelivery, ...]:
         self.open()
         try:
-            messages = self._require_receiver().receive_messages(
-                max_message_count=1,
-                max_wait_time=self.settings.max_wait_time_seconds,
+            raw_messages = tuple(
+                self._require_receiver().receive_messages(
+                    max_message_count=max_message_count,
+                    max_wait_time=self.settings.max_wait_time_seconds,
+                )
             )
         except Exception as error:
             _raise_sdk_error(
@@ -150,23 +175,26 @@ class ServiceBusTopicReceiver:
                 default_error=ServiceBusReceiveError,
                 default_message='Could not receive Service Bus message',
             )
-        if not messages:
-            return None
+        if not raw_messages:
+            return ()
 
-        raw_message = messages[0]
+        deliveries: list[ServiceBusDelivery] = []
         try:
-            message = _build_message(raw_message)
+            for raw_message in raw_messages:
+                deliveries.append(
+                    ServiceBusDelivery(
+                        message=_build_message(raw_message),
+                        raw_message=raw_message,
+                        owner=self,
+                    )
+                )
         except TypeError, ValueError, UnicodeError:
-            self._release_undecodable_message(raw_message)
+            self._release_messages(raw_messages)
             raise ServiceBusMessageError('Could not decode Service Bus message') from None
 
-        delivery = ServiceBusDelivery(
-            message=message,
-            raw_message=raw_message,
-            owner=self,
-        )
-        self._active_delivery = delivery
-        return delivery
+        for delivery in deliveries:
+            self._active_deliveries[id(delivery)] = delivery
+        return tuple(deliveries)
 
     @runtime_guard(
         operation='service_bus.delivery.complete',
@@ -184,7 +212,7 @@ class ServiceBusTopicReceiver:
                 default_error=ServiceBusSettlementError,
                 default_message='Could not complete Service Bus delivery',
             )
-        self._active_delivery = None
+        self._active_deliveries.pop(id(delivery), None)
 
     @runtime_guard(
         operation='service_bus.delivery.abandon',
@@ -202,7 +230,7 @@ class ServiceBusTopicReceiver:
                 default_error=ServiceBusSettlementError,
                 default_message='Could not abandon Service Bus delivery',
             )
-        self._active_delivery = None
+        self._active_deliveries.pop(id(delivery), None)
 
     @runtime_guard(
         operation='service_bus.delivery.dead_letter',
@@ -230,7 +258,7 @@ class ServiceBusTopicReceiver:
                 default_error=ServiceBusSettlementError,
                 default_message='Could not dead-letter Service Bus delivery',
             )
-        self._active_delivery = None
+        self._active_deliveries.pop(id(delivery), None)
 
     @runtime_guard(
         operation='service_bus.delivery.renew_lock',
@@ -294,24 +322,26 @@ class ServiceBusTopicReceiver:
                     default_message='Could not stop Service Bus automatic lock renewal',
                 )
 
-    # El cierre abandona defensivamente una entrega activa y después libera receiver y cliente.
     def close(self) -> None:
         """Abandona defensivamente una entrega activa y cierra recursos una sola vez."""
 
         receiver = self._receiver
         client = self._client
-        delivery = self._active_delivery
+        deliveries = tuple(self._active_deliveries.values())
         self._receiver = None
         self._client = None
-        self._active_delivery = None
+        self._active_deliveries.clear()
         self._closed = True
 
-        if receiver is not None and delivery is not None and delivery.can_settle:
-            try:
-                receiver.abandon_message(delivery._raw_message)
-            except Exception:
-                pass
-            delivery._mark_abandoned_on_close()
+        if receiver is not None:
+            for delivery in deliveries:
+                if not delivery.can_settle:
+                    continue
+                try:
+                    receiver.abandon_message(delivery._raw_message)
+                except Exception:
+                    pass
+                delivery._mark_abandoned_on_close()
 
         close_failed = False
         for value in (receiver, client):
@@ -329,15 +359,26 @@ class ServiceBusTopicReceiver:
             raise ServiceBusConnectionError('Service Bus receiver is not open')
         return self._receiver
 
+    def _require_no_active_deliveries(self) -> None:
+        if any(delivery.can_settle for delivery in self._active_deliveries.values()):
+            raise ServiceBusSettlementError(
+                'Settle active Service Bus deliveries before receiving more messages'
+            )
+
     def _require_owned_active_delivery(self, delivery: ServiceBusDelivery) -> None:
-        if delivery is not self._active_delivery or not delivery.can_settle:
+        if self._active_deliveries.get(id(delivery)) is not delivery or not delivery.can_settle:
             raise ServiceBusSettlementError('Service Bus delivery is not active on this receiver')
         self._require_receiver()
 
-    def _release_undecodable_message(self, raw_message: Any) -> None:
-        try:
-            self._require_receiver().abandon_message(raw_message)
-        except Exception:
+    def _release_messages(self, raw_messages: tuple[Any, ...]) -> None:
+        failed = False
+        receiver = self._require_receiver()
+        for raw_message in raw_messages:
+            try:
+                receiver.abandon_message(raw_message)
+            except Exception:
+                failed = True
+        if failed:
             try:
                 self.close()
             except ServiceBusConnectionError:

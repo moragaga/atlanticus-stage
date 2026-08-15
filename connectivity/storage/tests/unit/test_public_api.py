@@ -10,6 +10,8 @@ def test_public_api_and_version_are_stable() -> None:
         'StorageClient',
         'StorageConnectionStringCredential',
         'StorageSasCredential',
+        'StorageSasReader',
+        'StorageSasReference',
         'StorageSettings',
     }
     assert expected.issubset(set(storage.__all__))

@@ -17,6 +17,7 @@ from atlanticus.connectivity.storage.errors import (
     StorageResultLimitError,
 )
 from atlanticus.connectivity.storage.models import StorageBlobProperties
+from atlanticus.connectivity.storage.sas import StorageSasReader, StorageSasReference
 from atlanticus.connectivity.storage.settings import (
     DEFAULT_STORAGE_CONNECTION_TIMEOUT_SECONDS,
     DEFAULT_STORAGE_MAX_LIST_ITEMS,
@@ -52,6 +53,8 @@ __all__ = [
     'StorageOperationError',
     'StorageResultLimitError',
     'StorageSasCredential',
+    'StorageSasReader',
+    'StorageSasReference',
     'StorageSettings',
     '__version__',
     'sanitize_account_url',

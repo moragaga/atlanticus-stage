@@ -1,0 +1,53 @@
+NOTPII - FIRST STEPS
+====================
+
+From the directory that contains "processes":
+
+1. Enter the process:
+
+   cd processes/notpii
+
+2. Create the local environment file:
+
+   Linux/macOS:
+   cp .env.detail .env
+
+   PowerShell:
+   Copy-Item .env.detail .env
+
+3. Complete the required Service Bus values in .env.
+   Configure only the extraction modes used by the catalog.
+
+4. Configure the tag catalog in:
+
+   src/ada/processes/notpii/catalog/definitions.py
+
+   Use this guide as reference:
+
+   src/ada/processes/notpii/catalog/_definitions.example.py
+
+5. Create/synchronize the locked Python environment:
+
+   uv sync --python 3.14.2 --frozen
+
+   Do not run "uv lock". The transport bundle already includes its certified uv.lock.
+   Do not use pip.
+
+6. Validate one execution manually when appropriate:
+
+   uv run --frozen ada-notpii --run-once
+
+   --run-once is only a manual verification aid. Normal operation is continuous for the
+   configured runtime execution window and uses the Atlanticus execution lease.
+
+7. Run normally:
+
+   uv run --frozen ada-notpii
+
+NOTES
+-----
+- Service Bus uses PeekLock, prefetch_count=0 and retry_total=0.
+- Each iteration receives at most NOTPII_MAX_MESSAGE_COUNT messages (default 10).
+- Dataset publication and producer state are committed before Service Bus settlement.
+- If the process loses its Atlanticus lease, runtime requests a controlled stop.
+- The real .env must never be committed or copied into a delivery image.

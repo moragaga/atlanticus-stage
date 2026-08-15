@@ -49,6 +49,7 @@ def test_storage_package_has_complete_public_shape() -> None:
         'models.py',
         'py.typed',
         'settings.py',
+        'sas.py',
     }
     assert {path.name for path in commented_root.glob('*.py')} == {
         '__init__.py',
@@ -56,4 +57,5 @@ def test_storage_package_has_complete_public_shape() -> None:
         'errors.py',
         'models.py',
         'settings.py',
+        'sas.py',
     }

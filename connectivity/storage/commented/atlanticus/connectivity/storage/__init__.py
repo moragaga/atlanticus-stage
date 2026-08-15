@@ -1,5 +1,4 @@
-# Espejo pedagógico: este archivo conserva exactamente el código ejecutable del módulo
-# productivo y añade sólo comentarios para explicar sus límites y responsabilidades.
+# API pública Storage: mantiene conexiones nombradas y agrega referencias SAS efímeras.
 """Conectividad Azure Blob Storage neutral y síncrona para Atlanticus."""
 
 from pkgutil import extend_path
@@ -19,6 +18,7 @@ from atlanticus.connectivity.storage.errors import (
     StorageResultLimitError,
 )
 from atlanticus.connectivity.storage.models import StorageBlobProperties
+from atlanticus.connectivity.storage.sas import StorageSasReader, StorageSasReference
 from atlanticus.connectivity.storage.settings import (
     DEFAULT_STORAGE_CONNECTION_TIMEOUT_SECONDS,
     DEFAULT_STORAGE_MAX_LIST_ITEMS,
@@ -34,8 +34,6 @@ __path__ = extend_path(__path__, __name__)
 
 __version__ = '0.1.0'
 
-# Sólo se exportan contratos Atlanticus. BlobServiceClient, ContentSettings y excepciones Azure
-# quedan intencionalmente detrás de la frontera del módulo.
 __all__ = [
     'DEFAULT_STORAGE_CONNECTION_TIMEOUT_SECONDS',
     'DEFAULT_STORAGE_MAX_LIST_ITEMS',
@@ -56,6 +54,8 @@ __all__ = [
     'StorageOperationError',
     'StorageResultLimitError',
     'StorageSasCredential',
+    'StorageSasReader',
+    'StorageSasReference',
     'StorageSettings',
     '__version__',
     'sanitize_account_url',
