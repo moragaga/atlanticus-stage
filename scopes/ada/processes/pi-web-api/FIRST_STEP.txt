@@ -1,0 +1,81 @@
+PI WEB API - PRIMERA EJECUCIÓN
+==============================
+
+Este directorio ya es el bundle transportable del proceso.
+Incluye pyproject.toml, uv.lock y los wheels internos de Atlanticus necesarios.
+No uses pip y no ejecutes "uv lock": el lock ya viene generado y certificado.
+
+REQUISITOS
+----------
+- UV instalado.
+- Acceso a Python 3.14.2 (UV puede usarlo/gestionarlo según la política del equipo).
+- Acceso de red al PI Web API configurado.
+
+1. ENTRAR AL PROCESO
+--------------------
+Desde la raíz del repositorio Atlanticus:
+
+    cd artifacts/processes/pi-web-api
+
+Si recibiste solo el directorio transportable que contiene processes/:
+
+    cd processes/pi-web-api
+
+Si ya estás dentro de pi-web-api, continúa con el paso 2.
+
+2. CREAR LA CONFIGURACIÓN LOCAL
+-------------------------------
+Linux/macOS:
+
+    cp .env.detail .env
+
+Windows PowerShell:
+
+    Copy-Item .env.detail .env
+
+Edita .env y completa al menos los valores propios del entorno, incluyendo:
+- APPLICATION
+- VOLUMEN_PATH
+- PI_WEB_API_BASE_URL
+- PI_WEB_API_SERVER
+- PI_WEB_API_USERNAME
+- PI_WEB_API_PASSWORD
+
+No publiques .env ni escribas secretos en logs.
+
+3. DEFINIR LOS TAGS
+-------------------
+El catálogo productivo está en:
+
+    src/ada/processes/pi_web_api/catalog/definitions.py
+
+La guía de combinaciones válidas está en:
+
+    src/ada/processes/pi_web_api/catalog/_definitions.example.py
+
+Copia/adapta únicamente las definiciones que necesites. El archivo de ejemplo no es cargado
+por el proceso. Cada alias debe ser único.
+
+4. CREAR EL ENTORNO
+-------------------
+Ejecuta una vez:
+
+    uv sync --python 3.14.2 --frozen
+
+No es necesario ejecutar "uv lock". Tampoco es necesario instalar pytest o Ruff para operar
+este bundle.
+
+5. VALIDAR UNA EJECUCIÓN
+------------------------
+Para una sola iteración:
+
+    uv run --frozen ada-pi-web-api --run-once
+
+6. EJECUCIÓN NORMAL
+-------------------
+Para dejar el job operando con su runtime y wake adaptativo:
+
+    uv run --frozen ada-pi-web-api
+
+Después del primer "uv sync", los siguientes "uv run --frozen" reutilizan el entorno mientras
+pyproject.toml y uv.lock no cambien.

@@ -14,6 +14,7 @@ from typing import Any
 
 PYTHON_VERSION = '3.14.2'
 BUNDLE_DEPENDENCY_GROUP = 'bundle-internal'
+TRANSPORT_EXCLUDED_ROOT_NAMES = frozenset({'commented', 'docs', 'scripts', 'tests'})
 ALLOWED_SYSTEM_PROFILES = frozenset({'base', 'sqlserver'})
 IGNORED_DIRECTORY_NAMES = frozenset(
     {
@@ -288,8 +289,10 @@ def build_process_bundle(
                 project_root=temporary_project,
                 command=load_container_definition(process).command,
             )
+            _validate_bundle_project(temporary_project)
             shutil.rmtree(temporary_project / '.venv', ignore_errors=True)
         _remove_generated_metadata(temporary_project)
+        _prune_transport_tree(temporary_project)
         if output_path.exists():
             shutil.rmtree(output_path)
         temporary_project.replace(output_path)
@@ -338,12 +341,65 @@ def _copy_process_project(*, source: Path, target: Path) -> None:
 
 
 def _remove_generated_metadata(project_root: Path) -> None:
-    for pattern in ('*.egg-info', '*.dist-info'):
-        for path in project_root.rglob(pattern):
+    for name in ('.pytest_cache', '.ruff_cache', '__pycache__'):
+        for path in tuple(project_root.rglob(name)):
             if path.is_dir():
                 shutil.rmtree(path)
             elif path.exists():
                 path.unlink()
+    for pattern in ('*.egg-info', '*.dist-info', '*.pyc'):
+        for path in tuple(project_root.rglob(pattern)):
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.exists():
+                path.unlink()
+
+
+def _prune_transport_tree(project_root: Path) -> None:
+    for name in TRANSPORT_EXCLUDED_ROOT_NAMES:
+        path = project_root / name
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+
+
+def _validate_bundle_project(project_root: Path) -> None:
+    commands = (
+        ('uv', 'run', '--python', PYTHON_VERSION, '--no-sync', 'ruff', 'check', '.'),
+        ('uv', 'run', '--python', PYTHON_VERSION, '--no-sync', 'ruff', 'format', '--check', '.'),
+        (
+            'uv',
+            'run',
+            '--python',
+            PYTHON_VERSION,
+            '--no-sync',
+            'python',
+            '-m',
+            'pytest',
+            '-ra',
+            'tests',
+        ),
+    )
+    for command in commands:
+        _run(command, cwd=project_root)
+    commented = project_root / 'commented'
+    if commented.is_dir():
+        _run(
+            (
+                'uv',
+                'run',
+                '--python',
+                PYTHON_VERSION,
+                '--no-sync',
+                'python',
+                '-m',
+                'compileall',
+                '-q',
+                'commented',
+            ),
+            cwd=project_root,
+        )
 
 
 def _copy_project_tree(*, source: Path, target: Path) -> None:
@@ -428,10 +484,26 @@ def _write_export_pyproject(
         source_text=source_text,
         dependencies=dependencies,
     )
+    source_text = _insert_export_uv_defaults(source_text)
     lines = [source_text.rstrip(), '', '[tool.uv.sources]']
     for package_name, wheel_path in sorted(wheel_sources.items()):
         lines.append(f'{package_name} = {{ path = "{wheel_path}" }}')
     target_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+
+def _insert_export_uv_defaults(source_text: str) -> str:
+    section = re.search(r'(?m)^\[tool\.uv\]\s*$', source_text)
+    if section is None:
+        return f'{source_text.rstrip()}\n\n[tool.uv]\ndefault-groups = []'
+    next_section = re.search(r'(?m)^\[', source_text[section.end() :])
+    insert_at = len(source_text) if next_section is None else section.end() + next_section.start()
+    prefix = source_text[: section.end()]
+    body = source_text[section.end() : insert_at]
+    suffix = source_text[insert_at:]
+    if re.search(r'(?m)^\s*default-groups\s*=', body):
+        raise ProcessBundleError('process project already declares tool.uv.default-groups')
+    body = f'\ndefault-groups = []{body}'
+    return f'{prefix}{body}{suffix}'
 
 
 def _insert_bundle_dependency_group(

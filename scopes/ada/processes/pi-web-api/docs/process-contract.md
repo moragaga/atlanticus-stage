@@ -10,6 +10,11 @@ Una misma clave puede existir en otra `APPLICATION`, porque cambia el namespace 
 
 Cada dataset materializado tiene exactamente un productor propietario. Dos processes distintos no pueden escribir sobre el mismo destino, aunque las escrituras individuales sean atómicas. La atomicidad protege contra archivos parciales; no resuelve coordinación multi-writer.
 
+
+## Catálogo productivo
+
+`catalog/definitions.py` es la única zona concreta de definiciones del process. El repositorio base conserva `DEFINITIONS=()` deliberadamente y falla rápido al ejecutar hasta que el desarrollador agregue definiciones productivas explícitas. `SOURCE` conserva `interpolation_seconds=10` como contrato temporal inicial.
+
 ## Exclusión de ejecución
 
 El process usa el lease provisto por `atlanticus.runtime` con este contrato:
@@ -57,7 +62,9 @@ El endpoint se consulta hasta `last_slot + interpolation_seconds` para poder rep
 
 Para `INTERPOLATED`, la identidad lógica final es `slot_timestamp_utc`, materializada físicamente en la columna `timestamp_utc` y alineada al eje de slots del catálogo. Duplicados exactos de `tag + timestamp` usan el último valor recibido y los conflictos se observan.
 
-Para `RECORDED`, los eventos se deduplican primero por `(tag_name, native_timestamp_utc)`. Si PI entrega la misma identidad con valores distintos, el último valor recibido gana y el conflicto queda registrado. Luego los eventos se proyectan al eje común de slots. Si distintos eventos del mismo tag caen en un mismo slot, gana el evento de timestamp nativo más reciente y la colisión queda observable.
+Para `RECORDED`, el timestamp nativo PI es la identidad temporal del evento. Los eventos se deduplican primero por `(tag_name, native_timestamp_utc)`; si PI entrega esa misma identidad con valores distintos, el último valor recibido gana y el conflicto queda registrado. Antes de materializar se normaliza a UTC y se truncan únicamente los microsegundos, sin redondear ni proyectar al eje de 10 segundos. Eventos de tags distintos solo comparten fila cuando su `timestamp_utc` final coincide. Si un mismo tag entrega más de un evento dentro del mismo segundo, gana el evento con timestamp nativo más reciente y la colisión queda observable como `recorded_second_conflicts`.
+
+`RECORDED` es sparse: una respuesta exitosa sin eventos genera cero filas y cero publicaciones, pero no impide avanzar watermarks. Un timestamp cuyos valores seleccionados normalizan todos a `null` tampoco materializa una fila vacía. `DAILY` y `MONTHLY` se particionan por el timestamp real del evento, no por el slot de consulta. En replay o ventanas solapadas, un valor entrante no nulo actualiza la celda; un valor entrante nulo conserva el valor existente para esa misma fila/columna y, si no existe ningún valor materializable en ese timestamp, no provoca una publicación por sí solo. Esto evita borrar eventos de otros tags al re-publicar una fila sparse.
 
 La materialización final de `DAILY` y `MONTHLY` usa merge idempotente por `timestamp_utc`. `LATEST` usa reemplazo completo y solo está permitido para interpolated por el contrato del catálogo.
 

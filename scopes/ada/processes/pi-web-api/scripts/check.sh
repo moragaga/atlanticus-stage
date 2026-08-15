@@ -19,19 +19,19 @@ if [[ ! -f "${BUNDLER}" ]]; then
     exit 1
 fi
 
-echo "[1/8] Applying safe Ruff fixes to process source"
+echo "[1/6] Applying safe Ruff fixes to process source"
 uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
     --with "ruff==${RUFF_VERSION}" \
     ruff check --fix --exit-zero --config "${PROCESS_ROOT}/pyproject.toml" \
     "${PROCESS_ROOT}/src" "${PROCESS_ROOT}/tests"
 
-echo "[2/8] Formatting process source"
+echo "[2/6] Formatting process source"
 uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
     --with "ruff==${RUFF_VERSION}" \
     ruff format --config "${PROCESS_ROOT}/pyproject.toml" \
     "${PROCESS_ROOT}/src" "${PROCESS_ROOT}/tests"
 
-echo "[3/8] Building process artifact"
+echo "[3/6] Building and validating transport artifact"
 uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
     "${BUNDLER}" \
     "${PROCESS_ROOT}" \
@@ -40,50 +40,27 @@ uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
 
 cd "${ARTIFACT_PATH}"
 
-echo "[4/8] Installing locked artifact environment"
-uv sync --python "${PYTHON_VERSION}" --no-python-downloads --no-cache --group dev --frozen
-
-echo "[5/8] Verifying Python runtime"
-uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-sync python -c \
-    "import sys; assert sys.version_info[:3] == (3, 14, 2), sys.version"
-
-validation_failed=0
-
-run_validation() {
-    local label="$1"
-    shift
-    echo "[check] ${label}"
-    if "$@"; then
-        echo "[pass] ${label}"
-    else
-        echo "[fail] ${label}" >&2
-        validation_failed=1
+echo "[4/6] Verifying transport bundle contents"
+for forbidden in tests commented docs scripts; do
+    if [[ -e "${forbidden}" ]]; then
+        echo "Transport bundle must not contain ${forbidden}: ${ARTIFACT_PATH}" >&2
+        exit 1
     fi
-}
+done
+for required in FIRST_STEP.txt .env.detail config.detail.json secrets.detail.json pyproject.toml uv.lock wheels src; do
+    if [[ ! -e "${required}" ]]; then
+        echo "Transport bundle is missing ${required}: ${ARTIFACT_PATH}" >&2
+        exit 1
+    fi
+done
 
-run_validation \
-    "Ruff lint" \
-    uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-sync ruff check .
+echo "[5/6] Installing locked transport runtime"
+uv sync --python "${PYTHON_VERSION}" --no-python-downloads --no-cache --frozen
 
-run_validation \
-    "Ruff format verification" \
-    uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-sync ruff format --check .
-
-run_validation \
-    "Pytest" \
-    uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-sync python -m pytest -ra tests
-
-if [[ -d commented ]]; then
-    run_validation \
-        "Commented mirror compilation" \
-        uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-sync python -m compileall -q commented
-fi
+echo "[6/6] Verifying transport runtime"
+uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-sync python -c \
+    "import sys; import ada.processes.pi_web_api; assert sys.version_info[:3] == (3, 14, 2), sys.version"
 
 rm -rf .venv
 
-if (( validation_failed != 0 )); then
-    echo "PI Web API process artifact validation failed: ${ARTIFACT_PATH}" >&2
-    exit 1
-fi
-
-echo "PI Web API process artifact validated: ${ARTIFACT_PATH}"
+echo "PI Web API transport artifact validated: ${ARTIFACT_PATH}"

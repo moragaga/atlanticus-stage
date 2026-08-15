@@ -19,69 +19,38 @@ if not exist "%BUNDLER%" (
     exit /b 1
 )
 
-echo [1/8] Applying safe Ruff fixes to process source
+echo [1/6] Applying safe Ruff fixes to process source
 uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-project --with "ruff==%RUFF_VERSION%" ruff check --fix --exit-zero --config "%PROCESS_ROOT%\pyproject.toml" "%PROCESS_ROOT%\src" "%PROCESS_ROOT%\tests" || exit /b 1
 
-echo [2/8] Formatting process source
+echo [2/6] Formatting process source
 uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-project --with "ruff==%RUFF_VERSION%" ruff format --config "%PROCESS_ROOT%\pyproject.toml" "%PROCESS_ROOT%\src" "%PROCESS_ROOT%\tests" || exit /b 1
 
-echo [3/8] Building process artifact
+echo [3/6] Building and validating transport artifact
 uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-project "%BUNDLER%" "%PROCESS_ROOT%" --repository-root "%REPOSITORY_ROOT%" --output-root "%ARTIFACT_ROOT%" || exit /b 1
 
 cd /d "%ARTIFACT_PATH%" || exit /b 1
 
-echo [4/8] Installing locked artifact environment
-uv sync --python "%PYTHON_VERSION%" --no-python-downloads --no-cache --group dev --frozen || exit /b 1
-
-echo [5/8] Verifying Python runtime
-uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-sync python -c "import sys; assert sys.version_info[:3] == (3, 14, 2), sys.version" || exit /b 1
-
-set "VALIDATION_FAILED=0"
-
-echo [check] Ruff lint
-uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-sync ruff check .
-if errorlevel 1 (
-    echo [fail] Ruff lint 1>&2
-    set "VALIDATION_FAILED=1"
-) else (
-    echo [pass] Ruff lint
+echo [4/6] Verifying transport bundle contents
+for %%D in (tests commented docs scripts) do (
+    if exist "%%D" (
+        echo Transport bundle must not contain %%D: %ARTIFACT_PATH% 1>&2
+        exit /b 1
+    )
 )
-
-echo [check] Ruff format verification
-uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-sync ruff format --check .
-if errorlevel 1 (
-    echo [fail] Ruff format verification 1>&2
-    set "VALIDATION_FAILED=1"
-) else (
-    echo [pass] Ruff format verification
-)
-
-echo [check] Pytest
-uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-sync python -m pytest -ra tests
-if errorlevel 1 (
-    echo [fail] Pytest 1>&2
-    set "VALIDATION_FAILED=1"
-) else (
-    echo [pass] Pytest
-)
-
-if exist commented (
-    echo [check] Commented mirror compilation
-    uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-sync python -m compileall -q commented
-    if errorlevel 1 (
-        echo [fail] Commented mirror compilation 1>&2
-        set "VALIDATION_FAILED=1"
-    ) else (
-        echo [pass] Commented mirror compilation
+for %%F in (FIRST_STEP.txt .env.detail config.detail.json secrets.detail.json pyproject.toml uv.lock wheels src) do (
+    if not exist "%%F" (
+        echo Transport bundle is missing %%F: %ARTIFACT_PATH% 1>&2
+        exit /b 1
     )
 )
 
+echo [5/6] Installing locked transport runtime
+uv sync --python "%PYTHON_VERSION%" --no-python-downloads --no-cache --frozen || exit /b 1
+
+echo [6/6] Verifying transport runtime
+uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-sync python -c "import sys; import ada.processes.pi_web_api; assert sys.version_info[:3] == (3, 14, 2), sys.version" || exit /b 1
+
 if exist .venv rmdir /s /q .venv
 
-if not "%VALIDATION_FAILED%"=="0" (
-    echo PI Web API process artifact validation failed: %ARTIFACT_PATH% 1>&2
-    exit /b 1
-)
-
-echo PI Web API process artifact validated: %ARTIFACT_PATH%
+echo PI Web API transport artifact validated: %ARTIFACT_PATH%
 exit /b 0

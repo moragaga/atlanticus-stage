@@ -76,7 +76,7 @@ def test_resolve_internal_dependencies_rejects_non_exact_internal_version(
         )
 
 
-def test_build_process_bundle_keeps_validation_material_and_excludes_local_env(
+def test_build_process_bundle_publishes_runtime_only_transport_bundle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -104,6 +104,11 @@ def test_build_process_bundle_keeps_validation_material_and_excludes_local_env(
     )
     (process_root / 'commented').mkdir()
     (process_root / 'commented' / 'sample.py').write_text('value = 1\n', encoding='utf-8')
+    (process_root / 'docs').mkdir()
+    (process_root / 'docs' / 'contract.md').write_text('contract\n', encoding='utf-8')
+    (process_root / 'scripts').mkdir()
+    (process_root / 'scripts' / 'check.sh').write_text('exit 0\n', encoding='utf-8')
+    (process_root / 'FIRST_STEP.txt').write_text('uv sync --frozen\n', encoding='utf-8')
 
     def fake_run(command: tuple[str, ...], *, cwd: Path) -> None:
         if command[:2] == ('uv', 'build'):
@@ -121,6 +126,13 @@ def test_build_process_bundle_keeps_validation_material_and_excludes_local_env(
             command_path.parent.mkdir(parents=True)
             command_path.write_text('', encoding='utf-8')
             return
+        if command[:2] == ('uv', 'run'):
+            (cwd / '.pytest_cache').mkdir(exist_ok=True)
+            (cwd / '.ruff_cache').mkdir(exist_ok=True)
+            cache = cwd / 'src' / 'ada' / 'sample' / '__pycache__'
+            cache.mkdir(parents=True, exist_ok=True)
+            (cache / 'sample.pyc').write_bytes(b'cache')
+            return
         raise AssertionError(command)
 
     monkeypatch.setattr(process_bundle, '_run', fake_run)
@@ -132,18 +144,43 @@ def test_build_process_bundle_keeps_validation_material_and_excludes_local_env(
     )
 
     assert (result / 'uv.lock').is_file()
-    assert (result / 'tests' / 'test_sample.py').is_file()
-    assert (result / 'commented' / 'sample.py').is_file()
+    assert not (result / 'tests').exists()
+    assert not (result / 'commented').exists()
+    assert not (result / 'docs').exists()
+    assert not (result / 'scripts').exists()
+    assert (result / 'FIRST_STEP.txt').is_file()
     assert (result / '.env.detail').is_file()
     assert (result / 'config.detail.json').is_file()
     assert (result / 'secrets.detail.json').is_file()
     assert not (result / '.env').exists()
     assert not (result / '.venv').exists()
+    assert not (result / '.pytest_cache').exists()
+    assert not (result / '.ruff_cache').exists()
+    assert not tuple(result.rglob('__pycache__'))
+    assert not tuple(result.rglob('*.pyc'))
     assert sorted(path.name for path in (result / 'wheels').glob('*.whl')) == [
         'atlanticus_dependency-0.1.0-py3-none-any.whl'
     ]
     exported = tomllib.loads((result / 'pyproject.toml').read_text(encoding='utf-8'))
+    assert exported['tool']['uv']['default-groups'] == []
     assert exported['tool']['uv']['sources']['atlanticus-dependency']['path'].startswith('wheels/')
+
+
+def test_insert_export_uv_defaults_reuses_existing_tool_uv_section() -> None:
+    source = '[project]\nname = "sample"\n\n[tool.uv]\nmanaged = true\n'
+
+    exported = process_bundle._insert_export_uv_defaults(source)
+    parsed = tomllib.loads(exported)
+
+    assert parsed['tool']['uv']['managed'] is True
+    assert parsed['tool']['uv']['default-groups'] == []
+
+
+def test_insert_export_uv_defaults_rejects_process_override() -> None:
+    source = '[tool.uv]\ndefault-groups = ["dev"]\n'
+
+    with pytest.raises(ProcessBundleError, match='already declares tool.uv.default-groups'):
+        process_bundle._insert_export_uv_defaults(source)
 
 
 def test_process_tooling_gate_applies_safe_fixes_and_runs_tests() -> None:

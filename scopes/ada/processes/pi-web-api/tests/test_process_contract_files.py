@@ -31,6 +31,8 @@ def test_detail_templates_exist_without_real_local_env() -> None:
     assert {'COMPANY_ABREV', 'PRODUCT_ABREV'} <= variables
     assert {'PI_WEB_API_USERNAME', 'PI_WEB_API_PASSWORD'} <= variables
     env_detail = (root / '.env.detail').read_text(encoding='utf-8')
+    assert '# Recovery.' in env_detail
+    assert '# Observabilidad Azure.' in env_detail
     assert 'PI_WEB_API_LEASE_SMOKE_MODE' not in env_detail
     assert not (root / 'src' / 'ada' / 'processes' / 'pi_web_api' / 'lease_smoke.py').exists()
     assert not (root / 'commented' / 'ada' / 'processes' / 'pi_web_api' / 'lease_smoke.py').exists()
@@ -41,40 +43,36 @@ def test_detail_templates_exist_without_real_local_env() -> None:
     assert 'PI_WEB_API_MAX_RECOVERY_LOOKBACK_SECONDS=3600' in env_detail
     assert 'PI_WEB_API_MAX_RECOVERY_WINDOW_SECONDS=3600' in env_detail
     assert 'PI_WEB_API_MAX_RECOVERY_SECONDS' not in env_detail
-    assert 'PI_WEB_API_STRESS_BENCHMARK=false' in env_detail
-    assert 'PI_WEB_API_STRESS_LOGICAL_TAGS=1000' in env_detail
-    assert 'PI_WEB_API_STRESS_LOOKBACK_HOURS=24' in env_detail
-    assert 'PI_WEB_API_STRESS_PHYSICAL_TAG_LIMIT=0' in env_detail
-    stress_io = (root / '.env.detail.stress-io').read_text(encoding='utf-8')
-    assert 'PI_WEB_API_STRESS_KIND=io' in stress_io
-    assert 'PI_WEB_API_STRESS_IO_CHUNK_LIMIT=40' in stress_io
-    assert 'PI_WEB_API_STRESS_IO_MAX_WORKERS=3' in stress_io
-    assert 'ada-pi-web-api --run-once' in stress_io
-    placeholders = {
-        line.split('=', 1)[0] for line in stress_io.splitlines() if '=COMPLETAR_' in line
-    }
-    assert placeholders == {
-        'VOLUMEN_PATH',
-        'PI_WEB_API_BASE_URL',
-        'PI_WEB_API_SERVER',
-        'PI_WEB_API_USERNAME',
-        'PI_WEB_API_PASSWORD',
-    }
 
 
-def test_validation_gate_formats_source_and_runs_tests_explicitly() -> None:
+def test_validation_gate_builds_and_verifies_transport_bundle() -> None:
     root = _root()
     shell = (root / 'scripts' / 'check.sh').read_text(encoding='utf-8')
     batch = (root / 'scripts' / 'check.bat').read_text(encoding='utf-8')
 
     for script in (shell, batch):
-        assert 'scopes/ada/scripts/processes/process_bundle.py' in script.replace('\\', '/')
+        normalized = script.replace('\\', '/')
+        assert 'scopes/ada/scripts/processes/process_bundle.py' in normalized
         assert 'ruff check --fix --exit-zero' in script
         assert 'ruff format' in script
-        assert 'ruff format --check .' in script
-        assert 'python -m pytest -ra tests' in script
-        assert 'Ruff lint' in script
-        assert 'Pytest' in script
+        assert 'Building and validating transport artifact' in script
+        assert 'Installing locked transport runtime' in script
+        assert 'tests commented docs scripts' in script
+        assert '--group dev' not in script
+
+
+def test_operator_first_step_and_catalog_example_exist() -> None:
+    root = _root()
+    first_step = (root / 'FIRST_STEP.txt').read_text(encoding='utf-8')
+    example = (
+        root / 'src' / 'ada' / 'processes' / 'pi_web_api' / 'catalog' / '_definitions.example.py'
+    )
+
+    assert 'uv sync --python 3.14.2 --frozen' in first_step
+    assert 'uv run --frozen ada-pi-web-api --run-once' in first_step
+    assert 'uv run --frozen ada-pi-web-api' in first_step
+    assert 'no ejecutes "uv lock"' in first_step.lower()
+    assert example.is_file()
 
 
 def test_process_contract_documents_single_writer_and_replay_idempotency() -> None:

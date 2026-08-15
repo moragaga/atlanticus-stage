@@ -17,6 +17,14 @@ from ada.processes.pi_web_api import (
 )
 from atlanticus.datasets.parquet import ParquetDatasetStore
 from atlanticus.datasets.runtime import DatasetRuntime
+from atlanticus.integrations.pi.contracts import (
+    PiCatalog,
+    PiExtractionMode,
+    PiMaterialization,
+    PiTagDefinition,
+    PiValueKind,
+    PiWebApiSource,
+)
 from atlanticus.integrations.pi.web_api import PiPointWebIdResult, PiWebApiLimits
 from atlanticus.runtime import JobDefinition, JobRuntimeContext, RuntimeConfiguration
 from atlanticus.state import AtomicStateStore
@@ -172,6 +180,8 @@ def test_run_iteration_materializes_then_commits_public_and_private_watermarks(
     assert client.streamsets.recorded_calls == 1
     assert context.get_iteration_fact('outcome') == 'completed'
     assert context.get_execution_fact('pi_requests') == 2
+    assert context.get_execution_fact('slots_processed') == 1
+    assert context.get_execution_fact('slots_materialized') is None
     assert context.get_iteration_fact('next_wake_utc') is not None
     assert 0 <= context._next_iteration_delay() <= 10
     assert context.get_iteration_fact('slot_commit_latency_seconds') is not None
@@ -309,3 +319,35 @@ def test_caught_up_job_skips_pi_and_schedules_exact_next_boundary(tmp_path, cata
     assert next_wake.microsecond == 0
     assert next_wake.second % 10 == 0
     assert 0 <= context._next_iteration_delay() <= 10
+
+
+def test_recorded_empty_response_advances_watermarks_without_publication(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_catalog = PiCatalog(
+        source=PiWebApiSource(interpolation_seconds=10),
+        definitions=(
+            PiTagDefinition(
+                tag_name='TAG_B',
+                alias='b',
+                value_kind=PiValueKind.TEXT,
+                extraction_mode=PiExtractionMode.RECORDED,
+                materializations=(PiMaterialization.DAILY,),
+            ),
+        ),
+    )
+    job, producer_state, source_state, client = _job(tmp_path, recorded_catalog)
+    monkeypatch.setattr(client.streamsets, 'get_recorded', lambda *args, **kwargs: ())
+    context = _context(tmp_path)
+
+    job.run_iteration(context)
+
+    producer = producer_state.current().committed_watermark_utc
+    source = source_state.current().source_watermark_utc
+    assert producer is not None
+    assert source == producer
+    assert context.get_iteration_fact('outcome') == 'completed'
+    assert context.get_iteration_fact('publications') == 0
+    assert context.get_iteration_fact('publications_committed') == 0
+    assert context.get_iteration_fact('recorded_requests') == 1

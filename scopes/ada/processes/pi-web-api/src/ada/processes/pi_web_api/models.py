@@ -196,7 +196,7 @@ class PiAcquisitionResult:
 @dataclass(frozen=True, slots=True)
 class PiMaterializationResult:
     publications: tuple[DatasetPublicationResult, ...]
-    recorded_bucket_conflict_count: int = 0
+    recorded_second_conflict_count: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.publications, tuple) or not all(
@@ -204,8 +204,8 @@ class PiMaterializationResult:
         ):
             raise TypeError('publications must be a tuple of DatasetPublicationResult values')
         if (
-            not isinstance(self.recorded_bucket_conflict_count, int)
-            or isinstance(self.recorded_bucket_conflict_count, bool)
-            or self.recorded_bucket_conflict_count < 0
+            not isinstance(self.recorded_second_conflict_count, int)
+            or isinstance(self.recorded_second_conflict_count, bool)
+            or self.recorded_second_conflict_count < 0
         ):
-            raise ValueError('recorded_bucket_conflict_count must be a non-negative integer')
+            raise ValueError('recorded_second_conflict_count must be a non-negative integer')

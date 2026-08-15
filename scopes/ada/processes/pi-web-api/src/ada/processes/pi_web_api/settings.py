@@ -144,17 +144,6 @@ def configuration_specs() -> tuple[ConfigurationVariableSpec, ...]:
         ConfigurationVariableSpec(key='PI_WEB_API_MAX_RECOVERY_WINDOW_SECONDS', default='3600'),
         ConfigurationVariableSpec(key='PI_WEB_API_INTERPOLATED_MAX_PARALLEL_REQUESTS', default='3'),
         ConfigurationVariableSpec(key='PI_WEB_API_MAX_DATA_POINTS', default='150000'),
-        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_BENCHMARK', default='false'),
-        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_KIND', default='capacity'),
-        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_LOGICAL_TAGS', default='1000'),
-        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_LOOKBACK_HOURS', default='24'),
-        ConfigurationVariableSpec(
-            key='PI_WEB_API_STRESS_END_UTC',
-            required=False,
-        ),
-        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_PHYSICAL_TAG_LIMIT', default='0'),
-        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_IO_CHUNK_LIMIT', default='40'),
-        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_IO_MAX_WORKERS', default='3'),
         ConfigurationVariableSpec(
             key='ATLANTICUS_AZURE_OBSERVABILITY_MODE',
             default='off',

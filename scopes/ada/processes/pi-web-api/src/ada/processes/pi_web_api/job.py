@@ -122,11 +122,11 @@ class PiWebApiJob:
             acquisition=acquisition,
             context=context,
         )
-        if materialization.recorded_bucket_conflict_count:
+        if materialization.recorded_second_conflict_count:
             context.logger.warning(
-                'Multiple recorded PI events were projected to the same slot',
-                event_name='pi_web_api.recorded.bucket_conflict',
-                conflict_count=materialization.recorded_bucket_conflict_count,
+                'Multiple recorded PI events for the same tag occurred within one second',
+                event_name='pi_web_api.recorded.second_conflict',
+                conflict_count=materialization.recorded_second_conflict_count,
             )
         context.raise_if_cancelled()
         source, producer = self.watermarks.commit_materialized(window.last_slot_utc)
@@ -141,7 +141,7 @@ class PiWebApiJob:
             acquisition=acquisition,
             publication_count=len(materialization.publications),
             committed_publications=committed_publications,
-            recorded_bucket_conflicts=materialization.recorded_bucket_conflict_count,
+            recorded_second_conflicts=materialization.recorded_second_conflict_count,
             source_watermark=source.source_watermark_utc,
             producer_watermark=producer.committed_watermark_utc,
         )
@@ -190,7 +190,7 @@ class PiWebApiJob:
             context.set_execution_fact('webid_requests', preparation.point_request_count)
         for key in (
             'pi_requests',
-            'slots_materialized',
+            'slots_processed',
             'publications_committed',
             'pi_timeout_skips',
             'pi_timeout_retries',
@@ -265,7 +265,7 @@ class PiWebApiJob:
         acquisition,
         publication_count: int,
         committed_publications: int,
-        recorded_bucket_conflicts: int,
+        recorded_second_conflicts: int,
         source_watermark: datetime | None,
         producer_watermark: datetime | None,
     ) -> None:
@@ -276,7 +276,7 @@ class PiWebApiJob:
         context.set_iteration_fact('window_splits', acquisition.split_count)
         context.set_iteration_fact('publications', publication_count)
         context.set_iteration_fact('publications_committed', committed_publications)
-        context.set_iteration_fact('recorded_bucket_conflicts', recorded_bucket_conflicts)
+        context.set_iteration_fact('recorded_second_conflicts', recorded_second_conflicts)
         context.set_iteration_fact('recorded_exact_conflicts', acquisition.recorded_conflict_count)
         context.set_iteration_fact(
             'interpolated_conflicts', acquisition.interpolated_conflict_count
@@ -288,5 +288,5 @@ class PiWebApiJob:
             context.set_iteration_fact('producer_watermark_utc', producer_watermark)
             context.set_execution_fact('producer_watermark_utc', producer_watermark)
         context.increment_execution_counter('pi_requests', acquisition.request_count)
-        context.increment_execution_counter('slots_materialized', window.slot_count)
+        context.increment_execution_counter('slots_processed', window.slot_count)
         context.increment_execution_counter('publications_committed', committed_publications)

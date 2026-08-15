@@ -101,7 +101,7 @@ class PiWebApiMaterializer:
             samples=acquisition.interpolated,
             window=window,
         )
-        recorded_values, recorded_bucket_conflicts = _project_recorded(
+        recorded_values, recorded_second_conflicts = _project_recorded(
             samples=acquisition.recorded,
             window=window,
         )
@@ -124,7 +124,7 @@ class PiWebApiMaterializer:
         )
         return PiMaterializationResult(
             publications=tuple(publications),
-            recorded_bucket_conflict_count=recorded_bucket_conflicts,
+            recorded_second_conflict_count=recorded_second_conflicts,
         )
 
     def _publish_mode(
@@ -139,7 +139,6 @@ class PiWebApiMaterializer:
         dataset = self._datasets.get(mode)
         if not definitions or dataset is None:
             return ()
-        slots = _slots(window)
         publications: list[DatasetPublicationResult] = []
         for materialization in _MATERIALIZATION_ORDER:
             context.raise_if_cancelled()
@@ -150,10 +149,17 @@ class PiWebApiMaterializer:
             )
             if not selected:
                 continue
+            timestamps = (
+                _slots(window)
+                if mode is PiExtractionMode.INTERPOLATED
+                else _timestamps_for_definitions(values=values, definitions=selected)
+            )
+            if not timestamps:
+                continue
             if materialization is PiMaterialization.LATEST:
                 target = dataset.resolve_target(materialization=materialization.value)
                 table = _build_table(
-                    slots=(window.last_slot_utc,),
+                    slots=(timestamps[-1],),
                     definitions=selected,
                     values=values,
                     schema=_current_schema(selected),
@@ -163,24 +169,33 @@ class PiWebApiMaterializer:
                     self._runtime.replace(definition=dataset, target=target, data=table)
                 )
                 continue
-            grouped = _group_slots(slots, materialization)
+            grouped = _group_slots(timestamps, materialization)
             for partition, partition_slots in grouped:
                 context.raise_if_cancelled()
                 target = dataset.resolve_target(
                     materialization=materialization.value,
                     partition=partition,
                 )
-                schema = self._schema_for_active_target(
-                    dataset=dataset,
-                    target=target,
-                    definitions=selected,
-                )
+                if mode is PiExtractionMode.RECORDED:
+                    existing = self._read_active_target(definition=dataset, target=target)
+                    schema = _current_schema(selected)
+                    if existing is not None:
+                        schema = _merge_active_schema(existing=existing.schema, current=schema)
+                else:
+                    existing = None
+                    schema = self._schema_for_active_target(
+                        dataset=dataset,
+                        target=target,
+                        definitions=selected,
+                    )
                 table = _build_table(
                     slots=partition_slots,
                     definitions=selected,
                     values=values,
                     schema=schema,
                 )
+                if mode is PiExtractionMode.RECORDED and existing is not None:
+                    table = _preserve_existing_on_null(existing=existing, incoming=table)
                 context.raise_if_cancelled()
                 publications.append(
                     self._runtime.merge(
@@ -206,6 +221,17 @@ class PiWebApiMaterializer:
         except DatasetRuntimeNotFoundError:
             return current
         return _merge_active_schema(existing=existing, current=current)
+
+    def _read_active_target(
+        self,
+        *,
+        definition: DatasetDefinition,
+        target: DatasetTarget,
+    ) -> pa.Table | None:
+        try:
+            return self._runtime.read_table(definition=definition, target=target).table
+        except DatasetRuntimeNotFoundError:
+            return None
 
 
 def _build_dataset_definition(
@@ -245,6 +271,21 @@ def _slots(window: PiAcquisitionWindow) -> tuple[datetime, ...]:
         window.first_slot_utc + timedelta(seconds=index * window.interpolation_seconds)
         for index in range(window.slot_count)
     )
+
+
+def _timestamps_for_definitions(
+    *,
+    values: dict[tuple[datetime, str], Any],
+    definitions: tuple[PiTagDefinition, ...],
+) -> tuple[datetime, ...]:
+    selected = {definition.tag_name.casefold(): definition for definition in definitions}
+    timestamps: set[datetime] = set()
+    for (timestamp, tag_name), value in values.items():
+        definition = selected.get(tag_name)
+        if definition is None or _normalize_value(value, definition) is None:
+            continue
+        timestamps.add(timestamp)
+    return tuple(sorted(timestamps))
 
 
 def _group_slots(
@@ -290,13 +331,14 @@ def _project_recorded(
 ) -> tuple[dict[tuple[datetime, str], Any], int]:
     selected: dict[tuple[datetime, str], PiSample] = {}
     conflicts = 0
+    end_exclusive = window.last_slot_utc + timedelta(seconds=window.interpolation_seconds)
     for sample in samples:
-        slot = _floor_slot(sample.timestamp_utc, window.interpolation_seconds)
-        if not window.first_slot_utc <= slot <= window.last_slot_utc:
+        if not window.first_slot_utc <= sample.timestamp_utc < end_exclusive:
             continue
-        key = (slot, sample.tag_name.casefold())
+        timestamp = sample.timestamp_utc.replace(microsecond=0)
+        key = (timestamp, sample.tag_name.casefold())
         previous = selected.get(key)
-        if previous is not None and previous.timestamp_utc != sample.timestamp_utc:
+        if previous is not None:
             conflicts += 1
         if previous is None or sample.timestamp_utc >= previous.timestamp_utc:
             selected[key] = sample
@@ -372,6 +414,29 @@ def _build_table(
         raise PiWebApiMaterializationError(
             'PI values could not be converted to dataset schema'
         ) from error
+
+
+def _preserve_existing_on_null(*, existing: pa.Table, incoming: pa.Table) -> pa.Table:
+    if incoming.num_rows == 0 or existing.num_rows == 0:
+        return incoming
+    timestamps = incoming['timestamp_utc'].to_pylist()
+    existing_timestamps = existing['timestamp_utc'].to_pylist()
+    existing_index = {timestamp: index for index, timestamp in enumerate(existing_timestamps)}
+    arrays: list[pa.Array] = [incoming['timestamp_utc'].combine_chunks()]
+    for field in tuple(incoming.schema)[1:]:
+        incoming_values = incoming[field.name].to_pylist()
+        if field.name in existing.column_names:
+            existing_values = existing[field.name].to_pylist()
+            for index, timestamp in enumerate(timestamps):
+                existing_row = existing_index.get(timestamp)
+                if (
+                    incoming_values[index] is None
+                    and existing_row is not None
+                    and existing_values[existing_row] is not None
+                ):
+                    incoming_values[index] = existing_values[existing_row]
+        arrays.append(pa.array(incoming_values, type=field.type, from_pandas=True))
+    return pa.Table.from_arrays(arrays, schema=incoming.schema)
 
 
 def _normalize_value(value: Any, definition: PiTagDefinition) -> float | str | None:
