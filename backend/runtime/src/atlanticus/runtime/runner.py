@@ -113,6 +113,13 @@ def execute_job(
     )
     run_id = str(uuid4())
     correlation_id = str(uuid4())
+    context = JobRuntimeContext.create(
+        definition=definition,
+        configuration=configuration,
+        run_id=run_id,
+        correlation_id=correlation_id,
+        clock=time.monotonic,
+    )
     lease = ExecutionLease(
         volume_path=configuration.volume_path,
         application=configuration.application,
@@ -122,7 +129,7 @@ def execute_job(
         run_id=run_id,
         lease_timeout_seconds=definition.lease_timeout_seconds,
         renewal_seconds=definition.lease_renew_seconds,
-        wait_seconds=definition.lease_wait_seconds,
+        wait_seconds=_effective_lease_wait_seconds(definition, context),
         poll_seconds=definition.lease_poll_seconds,
     )
     acquisition = lease.acquire()
@@ -146,12 +153,8 @@ def execute_job(
         if acquisition.recovered is not None:
             _emit_recovered_timeout(settings, acquisition.recovered)
 
-        context = JobRuntimeContext.create(
-            definition=definition,
-            configuration=configuration,
-            run_id=run_id,
-            correlation_id=correlation_id,
-        )
+        context.set_execution_fact('lease_wait_seconds', acquisition.waited_seconds)
+        context.set_execution_fact('lease_recovered', acquisition.recovered is not None)
         lease.start_renewal(on_lost=context.request_stop)
         try:
             with _cooperative_sigterm(context):
@@ -187,7 +190,7 @@ def _run_iterations(
     iteration: Callable[[JobRuntimeContext], Any],
     lease: ExecutionLease,
 ) -> RuntimeExecutionResult:
-    started = time.monotonic()
+    started = context.started_monotonic
     iteration_count = 0
     total_iteration_duration = 0.0
     work_iterations = 0
@@ -398,9 +401,23 @@ def _run_iterations(
         correlation_id=context.correlation_id,
         status=OperationStatus.SUCCESS,
         iteration_count=iteration_count,
-        duration_seconds=round(time.monotonic() - started, 6),
+        duration_seconds=round(context.clock() - started, 6),
         stop_reason=stop_reason,
     )
+
+
+def _effective_lease_wait_seconds(
+    definition: JobDefinition,
+    context: JobRuntimeContext,
+) -> float:
+    available_for_wait = max(
+        0.0,
+        context.safe_remaining_seconds - definition.iteration_timeout_seconds,
+    )
+    configured = definition.lease_wait_seconds
+    if configured is None:
+        return available_for_wait
+    return min(configured, available_for_wait)
 
 
 def _execution_metrics(

@@ -138,3 +138,27 @@ def test_deployed_bootstrap_derives_key_vault_from_company_environment_and_produ
     assert settings.product_abrev == 'ada'
     assert settings.vault_name == 'mlp-prd-kv-ada'
     assert configuration.require('PI_WEB_API_USERNAME') == 'domain\\user'
+
+
+def test_local_bootstrap_can_resolve_environment_from_dotenv(tmp_path: Path) -> None:
+    (tmp_path / '.env').write_text(
+        '\n'.join(
+            (
+                'ENVIRONMENT=local',
+                'APPLICATION=ada',
+                f'VOLUMEN_PATH={tmp_path / "volume"}',
+                'PI_WEB_API_BASE_URL=https://pi.example.local/piwebapi/',
+                'PI_WEB_API_SERVER=PISERVER',
+                'PI_WEB_API_USERNAME=domain\\user',
+                'PI_WEB_API_PASSWORD=secret',
+            )
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    configuration = load_configuration(process_root=tmp_path, environ={})
+
+    assert str(configuration.environment) == 'local'
+    assert configuration.require('APPLICATION') == 'ada'
+    assert configuration.require('PI_WEB_API_USERNAME') == 'domain\\user'

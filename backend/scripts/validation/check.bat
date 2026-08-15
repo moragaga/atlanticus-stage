@@ -139,6 +139,7 @@ if "%ALL%"=="1" (
     if "!SEL_OBSERVABILITY_AZURE!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-observability-azure"
     if "!SEL_STATE!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-state"
     if "!SEL_RUNTIME!"=="1" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-job-runtime"
+    if "!SEL_RUNTIME!"=="1" if "!SEL_OBSERVABILITY_AZURE!"=="0" set "SYNC_PACKAGES=!SYNC_PACKAGES! --package atlanticus-observability-azure"
 
     call :run uv sync --python "%PYTHON_BIN%" --no-python-downloads %CACHE_ARG% --only-group dev --frozen
     if errorlevel 1 exit /b 1

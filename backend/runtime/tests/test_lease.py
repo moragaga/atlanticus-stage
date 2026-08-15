@@ -33,12 +33,98 @@ def test_lease_uses_application_runtime_scope_and_prevents_overlap(tmp_path) -> 
     first.acquire()
 
     assert first.path == (tmp_path / 'ada' / '.runtime' / 'leases' / 'dispatch-ingestion-job.json')
-    with pytest.raises(ConcurrentExecutionError):
+    with pytest.raises(ConcurrentExecutionError, match='after waiting'):
         _lease(tmp_path, run_id='run-2').acquire()
 
     assert first.release()
     second = _lease(tmp_path, run_id='run-2')
     second.acquire()
+    assert second.release()
+
+
+def test_waiting_lease_acquires_after_clean_release(tmp_path) -> None:
+    first = ExecutionLease(
+        volume_path=tmp_path,
+        application='ada',
+        service_name='dispatch',
+        job_key='dispatch-materialization',
+        module_name='ada.processes.dispatch',
+        run_id='run-1',
+        lease_timeout_seconds=1,
+        renewal_seconds=0.2,
+        wait_seconds=0,
+        poll_seconds=0.01,
+    )
+    second = ExecutionLease(
+        volume_path=tmp_path,
+        application='ada',
+        service_name='dispatch',
+        job_key='dispatch-materialization',
+        module_name='ada.processes.dispatch',
+        run_id='run-2',
+        lease_timeout_seconds=1,
+        renewal_seconds=0.2,
+        wait_seconds=0.5,
+        poll_seconds=0.01,
+    )
+    acquired = Event()
+    errors: list[BaseException] = []
+
+    def acquire_second() -> None:
+        try:
+            second.acquire()
+            acquired.set()
+        except BaseException as error:
+            errors.append(error)
+
+    first.acquire()
+    thread = Thread(target=acquire_second)
+    thread.start()
+    time.sleep(0.05)
+
+    assert not acquired.is_set()
+    assert first.release()
+    assert acquired.wait(timeout=0.5)
+    thread.join(timeout=0.5)
+
+    assert errors == []
+    assert second.acquired is True
+    assert second.release()
+
+
+def test_waiting_lease_recovers_owner_that_expires_during_wait(tmp_path) -> None:
+    first = ExecutionLease(
+        volume_path=tmp_path,
+        application='ada',
+        service_name='dispatch',
+        job_key='dispatch-materialization',
+        module_name='ada.processes.dispatch',
+        run_id='run-1',
+        lease_timeout_seconds=0.08,
+        renewal_seconds=0.02,
+        wait_seconds=0,
+        poll_seconds=0.01,
+    )
+    second = ExecutionLease(
+        volume_path=tmp_path,
+        application='ada',
+        service_name='dispatch',
+        job_key='dispatch-materialization',
+        module_name='ada.processes.dispatch',
+        run_id='run-2',
+        lease_timeout_seconds=0.08,
+        renewal_seconds=0.02,
+        wait_seconds=0.5,
+        poll_seconds=0.01,
+    )
+    first.acquire()
+
+    acquisition = second.acquire()
+
+    assert acquisition.waited_seconds >= 0.05
+    assert acquisition.recovered is not None
+    assert acquisition.recovered.run_id == 'run-1'
+    assert second.acquired is True
     assert second.release()
 
 

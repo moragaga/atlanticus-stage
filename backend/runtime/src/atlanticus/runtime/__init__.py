@@ -14,7 +14,7 @@ from atlanticus.runtime.errors import (
 )
 from atlanticus.runtime.runner import RuntimeExecutionResult, execute_job
 
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 
 __all__ = [
     'AtlanticusRuntimeError',

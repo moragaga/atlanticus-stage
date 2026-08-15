@@ -23,7 +23,7 @@ class JobDefinition:
     shutdown_grace_seconds: float = 15.0
     lease_timeout_seconds: float = 120.0
     lease_renew_seconds: float | None = None
-    lease_wait_seconds: float = 15.0
+    lease_wait_seconds: float | None = None
     lease_poll_seconds: float = 1.0
     resource_sample_seconds: float = 1.0
 
@@ -48,7 +48,8 @@ class JobDefinition:
         )
         _validate_positive('lease_renew_seconds', lease_renew_seconds)
         object.__setattr__(self, 'lease_renew_seconds', lease_renew_seconds)
-        _validate_non_negative('lease_wait_seconds', self.lease_wait_seconds)
+        if self.lease_wait_seconds is not None:
+            _validate_non_negative('lease_wait_seconds', self.lease_wait_seconds)
         _validate_positive('lease_poll_seconds', self.lease_poll_seconds)
         _validate_positive('resource_sample_seconds', self.resource_sample_seconds)
 

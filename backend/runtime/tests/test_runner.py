@@ -8,13 +8,18 @@ import pytest
 
 from atlanticus.runtime import (
     JobDefinition,
+    JobRuntimeContext,
     LeaseOwnershipLostError,
     RuntimeCancellationRequested,
+    RuntimeConfiguration,
     execute_job,
 )
 from atlanticus.runtime._resource_sampler import CgroupResourceSampler
-from atlanticus.runtime.lease import ExecutionLease
-from atlanticus.runtime.runner import _project_azure_observability_environ
+from atlanticus.runtime.lease import ExecutionLease, LeaseAcquisition
+from atlanticus.runtime.runner import (
+    _effective_lease_wait_seconds,
+    _project_azure_observability_environ,
+)
 
 
 def _definition() -> JobDefinition:
@@ -42,6 +47,98 @@ def _environment(tmp_path, environment='local') -> dict[str, str]:
 def _day_directory(tmp_path):
     day = datetime.now(UTC).date().isoformat()
     return tmp_path / 'ada' / 'logs' / 'dispatch-ingestion-job' / f'day={day}'
+
+
+def test_adaptive_lease_wait_uses_safe_remaining_budget(tmp_path) -> None:
+    definition = JobDefinition(
+        module_name='job',
+        service_name='job-service',
+        execution_timeout_seconds=60,
+        shutdown_grace_seconds=10,
+        iteration_timeout_seconds=20,
+        lease_wait_seconds=None,
+    )
+    configuration = RuntimeConfiguration.from_sources(environ=_environment(tmp_path))
+    context = JobRuntimeContext.create(
+        definition=definition,
+        configuration=configuration,
+        run_id='11111111-1111-1111-1111-111111111111',
+        correlation_id='22222222-2222-2222-2222-222222222222',
+        clock=lambda: 100.0,
+    )
+
+    assert _effective_lease_wait_seconds(definition, context) == 30
+
+
+def test_explicit_lease_wait_is_capped_by_safe_remaining_budget(tmp_path) -> None:
+    definition = JobDefinition(
+        module_name='job',
+        service_name='job-service',
+        execution_timeout_seconds=60,
+        shutdown_grace_seconds=10,
+        iteration_timeout_seconds=20,
+        lease_wait_seconds=90,
+    )
+    configuration = RuntimeConfiguration.from_sources(environ=_environment(tmp_path))
+    context = JobRuntimeContext.create(
+        definition=definition,
+        configuration=configuration,
+        run_id='11111111-1111-1111-1111-111111111111',
+        correlation_id='22222222-2222-2222-2222-222222222222',
+        clock=lambda: 100.0,
+    )
+
+    assert _effective_lease_wait_seconds(definition, context) == 30
+
+
+def test_lease_wait_consumes_execution_budget(tmp_path, monkeypatch) -> None:
+    import atlanticus.runtime.runner as runner_module
+
+    now = [100.0]
+    captured_wait: list[float] = []
+    observed_remaining: list[float] = []
+
+    def fake_monotonic() -> float:
+        return now[0]
+
+    def fake_acquire(self) -> LeaseAcquisition:
+        captured_wait.append(self._wait_seconds)
+        now[0] += 20
+        self._acquired = True
+        acquisition = LeaseAcquisition(waited_seconds=20)
+        self._acquisition = acquisition
+        return acquisition
+
+    monkeypatch.setattr(runner_module.time, 'monotonic', fake_monotonic)
+    monkeypatch.setattr(ExecutionLease, 'acquire', fake_acquire)
+    monkeypatch.setattr(ExecutionLease, 'start_renewal', lambda self, on_lost=None: None)
+    monkeypatch.setattr(ExecutionLease, 'release', lambda self: True)
+
+    definition = JobDefinition(
+        module_name='job',
+        service_name='budget-job',
+        run_once=True,
+        execution_timeout_seconds=60,
+        shutdown_grace_seconds=10,
+        iteration_timeout_seconds=20,
+        lease_wait_seconds=None,
+        resource_sample_seconds=1,
+    )
+
+    def iteration(context) -> None:
+        observed_remaining.append(context.safe_remaining_seconds)
+        now[0] += 1
+
+    result = execute_job(
+        definition=definition,
+        iteration=iteration,
+        argv=[],
+        environ=_environment(tmp_path, environment='dev'),
+    )
+
+    assert captured_wait == [30]
+    assert observed_remaining == [30]
+    assert result.duration_seconds == 21
 
 
 def test_azure_observability_projection_excludes_unrelated_secrets() -> None:

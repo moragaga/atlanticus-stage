@@ -2,6 +2,7 @@
 # El cliente PI permanece abierto durante execute_job para reutilizar el pool
 # en todas las iteraciones.
 # La cadencia local de 1 segundo detecta slots nuevos sin aumentar llamadas a PI.
+# La espera de lease supera su timeout para permitir handoff limpio y recuperar un dueño muerto.
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -36,11 +37,11 @@ PI_WEB_API_JOB_DEFINITION = JobDefinition(
     job_key='pi-web-api-materialization',
     sleep_seconds=1,
     iteration_timeout_seconds=240,
-    execution_timeout_seconds=595,
-    shutdown_grace_seconds=15,
-    lease_timeout_seconds=120,
-    lease_renew_seconds=30,
-    lease_wait_seconds=0,
+    execution_timeout_seconds=600,
+    shutdown_grace_seconds=10,
+    lease_timeout_seconds=30,
+    lease_renew_seconds=10,
+    lease_wait_seconds=None,
     lease_poll_seconds=1,
     resource_sample_seconds=5,
 )

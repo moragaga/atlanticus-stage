@@ -51,9 +51,14 @@ class FakeClient:
 
 def test_job_definition_prioritizes_freshness_without_extra_pi_requests() -> None:
     assert PI_WEB_API_JOB_DEFINITION.sleep_seconds == 1
-    assert PI_WEB_API_JOB_DEFINITION.execution_timeout_seconds == 595
-    assert PI_WEB_API_JOB_DEFINITION.shutdown_grace_seconds == 15
+    assert PI_WEB_API_JOB_DEFINITION.execution_timeout_seconds == 600
+    assert PI_WEB_API_JOB_DEFINITION.shutdown_grace_seconds == 10
+    assert PI_WEB_API_JOB_DEFINITION.safe_execution_seconds == 590
     assert PI_WEB_API_JOB_DEFINITION.iteration_timeout_seconds == 240
+    assert PI_WEB_API_JOB_DEFINITION.lease_timeout_seconds == 30
+    assert PI_WEB_API_JOB_DEFINITION.lease_renew_seconds == 10
+    assert PI_WEB_API_JOB_DEFINITION.lease_wait_seconds is None
+    assert PI_WEB_API_JOB_DEFINITION.lease_poll_seconds == 1
 
 
 def test_composition_defers_webid_preparation_until_runtime(

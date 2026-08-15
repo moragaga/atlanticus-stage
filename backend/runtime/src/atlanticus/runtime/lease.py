@@ -170,7 +170,9 @@ class ExecutionLease:
             elapsed = time.monotonic() - started
             remaining = self._wait_seconds - elapsed
             if remaining <= 0:
-                raise ConcurrentExecutionError(f'job {self._job_key!r} is already running')
+                raise ConcurrentExecutionError(
+                    f'job {self._job_key!r} is already running after waiting {elapsed:.3f} seconds'
+                )
             time.sleep(min(self._poll_seconds, remaining))
 
     def start_renewal(self, *, on_lost: Callable[[str], None] | None = None) -> None:

@@ -139,6 +139,9 @@ else
   for package in $ORDERED_SELECTED; do
     SYNC_PACKAGE_ARGS="$SYNC_PACKAGE_ARGS --package $(distribution_name "$package")"
   done
+  if contains_module "$SELECTED" "runtime" && ! contains_module "$SELECTED" "observability-azure"; then
+    SYNC_PACKAGE_ARGS="$SYNC_PACKAGE_ARGS --package atlanticus-observability-azure"
+  fi
 
   run uv sync \
     --python "$PYTHON_BIN" \

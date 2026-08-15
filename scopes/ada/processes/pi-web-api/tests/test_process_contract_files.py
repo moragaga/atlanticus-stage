@@ -15,6 +15,7 @@ def test_process_exposes_entrypoint_and_container_command() -> None:
     )
     assert project['tool']['atlanticus']['container']['command'] == 'ada-pi-web-api'
     assert project['tool']['atlanticus']['container']['system-profile'] == 'base'
+    assert 'atlanticus-job-runtime==0.4.0' in project['project']['dependencies']
 
 
 def test_detail_templates_exist_without_real_local_env() -> None:
@@ -27,6 +28,8 @@ def test_detail_templates_exist_without_real_local_env() -> None:
     variables = {item['var_name'] for item in secrets}
     assert {'COMPANY_ABREV', 'PRODUCT_ABREV'} <= variables
     assert {'PI_WEB_API_USERNAME', 'PI_WEB_API_PASSWORD'} <= variables
+    env_detail = (root / '.env.detail').read_text(encoding='utf-8')
+    assert 'PI_WEB_API_LEASE_SMOKE_MODE=false' in env_detail
 
 
 def test_validation_gate_formats_source_and_runs_tests_explicitly() -> None:
@@ -42,3 +45,16 @@ def test_validation_gate_formats_source_and_runs_tests_explicitly() -> None:
         assert 'python -m pytest -ra tests' in script
         assert 'Ruff lint' in script
         assert 'Pytest' in script
+
+
+def test_process_contract_documents_single_writer_and_replay_idempotency() -> None:
+    contract = (_root() / 'docs' / 'process-contract.md').read_text(encoding='utf-8')
+
+    assert 'ENVIRONMENT + APPLICATION' in contract
+    assert 'cada `process_key` debe ser único' in contract
+    assert 'exactamente un productor propietario' in contract
+    assert 'lease_wait_seconds = adaptive' in contract
+    assert 'replicaTimeout = 610' in contract
+    assert 'slot_timestamp_utc' in contract
+    assert '(tag_name, native_timestamp_utc)' in contract
+    assert 'último valor recibido gana' in contract

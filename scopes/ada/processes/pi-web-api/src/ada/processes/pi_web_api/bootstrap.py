@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ada.processes.pi_web_api.composition import build_composition
 from ada.processes.pi_web_api.errors import PiWebApiProcessConfigurationError
+from ada.processes.pi_web_api.lease_smoke import lease_smoke_enabled, run_lease_smoke
 from ada.processes.pi_web_api.settings import configuration_specs
 from atlanticus.configuration import ConfigurationBootstrap, ResolvedConfiguration, SecretsManifest
 from atlanticus.connectivity.key_vault import (
@@ -27,14 +28,15 @@ def load_configuration(
 ) -> ResolvedConfiguration:
     source_values = os.environ if environ is None else environ
     root = Path(process_root)
-    environment = Environment.from_mapping(source_values)
     specs = configuration_specs()
+    bootstrap = ConfigurationBootstrap.from_process(
+        specs=specs,
+        process_values=source_values,
+        dotenv_path=root / '.env',
+    )
+    environment = bootstrap.environment
     if environment.is_local:
-        configuration = ConfigurationBootstrap.from_process(
-            specs=specs,
-            process_values=source_values,
-            dotenv_path=root / '.env',
-        ).load(process_values=source_values)
+        configuration = bootstrap.load(process_values=source_values)
         return _require_absolute_volume_path(configuration)
 
     manifest = SecretsManifest.from_path(root / 'secrets.json')
@@ -104,7 +106,14 @@ def run(
     process_root: str | Path | None = None,
 ) -> RuntimeExecutionResult:
     root = Path.cwd() if process_root is None else Path(process_root)
-    configuration = load_configuration(process_root=root, environ=environ)
+    source_values = os.environ if environ is None else environ
+    if lease_smoke_enabled(process_root=root, environ=source_values):
+        return run_lease_smoke(
+            process_root=root,
+            argv=argv,
+            environ=source_values,
+        )
+    configuration = load_configuration(process_root=root, environ=source_values)
     return build_composition(configuration=configuration).execute(argv=argv)
 
 

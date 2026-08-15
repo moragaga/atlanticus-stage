@@ -35,6 +35,25 @@ def test_job_definition_rejects_incoherent_time_contract(field, value) -> None:
         JobDefinition(**values)
 
 
+def test_job_definition_uses_adaptive_lease_wait_by_default() -> None:
+    definition = JobDefinition(
+        module_name='job',
+        service_name='job-service',
+    )
+
+    assert definition.lease_wait_seconds is None
+
+
+def test_job_definition_allows_explicit_lease_wait_cap() -> None:
+    definition = JobDefinition(
+        module_name='job',
+        service_name='job-service',
+        lease_wait_seconds=45,
+    )
+
+    assert definition.lease_wait_seconds == 45
+
+
 def test_job_definition_allows_renewable_lease_shorter_than_execution_window() -> None:
     definition = JobDefinition(
         module_name='dispatch',
