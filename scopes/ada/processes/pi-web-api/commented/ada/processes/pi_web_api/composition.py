@@ -22,6 +22,7 @@ from ada.processes.pi_web_api.stress_benchmark import (
     PiStressBenchmarkSettings,
     build_stress_physical_catalog,
 )
+from ada.processes.pi_web_api.stress_io_benchmark import PiStressIoBenchmarkJob
 from ada.processes.pi_web_api.watermarks import (
     PiProducerState,
     PiSourceState,
@@ -129,7 +130,8 @@ def build_composition(
     source_state = PiSourceState(store=state_store)
     planner: PiSlotPlanner = PiSlotPlanner(
         interpolation_seconds=interpolation_seconds,
-        max_recovery_seconds=settings.max_recovery_seconds,
+        max_recovery_lookback_seconds=settings.max_recovery_lookback_seconds,
+        max_recovery_window_seconds=settings.max_recovery_window_seconds,
     )
     dataset_runtime = DatasetRuntime(
         store=ParquetDatasetStore(root=runtime_configuration.application_root / 'datasets')
@@ -137,22 +139,25 @@ def build_composition(
     acquirer: PiStreamSetAcquirer = PiStreamSetAcquirer(
         client=client,
         max_data_points=settings.max_data_points,
+        interpolated_max_parallel_requests=settings.interpolated_max_parallel_requests,
     )
     materializer: PiWebApiMaterializer = PiWebApiMaterializer(
         runtime=dataset_runtime,
         catalog=resolved_catalog,
     )
-    if stress.enabled:
+    if stress.enabled and stress.kind == 'capacity':
         assert stress.end_utc is not None
         planner = PiStressBenchmarkPlanner(
             interpolation_seconds=interpolation_seconds,
-            max_recovery_seconds=settings.max_recovery_seconds,
+            max_recovery_lookback_seconds=settings.max_recovery_lookback_seconds,
+            max_recovery_window_seconds=settings.max_recovery_window_seconds,
             benchmark_end_utc=stress.end_utc,
             lookback_hours=stress.lookback_hours,
         )
         acquirer = PiStressBenchmarkAcquirer(
             client=client,
             max_data_points=settings.max_data_points,
+            interpolated_max_parallel_requests=settings.interpolated_max_parallel_requests,
         )
         materializer = PiStressBenchmarkMaterializer(
             runtime=dataset_runtime,
@@ -162,10 +167,26 @@ def build_composition(
     watermarks = PiWatermarkCoordinator(producer=producer_state, source=source_state)
     preparer = PiExecutionPlanPreparer(client=client, registry=registry)
     job: PiWebApiJob
-    if stress.enabled:
+    if stress.enabled and stress.kind == 'capacity':
         assert stress.end_utc is not None
         job = PiStressBenchmarkJob(
             benchmark_end_utc=stress.end_utc,
+            preparer=preparer,
+            catalog=resolved_catalog,
+            planner=planner,
+            producer_state=producer_state,
+            acquirer=acquirer,
+            materializer=materializer,
+            watermarks=watermarks,
+        )
+    elif stress.enabled and stress.kind == 'io':
+        assert stress.end_utc is not None
+        job = PiStressIoBenchmarkJob(
+            client=client,
+            benchmark_end_utc=stress.end_utc,
+            interpolation_seconds=interpolation_seconds,
+            chunk_limit=stress.io_chunk_limit,
+            max_workers=stress.io_max_workers,
             preparer=preparer,
             catalog=resolved_catalog,
             planner=planner,

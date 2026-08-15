@@ -32,10 +32,13 @@ from atlanticus.runtime import JobRuntimeContext
 @dataclass(frozen=True, slots=True)
 class PiStressBenchmarkSettings:
     enabled: bool
+    kind: str = 'capacity'
     logical_tag_count: int = 1000
     lookback_hours: int = 24
     end_utc: datetime | None = None
     physical_tag_limit: int = 0
+    io_chunk_limit: int = 40
+    io_max_workers: int = 3
 
     @classmethod
     def from_configuration(
@@ -50,31 +53,60 @@ class PiStressBenchmarkSettings:
             raise PiWebApiProcessConfigurationError(str(error)) from error
         if not enabled:
             return cls(enabled=False)
+        kind = (
+            (configuration.get('PI_WEB_API_STRESS_KIND', 'capacity') or 'capacity').strip().lower()
+        )
+        if kind not in {'capacity', 'io'}:
+            raise PiWebApiProcessConfigurationError('PI_WEB_API_STRESS_KIND must be capacity or io')
         try:
-            logical_tag_count = configuration.get_int(
-                'PI_WEB_API_STRESS_LOGICAL_TAGS',
-                1000,
-            )
-            lookback_hours = configuration.get_int(
-                'PI_WEB_API_STRESS_LOOKBACK_HOURS',
-                24,
-            )
             physical_tag_limit = configuration.get_int(
                 'PI_WEB_API_STRESS_PHYSICAL_TAG_LIMIT',
                 0,
             )
+            if kind == 'capacity':
+                logical_tag_count = configuration.get_int(
+                    'PI_WEB_API_STRESS_LOGICAL_TAGS',
+                    1000,
+                )
+                lookback_hours = configuration.get_int(
+                    'PI_WEB_API_STRESS_LOOKBACK_HOURS',
+                    24,
+                )
+                io_chunk_limit = 40
+                io_max_workers = 3
+            else:
+                logical_tag_count = 1000
+                lookback_hours = 24
+                io_chunk_limit = configuration.get_int(
+                    'PI_WEB_API_STRESS_IO_CHUNK_LIMIT',
+                    40,
+                )
+                io_max_workers = configuration.get_int(
+                    'PI_WEB_API_STRESS_IO_MAX_WORKERS',
+                    3,
+                )
         except ConfigurationValueError as error:
             raise PiWebApiProcessConfigurationError(str(error)) from error
-        for key, value in (
-            ('PI_WEB_API_STRESS_LOGICAL_TAGS', logical_tag_count),
-            ('PI_WEB_API_STRESS_LOOKBACK_HOURS', lookback_hours),
-        ):
-            if value is None or value <= 0:
-                raise PiWebApiProcessConfigurationError(f'{key} must be greater than zero')
         if physical_tag_limit is None or physical_tag_limit < 0:
             raise PiWebApiProcessConfigurationError(
                 'PI_WEB_API_STRESS_PHYSICAL_TAG_LIMIT must be zero or greater'
             )
+        if kind == 'capacity':
+            for key, value in (
+                ('PI_WEB_API_STRESS_LOGICAL_TAGS', logical_tag_count),
+                ('PI_WEB_API_STRESS_LOOKBACK_HOURS', lookback_hours),
+            ):
+                if value is None or value <= 0:
+                    raise PiWebApiProcessConfigurationError(f'{key} must be greater than zero')
+        else:
+            if io_chunk_limit is None or io_chunk_limit <= 0:
+                raise PiWebApiProcessConfigurationError(
+                    'PI_WEB_API_STRESS_IO_CHUNK_LIMIT must be greater than zero'
+                )
+            if io_max_workers is None or not 1 <= io_max_workers <= 3:
+                raise PiWebApiProcessConfigurationError(
+                    'PI_WEB_API_STRESS_IO_MAX_WORKERS must be between 1 and 3'
+                )
         end_utc = _optional_utc_second(configuration.get('PI_WEB_API_STRESS_END_UTC'))
         application = configuration.require('APPLICATION')
         if not any(token in application.casefold() for token in ('stress', 'benchmark')):
@@ -88,10 +120,13 @@ class PiStressBenchmarkSettings:
             )
         return cls(
             enabled=enabled,
+            kind=kind,
             logical_tag_count=logical_tag_count,
             lookback_hours=lookback_hours,
             end_utc=end_utc,
             physical_tag_limit=physical_tag_limit,
+            io_chunk_limit=io_chunk_limit,
+            io_max_workers=io_max_workers,
         )
 
 
@@ -151,7 +186,7 @@ class PiStressBenchmarkPlanner(PiSlotPlanner):
             )
         if first_pending > self.benchmark_end_utc:
             return None
-        max_slots = self.max_recovery_seconds // self.interpolation_seconds
+        max_slots = self.max_recovery_window_seconds // self.interpolation_seconds
         remaining_slots = (
             int((self.benchmark_end_utc - first_pending).total_seconds())
             // self.interpolation_seconds

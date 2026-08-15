@@ -283,7 +283,12 @@ def _run_iterations(
                             break
 
                         average_duration = total_iteration_duration / iteration_count
-                        sleep_seconds = max(0.0, definition.sleep_seconds - duration_seconds)
+                        requested_delay = context._next_iteration_delay()
+                        sleep_seconds = (
+                            max(0.0, definition.sleep_seconds - duration_seconds)
+                            if requested_delay is None
+                            else requested_delay
+                        )
                         required_for_next = sleep_seconds + average_duration
                         if context.safe_remaining_seconds <= required_for_next:
                             stop_reason = 'insufficient_remaining_time'

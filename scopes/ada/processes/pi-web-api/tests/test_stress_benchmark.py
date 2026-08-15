@@ -18,6 +18,7 @@ from ada.processes.pi_web_api.stress_benchmark import (
     build_stress_physical_catalog,
     stress_physical_tag_count,
 )
+from ada.processes.pi_web_api.stress_io_benchmark import PiStressIoBenchmarkJob
 from atlanticus.configuration import ConfigurationSource, ResolvedConfiguration
 from atlanticus.integrations.pi.contracts import PiExtractionMode, PiMaterialization
 
@@ -32,6 +33,7 @@ def _with_stress(configuration, **overrides: str) -> ResolvedConfiguration:
         **configuration.values,
         'APPLICATION': 'ada-pi-web-api-stress',
         'PI_WEB_API_STRESS_BENCHMARK': 'true',
+        'PI_WEB_API_STRESS_KIND': 'capacity',
         'PI_WEB_API_STRESS_LOGICAL_TAGS': '1000',
         'PI_WEB_API_STRESS_LOOKBACK_HOURS': '24',
         'PI_WEB_API_STRESS_END_UTC': '2026-08-14T23:59:50Z',
@@ -56,6 +58,7 @@ def test_stress_benchmark_is_disabled_by_default(configuration) -> None:
     settings = PiStressBenchmarkSettings.from_configuration(configuration)
 
     assert settings.enabled is False
+    assert settings.kind == 'capacity'
     assert settings.logical_tag_count == 1000
     assert settings.lookback_hours == 24
     assert settings.physical_tag_limit == 0
@@ -126,7 +129,8 @@ def test_stress_catalog_rejects_a_fake_physical_capacity() -> None:
 def test_stress_planner_walks_a_full_day_forward_one_hour_at_a_time() -> None:
     planner = PiStressBenchmarkPlanner(
         interpolation_seconds=10,
-        max_recovery_seconds=3600,
+        max_recovery_lookback_seconds=3600,
+        max_recovery_window_seconds=3600,
         benchmark_end_utc=datetime(2026, 8, 14, 23, 59, 50, tzinfo=UTC),
         lookback_hours=24,
     )
@@ -220,3 +224,51 @@ def test_composition_uses_stress_pipeline_only_when_enabled(configuration) -> No
     assert isinstance(composition.materializer, PiStressBenchmarkMaterializer)
     assert isinstance(composition.job, PiStressBenchmarkJob)
     assert len(composition.catalog.definitions) == 185
+
+
+def test_io_stress_ignores_capacity_only_values(configuration) -> None:
+    stressed = _with_stress(
+        configuration,
+        PI_WEB_API_STRESS_KIND='io',
+        PI_WEB_API_STRESS_LOGICAL_TAGS='invalid',
+        PI_WEB_API_STRESS_LOOKBACK_HOURS='invalid',
+        PI_WEB_API_STRESS_IO_CHUNK_LIMIT='40',
+        PI_WEB_API_STRESS_IO_MAX_WORKERS='3',
+    )
+
+    settings = PiStressBenchmarkSettings.from_configuration(stressed)
+
+    assert settings.kind == 'io'
+    assert settings.io_chunk_limit == 40
+    assert settings.io_max_workers == 3
+
+
+def test_io_stress_rejects_more_than_three_workers(configuration) -> None:
+    stressed = _with_stress(
+        configuration,
+        PI_WEB_API_STRESS_KIND='io',
+        PI_WEB_API_STRESS_IO_MAX_WORKERS='4',
+    )
+
+    with pytest.raises(
+        PiWebApiProcessConfigurationError,
+        match='between 1 and 3',
+    ):
+        PiStressBenchmarkSettings.from_configuration(stressed)
+
+
+def test_composition_uses_io_benchmark_job_without_capacity_pipeline(configuration) -> None:
+    stressed = _with_stress(
+        configuration,
+        PI_WEB_API_STRESS_KIND='io',
+        PI_WEB_API_STRESS_IO_CHUNK_LIMIT='40',
+        PI_WEB_API_STRESS_IO_MAX_WORKERS='3',
+        PI_WEB_API_INTERPOLATED_MAX_WEB_IDS='200',
+    )
+
+    composition = build_composition(configuration=stressed)
+
+    assert isinstance(composition.job, PiStressIoBenchmarkJob)
+    assert not isinstance(composition.planner, PiStressBenchmarkPlanner)
+    assert not isinstance(composition.acquirer, PiStressBenchmarkAcquirer)
+    assert not isinstance(composition.materializer, PiStressBenchmarkMaterializer)

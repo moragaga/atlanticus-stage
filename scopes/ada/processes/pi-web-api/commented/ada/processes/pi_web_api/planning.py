@@ -1,6 +1,9 @@
-from __future__ import annotations
+# El planner separa tres relojes: interpolación normal, horizonte máximo recuperable y ventana máxima por adquisición.
+# El lookback limita cuánto pasado se conserva; la window limita cuánto de ese pasado se procesa por iteración.
+# Cuando el productor está al día, next_wake_at devuelve el próximo boundary exacto de interpolación.
+# Cuando todavía existe backlog dentro del horizonte permitido, devuelve el instante actual para continuar sin pausa.
 
-# Planificación del eje temporal UTC. Esta capa no consulta PI ni escribe datasets.
+from __future__ import annotations
 
 import math
 from dataclasses import dataclass
@@ -11,23 +14,36 @@ from ada.processes.pi_web_api.models import PiAcquisitionWindow
 
 
 @dataclass(frozen=True, slots=True)
-# El planner usa un único eje de slots cerrados; no crea un eje diferente para recorded.
 class PiSlotPlanner:
     interpolation_seconds: int
-    max_recovery_seconds: int = 3600
+    max_recovery_lookback_seconds: int = 3600
+    max_recovery_window_seconds: int = 3600
 
     def __post_init__(self) -> None:
-        for field_name in ('interpolation_seconds', 'max_recovery_seconds'):
+        for field_name in (
+            'interpolation_seconds',
+            'max_recovery_lookback_seconds',
+            'max_recovery_window_seconds',
+        ):
             value = getattr(self, field_name)
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise PiWebApiPlannerError(f'{field_name} must be a positive integer')
-        if self.max_recovery_seconds < self.interpolation_seconds:
+        for field_name in (
+            'max_recovery_lookback_seconds',
+            'max_recovery_window_seconds',
+        ):
+            value = getattr(self, field_name)
+            if value < self.interpolation_seconds:
+                raise PiWebApiPlannerError(
+                    f'{field_name} must be greater than or equal to interpolation_seconds'
+                )
+            if value % self.interpolation_seconds != 0:
+                raise PiWebApiPlannerError(
+                    f'{field_name} must be divisible by interpolation_seconds'
+                )
+        if self.max_recovery_window_seconds > self.max_recovery_lookback_seconds:
             raise PiWebApiPlannerError(
-                'max_recovery_seconds must be greater than or equal to interpolation_seconds'
-            )
-        if self.max_recovery_seconds % self.interpolation_seconds != 0:
-            raise PiWebApiPlannerError(
-                'max_recovery_seconds must be divisible by interpolation_seconds'
+                'max_recovery_window_seconds must not exceed max_recovery_lookback_seconds'
             )
 
     def floor_slot(self, value: datetime) -> datetime:
@@ -42,7 +58,26 @@ class PiSlotPlanner:
             raise PiWebApiPlannerError('value must be aligned to interpolation_seconds')
         return normalized + timedelta(seconds=self.interpolation_seconds)
 
-    # Si todavía no existe un slot nuevo devuelve None y evita una llamada innecesaria a PI.
+    def next_wake_at(
+        self,
+        *,
+        now_utc: datetime,
+        committed_watermark_utc: datetime | None,
+    ) -> datetime:
+        now = _require_utc(now_utc, field_name='now_utc')
+        if committed_watermark_utc is None:
+            return now
+        committed = _require_utc_second(
+            committed_watermark_utc,
+            field_name='committed_watermark_utc',
+        )
+        if self.floor_slot(committed) != committed:
+            raise PiWebApiPlannerError(
+                'committed_watermark_utc must be aligned to interpolation_seconds'
+            )
+        candidate = self.next_slot(committed)
+        return now if candidate <= self.floor_slot(now) else candidate
+
     def plan(
         self,
         *,
@@ -69,19 +104,21 @@ class PiSlotPlanner:
         if first_pending > target:
             return None
 
-        total_slots = (
-            int((target - first_pending).total_seconds()) // self.interpolation_seconds
-        ) + 1
-        max_slots = self.max_recovery_seconds // self.interpolation_seconds
-        recovery_truncated = total_slots > max_slots
-        first_slot = (
-            target - timedelta(seconds=(max_slots - 1) * self.interpolation_seconds)
-            if recovery_truncated
-            else first_pending
+        lookback_slots = self.max_recovery_lookback_seconds // self.interpolation_seconds
+        earliest_recoverable = target - timedelta(
+            seconds=(lookback_slots - 1) * self.interpolation_seconds
+        )
+        recovery_truncated = first_pending < earliest_recoverable
+        first_slot = max(first_pending, earliest_recoverable)
+
+        window_slots = self.max_recovery_window_seconds // self.interpolation_seconds
+        last_slot = min(
+            target,
+            first_slot + timedelta(seconds=(window_slots - 1) * self.interpolation_seconds),
         )
         return PiAcquisitionWindow(
             first_slot_utc=first_slot,
-            last_slot_utc=target,
+            last_slot_utc=last_slot,
             interpolation_seconds=self.interpolation_seconds,
             recovery_truncated=recovery_truncated,
         )

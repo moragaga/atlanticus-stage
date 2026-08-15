@@ -1,7 +1,10 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from ada.processes.pi_web_api import (
+    PiWebApiProcessConfigurationError,
     PiWebApiProcessSettings,
     configuration_specs,
     load_configuration,
@@ -17,9 +20,11 @@ def test_settings_defaults_are_safe_and_runtime_configurable(configuration) -> N
     assert settings.pi_web_api.http.username == 'domain\\user'
     assert settings.pi_web_api.http.password == 'secret'
     assert settings.pi_web_api.limits.points_max_paths == 100
-    assert settings.pi_web_api.limits.interpolated_max_web_ids == 100
+    assert settings.pi_web_api.limits.interpolated_max_web_ids == 200
     assert settings.pi_web_api.limits.recorded_max_web_ids == 100
-    assert settings.max_recovery_seconds == 3600
+    assert settings.max_recovery_lookback_seconds == 3600
+    assert settings.max_recovery_window_seconds == 3600
+    assert settings.interpolated_max_parallel_requests == 3
     assert settings.max_data_points == 150000
 
 
@@ -29,15 +34,21 @@ def test_configuration_specs_keep_credentials_sensitive() -> None:
     assert specs['PI_WEB_API_USERNAME'].sensitive is True
     assert specs['PI_WEB_API_PASSWORD'].sensitive is True
     assert specs['PI_WEB_API_POINTS_MAX_PATHS'].default == '100'
-    assert specs['PI_WEB_API_INTERPOLATED_MAX_WEB_IDS'].default == '100'
+    assert specs['PI_WEB_API_INTERPOLATED_MAX_WEB_IDS'].default == '200'
     assert specs['PI_WEB_API_RECORDED_MAX_WEB_IDS'].default == '100'
-    assert specs['PI_WEB_API_MAX_RECOVERY_SECONDS'].default == '3600'
+    assert specs['PI_WEB_API_MAX_RECOVERY_LOOKBACK_SECONDS'].default == '3600'
+    assert specs['PI_WEB_API_MAX_RECOVERY_WINDOW_SECONDS'].default == '3600'
+    assert specs['PI_WEB_API_INTERPOLATED_MAX_PARALLEL_REQUESTS'].default == '3'
+    assert 'PI_WEB_API_MAX_RECOVERY_SECONDS' not in specs
     assert specs['PI_WEB_API_MAX_DATA_POINTS'].default == '150000'
     assert specs['PI_WEB_API_STRESS_BENCHMARK'].default == 'false'
+    assert specs['PI_WEB_API_STRESS_KIND'].default == 'capacity'
     assert specs['PI_WEB_API_STRESS_LOGICAL_TAGS'].default == '1000'
     assert specs['PI_WEB_API_STRESS_LOOKBACK_HOURS'].default == '24'
     assert specs['PI_WEB_API_STRESS_END_UTC'].required is False
     assert specs['PI_WEB_API_STRESS_PHYSICAL_TAG_LIMIT'].default == '0'
+    assert specs['PI_WEB_API_STRESS_IO_CHUNK_LIMIT'].default == '40'
+    assert specs['PI_WEB_API_STRESS_IO_MAX_WORKERS'].default == '3'
     assert 'COMPANY_ABREV' not in specs
     assert 'PRODUCT_ABREV' not in specs
 
@@ -169,3 +180,20 @@ def test_local_bootstrap_can_resolve_environment_from_dotenv(tmp_path: Path) -> 
     assert str(configuration.environment) == 'local'
     assert configuration.require('APPLICATION') == 'ada'
     assert configuration.require('PI_WEB_API_USERNAME') == 'domain\\user'
+
+
+def test_process_settings_reject_invalid_recovery_and_parallel_contract(configuration) -> None:
+    current = PiWebApiProcessSettings.from_configuration(configuration)
+
+    with pytest.raises(PiWebApiProcessConfigurationError, match='must not exceed'):
+        PiWebApiProcessSettings(
+            pi_web_api=current.pi_web_api,
+            max_recovery_lookback_seconds=900,
+            max_recovery_window_seconds=1800,
+        )
+
+    with pytest.raises(PiWebApiProcessConfigurationError, match='between 1 and 3'):
+        PiWebApiProcessSettings(
+            pi_web_api=current.pi_web_api,
+            interpolated_max_parallel_requests=4,
+        )

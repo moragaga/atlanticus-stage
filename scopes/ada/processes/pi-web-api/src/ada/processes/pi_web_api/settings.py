@@ -23,8 +23,21 @@ from atlanticus.integrations.pi.web_api import (
 @dataclass(frozen=True, slots=True)
 class PiWebApiProcessSettings:
     pi_web_api: PiWebApiSettings
-    max_recovery_seconds: int = 3600
+    max_recovery_lookback_seconds: int = 3600
+    max_recovery_window_seconds: int = 3600
+    interpolated_max_parallel_requests: int = 3
     max_data_points: int = 150_000
+
+    def __post_init__(self) -> None:
+        if self.max_recovery_window_seconds > self.max_recovery_lookback_seconds:
+            raise PiWebApiProcessConfigurationError(
+                'PI_WEB_API_MAX_RECOVERY_WINDOW_SECONDS must not exceed '
+                'PI_WEB_API_MAX_RECOVERY_LOOKBACK_SECONDS'
+            )
+        if not 1 <= self.interpolated_max_parallel_requests <= 3:
+            raise PiWebApiProcessConfigurationError(
+                'PI_WEB_API_INTERPOLATED_MAX_PARALLEL_REQUESTS must be between 1 and 3'
+            )
 
     @classmethod
     def from_configuration(
@@ -82,9 +95,19 @@ class PiWebApiProcessSettings:
                     http=http,
                     limits=limits,
                 ),
-                max_recovery_seconds=_positive_int(
+                max_recovery_lookback_seconds=_positive_int(
                     configuration,
-                    'PI_WEB_API_MAX_RECOVERY_SECONDS',
+                    'PI_WEB_API_MAX_RECOVERY_LOOKBACK_SECONDS',
+                ),
+                max_recovery_window_seconds=_positive_int(
+                    configuration,
+                    'PI_WEB_API_MAX_RECOVERY_WINDOW_SECONDS',
+                ),
+                interpolated_max_parallel_requests=_bounded_int(
+                    configuration,
+                    'PI_WEB_API_INTERPOLATED_MAX_PARALLEL_REQUESTS',
+                    minimum=1,
+                    maximum=3,
                 ),
                 max_data_points=_positive_int(
                     configuration,
@@ -115,11 +138,14 @@ def configuration_specs() -> tuple[ConfigurationVariableSpec, ...]:
         ConfigurationVariableSpec(key='PI_WEB_API_VERIFY_TLS', default='true'),
         ConfigurationVariableSpec(key='PI_WEB_API_ALLOW_INSECURE_HTTP', default='false'),
         ConfigurationVariableSpec(key='PI_WEB_API_POINTS_MAX_PATHS', default='100'),
-        ConfigurationVariableSpec(key='PI_WEB_API_INTERPOLATED_MAX_WEB_IDS', default='100'),
+        ConfigurationVariableSpec(key='PI_WEB_API_INTERPOLATED_MAX_WEB_IDS', default='200'),
         ConfigurationVariableSpec(key='PI_WEB_API_RECORDED_MAX_WEB_IDS', default='100'),
-        ConfigurationVariableSpec(key='PI_WEB_API_MAX_RECOVERY_SECONDS', default='3600'),
+        ConfigurationVariableSpec(key='PI_WEB_API_MAX_RECOVERY_LOOKBACK_SECONDS', default='3600'),
+        ConfigurationVariableSpec(key='PI_WEB_API_MAX_RECOVERY_WINDOW_SECONDS', default='3600'),
+        ConfigurationVariableSpec(key='PI_WEB_API_INTERPOLATED_MAX_PARALLEL_REQUESTS', default='3'),
         ConfigurationVariableSpec(key='PI_WEB_API_MAX_DATA_POINTS', default='150000'),
         ConfigurationVariableSpec(key='PI_WEB_API_STRESS_BENCHMARK', default='false'),
+        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_KIND', default='capacity'),
         ConfigurationVariableSpec(key='PI_WEB_API_STRESS_LOGICAL_TAGS', default='1000'),
         ConfigurationVariableSpec(key='PI_WEB_API_STRESS_LOOKBACK_HOURS', default='24'),
         ConfigurationVariableSpec(
@@ -127,6 +153,8 @@ def configuration_specs() -> tuple[ConfigurationVariableSpec, ...]:
             required=False,
         ),
         ConfigurationVariableSpec(key='PI_WEB_API_STRESS_PHYSICAL_TAG_LIMIT', default='0'),
+        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_IO_CHUNK_LIMIT', default='40'),
+        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_IO_MAX_WORKERS', default='3'),
         ConfigurationVariableSpec(
             key='ATLANTICUS_AZURE_OBSERVABILITY_MODE',
             default='off',
@@ -147,6 +175,19 @@ def _positive_int(configuration: ResolvedConfiguration, key: str) -> int:
     value = configuration.get_int(key)
     if value is None or value <= 0:
         raise PiWebApiProcessConfigurationError(f'{key} must be greater than zero')
+    return value
+
+
+def _bounded_int(
+    configuration: ResolvedConfiguration,
+    key: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    value = _positive_int(configuration, key)
+    if not minimum <= value <= maximum:
+        raise PiWebApiProcessConfigurationError(f'{key} must be between {minimum} and {maximum}')
     return value
 
 

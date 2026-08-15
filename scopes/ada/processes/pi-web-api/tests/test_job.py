@@ -172,6 +172,9 @@ def test_run_iteration_materializes_then_commits_public_and_private_watermarks(
     assert client.streamsets.recorded_calls == 1
     assert context.get_iteration_fact('outcome') == 'completed'
     assert context.get_execution_fact('pi_requests') == 2
+    assert context.get_iteration_fact('next_wake_utc') is not None
+    assert 0 <= context._next_iteration_delay() <= 10
+    assert context.get_iteration_fact('slot_commit_latency_seconds') is not None
 
 
 def test_job_does_not_advance_watermarks_when_materialization_fails(
@@ -234,6 +237,7 @@ def test_timeout_exhaustion_skips_iteration_without_advancing_watermarks_and_rec
     assert context.get_execution_fact('pi_timeout_retries') == 3
     assert context.get_execution_fact('pi_requests') == 4
     assert context.should_stop is False
+    assert context._next_iteration_delay() == 0
 
     context._begin_iteration(2)
     job.run_iteration(context)
@@ -282,3 +286,26 @@ def test_webid_timeout_exhaustion_skips_iteration_before_planning(
     assert context.get_execution_fact('pi_timeout_skips') == 1
     assert context.get_execution_fact('pi_timeout_retries') == 3
     assert context.should_stop is False
+    assert context._next_iteration_delay() == 0
+
+
+def test_caught_up_job_skips_pi_and_schedules_exact_next_boundary(tmp_path, catalog) -> None:
+    job, _, _, client = _job(tmp_path, catalog)
+    context = _context(tmp_path)
+
+    job.run_iteration(context)
+    first_interpolated_calls = client.streamsets.interpolated_calls
+    first_recorded_calls = client.streamsets.recorded_calls
+
+    context._begin_iteration(2)
+    job.run_iteration(context)
+
+    assert context.get_iteration_fact('outcome') == 'skipped'
+    assert context.get_iteration_fact('reason') == 'no_new_slot'
+    assert client.streamsets.interpolated_calls == first_interpolated_calls
+    assert client.streamsets.recorded_calls == first_recorded_calls
+    next_wake = context.get_iteration_fact('next_wake_utc')
+    assert isinstance(next_wake, datetime)
+    assert next_wake.microsecond == 0
+    assert next_wake.second % 10 == 0
+    assert 0 <= context._next_iteration_delay() <= 10

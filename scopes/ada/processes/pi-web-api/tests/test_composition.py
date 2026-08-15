@@ -100,6 +100,9 @@ def test_composition_defers_webid_preparation_until_runtime(
     assert composition.client.open_count == 0
     assert composition.client.close_count == 0
     assert composition.planner.interpolation_seconds == 10
+    assert composition.planner.max_recovery_lookback_seconds == 3600
+    assert composition.planner.max_recovery_window_seconds == 3600
+    assert composition.acquirer.interpolated_max_parallel_requests == 3
     assert composition.settings.max_data_points == 150000
 
 

@@ -45,6 +45,7 @@ class JobRuntimeContext:
     _execution_summary: OperationalSummary = field(default_factory=OperationalSummary, repr=False)
     _iteration_summary: OperationalSummary = field(default_factory=OperationalSummary, repr=False)
     _iteration_has_work: bool = field(default=False, repr=False)
+    _next_iteration_delay_seconds: float | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.definition, JobDefinition):
@@ -196,6 +197,17 @@ class JobRuntimeContext:
     def mark_iteration_work(self) -> None:
         self._iteration_has_work = True
 
+    # Un proceso que conoce su propia cadencia puede reemplazar solo la próxima espera.
+    # El runtime no interpreta por qué ese delay es correcto y lo limpia al iniciar la siguiente iteración.
+    def set_next_iteration_delay(self, seconds: float) -> None:
+        _require_finite_number(seconds, 'seconds')
+        if seconds < 0:
+            raise ValueError('seconds must be greater than or equal to zero')
+        self._next_iteration_delay_seconds = float(seconds)
+
+    def _next_iteration_delay(self) -> float | None:
+        return self._next_iteration_delay_seconds
+
     def _execution_facts(self) -> dict[str, OperationalValue]:
         return self._execution_summary.snapshot()
 
@@ -214,6 +226,7 @@ class JobRuntimeContext:
         self.iteration = iteration
         self._iteration_summary.clear()
         self._iteration_has_work = False
+        self._next_iteration_delay_seconds = None
 
 
 def _require_non_empty_string(value: str, name: str) -> str:

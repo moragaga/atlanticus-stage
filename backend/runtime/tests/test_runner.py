@@ -484,3 +484,44 @@ def test_resource_sampling_failure_does_not_break_job(tmp_path, monkeypatch) -> 
     ]
     assert issues[0]['event'] == 'resource.monitor.failed'
     assert issues[0]['level'] == 'warning'
+
+
+def test_iteration_can_override_static_sleep_with_adaptive_delay(tmp_path, monkeypatch) -> None:
+    observed_waits: list[float] = []
+    iterations: list[int] = []
+
+    def fake_wait(self, seconds: float) -> bool:
+        observed_waits.append(seconds)
+        return True
+
+    monkeypatch.setattr(JobRuntimeContext, 'wait', fake_wait)
+
+    definition = JobDefinition(
+        module_name='adaptive_job',
+        service_name='adaptive-job',
+        sleep_seconds=5,
+        iteration_timeout_seconds=5,
+        execution_timeout_seconds=20,
+        shutdown_grace_seconds=2,
+        lease_timeout_seconds=12,
+        lease_wait_seconds=0,
+        resource_sample_seconds=0.01,
+    )
+
+    def iteration(context: JobRuntimeContext) -> None:
+        iterations.append(context.iteration)
+        if context.iteration == 1:
+            context.set_next_iteration_delay(0.25)
+            return
+        context.request_stop('requested')
+
+    result = execute_job(
+        definition=definition,
+        iteration=iteration,
+        argv=[],
+        environ=_environment(tmp_path),
+    )
+
+    assert iterations == [1, 2]
+    assert observed_waits == [0.25]
+    assert result.stop_reason == 'requested'

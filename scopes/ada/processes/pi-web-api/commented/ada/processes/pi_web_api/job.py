@@ -79,12 +79,19 @@ class PiWebApiJob:
         except PiWebApiTimeoutExhaustedError as error:
             context.mark_iteration_work()
             self._record_timeout_skip(context=context, window=None, error=error)
+            context.set_next_iteration_delay(0)
             return
         self._initialize_execution_facts(context, preparation)
-        window = self.plan_iteration(now_utc=datetime.now(UTC))
+        planning_now = datetime.now(UTC)
+        window = self.plan_iteration(now_utc=planning_now)
         if window is None:
             context.set_iteration_fact('outcome', 'skipped')
             context.set_iteration_fact('reason', 'no_new_slot')
+            self._schedule_next_iteration(
+                context=context,
+                now_utc=planning_now,
+                committed_watermark_utc=self.producer_state.current().committed_watermark_utc,
+            )
             return
 
         context.mark_iteration_work()
@@ -92,7 +99,7 @@ class PiWebApiJob:
         context.set_iteration_fact('recovery_truncated', window.recovery_truncated)
         if window.recovery_truncated:
             context.logger.warning(
-                'PI recovery window was truncated to the configured maximum horizon',
+                'PI recovery was truncated to the configured lookback horizon',
                 event_name='pi_web_api.recovery.truncated',
                 first_slot_utc=window.first_slot_utc,
                 last_slot_utc=window.last_slot_utc,
@@ -107,6 +114,7 @@ class PiWebApiJob:
             )
         except PiWebApiTimeoutExhaustedError as error:
             self._record_timeout_skip(context=context, window=window, error=error)
+            context.set_next_iteration_delay(0)
             return
         self._record_timeout_recovery(context=context, window=window)
         context.raise_if_cancelled()
@@ -138,6 +146,33 @@ class PiWebApiJob:
             source_watermark=source.source_watermark_utc,
             producer_watermark=producer.committed_watermark_utc,
         )
+        committed_at = datetime.now(UTC)
+        if window.slot_count == 1:
+            context.set_iteration_fact(
+                'slot_commit_latency_seconds',
+                max(0.0, (committed_at - window.last_slot_utc).total_seconds()),
+            )
+        self._schedule_next_iteration(
+            context=context,
+            now_utc=committed_at,
+            committed_watermark_utc=producer.committed_watermark_utc,
+        )
+
+    def _schedule_next_iteration(
+        self,
+        *,
+        context: JobRuntimeContext,
+        now_utc: datetime,
+        committed_watermark_utc: datetime | None,
+    ) -> None:
+        next_wake = self.planner.next_wake_at(
+            now_utc=now_utc,
+            committed_watermark_utc=committed_watermark_utc,
+        )
+        delay_seconds = max(0.0, (next_wake - now_utc).total_seconds())
+        context.set_next_iteration_delay(delay_seconds)
+        context.set_iteration_fact('next_wake_utc', next_wake)
+        context.set_iteration_fact('next_iteration_delay_seconds', delay_seconds)
 
     @staticmethod
     def _initialize_execution_facts(

@@ -30,7 +30,8 @@ El despliegue esperado usa `parallelism = 1`. El lease sigue siendo la protecci�
 
 El process mantiene:
 
-- polling local de 1 segundo;
+- `sleep_seconds = 1` únicamente como fallback del runtime;
+- wake adaptativo en operación normal, calculado desde el producer watermark y el próximo boundary de interpolación;
 - `execution_timeout_seconds = 600` como presupuesto total del runtime;
 - `shutdown_grace_seconds = 10`;
 - ventana segura de trabajo/adquisición de 590 segundos;
@@ -39,9 +40,11 @@ El process mantiene:
 
 `replicaTimeout` pertenece a la configuración de despliegue y no se define en el código del process. Un owner sano debe terminar de forma cooperativa dentro del presupuesto Atlanticus; si queda bloqueado, el hard timeout externo puede terminarlo, tras lo cual el heartbeat deja de renovarse y otra ejecución recupera ownership.
 
+Cuando el producer watermark está al día, el process calcula el próximo boundary exacto usando `interpolation_seconds` y solicita al runtime esperar solo hasta ese instante. Si todavía existe backlog recuperable, el delay solicitado es cero y la siguiente iteración comienza inmediatamente. Cada slot unitario registra `slot_commit_latency_seconds` desde su boundary UTC hasta el commit de Parquet y watermarks.
+
 ## Adquisición PI
 
-Los límites `points_max_paths`, `interpolated_max_web_ids` y `recorded_max_web_ids` pertenecen a la integración y son validados por ella. El process es responsable de dividir el trabajo antes de llamar a la integración.
+Los límites `points_max_paths`, `interpolated_max_web_ids` y `recorded_max_web_ids` pertenecen a la integración y son validados por ella. El process es responsable de dividir el trabajo antes de llamar a la integración. El valor inicial de `PI_WEB_API_INTERPOLATED_MAX_WEB_IDS` es `200`. Los chunks `INTERPOLATED` independientes pueden ejecutarse con hasta `PI_WEB_API_INTERPOLATED_MAX_PARALLEL_REQUESTS=3`; los resultados se reúnen en orden determinista antes de continuar. Normalización, dedupe, pivot, Parquet, state y watermarks permanecen en un único flujo y un único writer.
 
 `PI_WEB_API_MAX_DATA_POINTS` es una guarda de planificación del process para requests interpolated. Su valor inicial es `150000`; no se incorpora al cliente PI genérico.
 La estimación incluye el punto del límite derecho que PI puede devolver aunque luego se descarte, por lo que una request interpolated se dimensiona como `(slots + 1) * web_ids`. El process verifica además el tamaño real de cada respuesta. Esto cubre especialmente `RECORDED`, cuya cantidad de eventos no se puede predecir antes de consultar PI.
@@ -87,5 +90,5 @@ Los timeouts de transporte de PI Web API se tratan como una degradación tempora
 
 La misma política cubre la resolución de WebIDs y las lecturas `streamsets`. Si una solicitud se recupera dentro de esos reintentos, la iteración continúa normalmente. Si los tres reintentos se agotan, la iteración termina con `outcome=skipped` y `reason=pi_timeout`: no se publica Parquet y no avanzan ni el source watermark ni el producer watermark. El runtime permanece vivo y puede iniciar otra iteración inmediatamente según su presupuesto restante.
 
-Mientras el timeout persista, las iteraciones siguientes vuelven a intentar desde el mismo watermark confirmado. Cuando PI vuelve a estar disponible, el planner observa el gap acumulado y recupera la ventana pendiente de forma acelerada, dentro del horizonte máximo de recuperación y de los límites de puntos ya definidos. Errores no clasificados como timeout, como autenticación inválida, catálogo inválido, schema inválido o fallos de materialización, continúan propagándose como errores reales.
+Mientras el timeout persista, las iteraciones siguientes vuelven a intentar desde el mismo watermark confirmado. Cuando PI vuelve a estar disponible, el recovery está acotado por dos contratos distintos: `PI_WEB_API_MAX_RECOVERY_LOOKBACK_SECONDS` define cuánto pasado reciente se conserva y `PI_WEB_API_MAX_RECOVERY_WINDOW_SECONDS` define cuánto de ese pasado se procesa como máximo por iteración. Ambos parten en `3600`. Si el proceso estuvo detenido cinco horas, con lookback de una hora descarta deliberadamente las cuatro horas más antiguas y procesa solo la última hora. `PI_WEB_API_MAX_DATA_POINTS` sigue siendo una guarda independiente y puede subdividir técnicamente una window. Mientras todavía exista backlog dentro del lookback, la siguiente iteración se solicita sin pausa; al alcanzar el slot actual se vuelve al wake adaptativo normal. Errores no clasificados como timeout, como autenticación inválida, catálogo inválido, schema inválido o fallos de materialización, continúan propagándose como errores reales.
 

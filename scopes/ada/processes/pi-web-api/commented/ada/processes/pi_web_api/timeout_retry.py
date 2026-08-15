@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from threading import Lock
 from typing import TypeVar
 
 from ada.processes.pi_web_api.errors import PiWebApiTimeoutExhaustedError
@@ -18,6 +19,7 @@ def execute_with_timeout_retries(
     context: JobRuntimeContext,
     operation_name: str,
     attributes: Mapping[str, object] | None = None,
+    counter_lock: Lock | None = None,
 ) -> tuple[_T, int]:
     retry_count = 0
     last_timeout_phase: str | None = None
@@ -43,7 +45,11 @@ def execute_with_timeout_retries(
                 ) from None
             delay_seconds = _TIMEOUT_RETRY_DELAYS_SECONDS[retry_count]
             retry_count += 1
-            context.increment_execution_counter('pi_timeout_retries')
+            if counter_lock is None:
+                context.increment_execution_counter('pi_timeout_retries')
+            else:
+                with counter_lock:
+                    context.increment_execution_counter('pi_timeout_retries')
             context.logger.warning(
                 'PI Web API request timed out and will be retried',
                 event_name='pi_web_api.timeout.retry',

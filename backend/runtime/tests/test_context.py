@@ -150,3 +150,62 @@ def test_context_rejects_invalid_waits(tmp_path, seconds) -> None:
 
     with pytest.raises((TypeError, ValueError)):
         context.wait(seconds)
+
+
+def test_context_accepts_per_iteration_delay_and_resets_it(tmp_path) -> None:
+    definition = JobDefinition(
+        module_name='job',
+        service_name='job',
+        execution_timeout_seconds=20,
+        shutdown_grace_seconds=5,
+        iteration_timeout_seconds=10,
+        lease_timeout_seconds=30,
+    )
+    configuration = RuntimeConfiguration.from_sources(
+        environ={
+            'ENVIRONMENT': 'local',
+            'APPLICATION': 'ada',
+            'VOLUMEN_PATH': str(tmp_path),
+        }
+    )
+    context = JobRuntimeContext.create(
+        definition=definition,
+        configuration=configuration,
+        run_id='run-1',
+        correlation_id='correlation-1',
+    )
+
+    context._begin_iteration(1)
+    context.set_next_iteration_delay(8.75)
+    assert context._next_iteration_delay() == 8.75
+
+    context._begin_iteration(2)
+    assert context._next_iteration_delay() is None
+
+
+@pytest.mark.parametrize('seconds', [float('nan'), float('inf'), True, -1])
+def test_context_rejects_invalid_next_iteration_delays(tmp_path, seconds) -> None:
+    definition = JobDefinition(
+        module_name='job',
+        service_name='job',
+        execution_timeout_seconds=20,
+        shutdown_grace_seconds=5,
+        iteration_timeout_seconds=10,
+        lease_timeout_seconds=30,
+    )
+    configuration = RuntimeConfiguration.from_sources(
+        environ={
+            'ENVIRONMENT': 'local',
+            'APPLICATION': 'ada',
+            'VOLUMEN_PATH': str(tmp_path),
+        }
+    )
+    context = JobRuntimeContext.create(
+        definition=definition,
+        configuration=configuration,
+        run_id='run-1',
+        correlation_id='correlation-1',
+    )
+
+    with pytest.raises((TypeError, ValueError)):
+        context.set_next_iteration_delay(seconds)

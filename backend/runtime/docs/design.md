@@ -28,6 +28,12 @@ más allá de su deadline ni consumir la reserva mínima de una iteración.
 La plataforma externa conserva su propio hard timeout. Runtime no lo calcula ni lo lee desde
 configuración de despliegue.
 
+`JobDefinition.sleep_seconds` sigue siendo el cadence estático por defecto. Una iteración puede
+reemplazar únicamente su próxima espera mediante `JobRuntimeContext.set_next_iteration_delay()`.
+El runtime valida ese delay, lo mantiene interrumpible y lo descarta al comenzar la siguiente
+iteración. No interpreta timestamps ni reglas de dominio: cada proceso decide el delay usando su
+propio contrato temporal.
+
 ## Secuencia
 
 1. valida definición, argumentos y configuración;

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from threading import Lock
+from time import sleep
 from types import SimpleNamespace
 
 import pytest
@@ -126,7 +128,10 @@ def test_acquirer_chunks_web_ids_by_integration_limits(tmp_path) -> None:
     tags = tuple(_tag(f'TAG_{index}', PiExtractionMode.INTERPOLATED) for index in range(5))
     plan = PiExecutionPlan(interpolated=tags, recorded=())
 
-    result = PiStreamSetAcquirer(client=client).acquire(
+    result = PiStreamSetAcquirer(
+        client=client,
+        interpolated_max_parallel_requests=1,
+    ).acquire(
         plan=plan,
         window=_window(1),
         context=_context(tmp_path),
@@ -379,3 +384,88 @@ def test_response_over_point_guard_fails_at_minimum_window(tmp_path) -> None:
             window=_window(1),
             context=_context(tmp_path),
         )
+
+
+def test_interpolated_chunks_use_bounded_parallel_requests_and_keep_result_order(tmp_path) -> None:
+    client = FakeClient(interpolated_limit=1)
+    tags = tuple(_tag(f'TAG_{index}', PiExtractionMode.INTERPOLATED) for index in range(5))
+    plan = PiExecutionPlan(interpolated=tags, recorded=())
+    lock = Lock()
+    active = 0
+    peak = 0
+
+    def handler(web_ids, start, end, interval):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        sleep(0.03)
+        with lock:
+            active -= 1
+        name = web_ids[0].removeprefix('WEB_')
+        return ({'name': name, 'timestamp': start.isoformat(), 'value': name},)
+
+    client.streamsets.interpolated_handler = handler
+    result = PiStreamSetAcquirer(
+        client=client,
+        interpolated_max_parallel_requests=3,
+    ).acquire(
+        plan=plan,
+        window=_window(1),
+        context=_context(tmp_path),
+    )
+
+    assert peak == 3
+    assert result.interpolated_request_count == 5
+    assert [sample.tag_name for sample in result.interpolated] == [
+        'TAG_0',
+        'TAG_1',
+        'TAG_2',
+        'TAG_3',
+        'TAG_4',
+    ]
+
+
+@pytest.mark.parametrize('value', [0, 4, True])
+def test_acquirer_rejects_invalid_interpolated_parallel_limit(value) -> None:
+    with pytest.raises(ValueError, match='between 1 and 3'):
+        PiStreamSetAcquirer(
+            client=FakeClient(),
+            interpolated_max_parallel_requests=value,
+        )
+
+
+def test_parallel_interpolated_timeout_exhaustion_preserves_aggregate_request_counts(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(timeout_retry_module, '_TIMEOUT_RETRY_DELAYS_SECONDS', (0.0, 0.0, 0.0))
+    client = FakeClient(interpolated_limit=1)
+    tags = tuple(_tag(f'TAG_{index}', PiExtractionMode.INTERPOLATED) for index in range(4))
+    plan = PiExecutionPlan(interpolated=tags, recorded=())
+
+    def handler(web_ids, start, end, interval):
+        if web_ids == ('WEB_TAG_1',):
+            _raise_timeout('read')
+        name = web_ids[0].removeprefix('WEB_')
+        return ({'name': name, 'timestamp': start.isoformat(), 'value': name},)
+
+    client.streamsets.interpolated_handler = handler
+    context = _context(tmp_path)
+
+    with pytest.raises(PiWebApiTimeoutExhaustedError) as raised:
+        PiStreamSetAcquirer(
+            client=client,
+            interpolated_max_parallel_requests=3,
+        ).acquire(
+            plan=plan,
+            window=_window(1),
+            context=context,
+        )
+
+    assert raised.value.phase == 'read'
+    assert raised.value.retry_count == 3
+    assert raised.value.interpolated_request_count == 7
+    assert raised.value.recorded_request_count == 0
+    assert raised.value.request_count == 7
+    assert context.get_execution_fact('pi_timeout_retries') == 3
