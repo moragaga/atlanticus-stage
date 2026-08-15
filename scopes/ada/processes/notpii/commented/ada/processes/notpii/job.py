@@ -1,5 +1,5 @@
-# Espejo comentado del proceso NOTPII: composición, batch, materialización, estado y settlement.
-# Este archivo conserva exactamente el comportamiento productivo y agrega solo contexto.
+# Espejo comentado del job NOTPII. Mantiene exactamente el comportamiento productivo.
+# Cada iteración procesa secuencialmente todos los modos activos del catálogo.
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -48,80 +48,96 @@ class NotPiiJob:
         self._producer_state = producer_state
         self._active_modes = active_modes
         self._max_message_count = max_message_count
-        self._next_mode_index = 0
 
+    # INTERPOLATED se procesa primero y RECORDED después cuando ambos están activos.
+    # Cada modo termina lectura, materialización, estado y settlement antes del siguiente.
     def run_iteration(self, context: JobRuntimeContext) -> None:
         self._initialize_execution_facts(context)
-        mode = self._next_mode()
-        deliveries = self._receivers[mode].receive_batch(
-            max_message_count=self._max_message_count
+        context.set_iteration_fact(
+            'extraction_modes',
+            ','.join(mode.value for mode in self._active_modes),
         )
-        if not deliveries:
-            context.set_iteration_fact('outcome', 'skipped')
-            context.set_iteration_fact('reason', 'no_message')
-            context.set_iteration_fact('extraction_mode', mode.value)
-            return
+        completed_any = False
+        invalid_any = False
 
-        context.mark_iteration_work()
-        context.set_iteration_fact('extraction_mode', mode.value)
-        context.set_iteration_fact('messages_received', len(deliveries))
-        context.increment_execution_counter('messages_received', len(deliveries))
-        context.increment_execution_counter(mode.value, len(deliveries))
-
-        with ExitStack() as locks:
-            for delivery in deliveries:
-                locks.enter_context(
-                    delivery.auto_renew_lock(
-                        max_duration_seconds=_LOCK_RENEWAL_DURATION_SECONDS,
-                    )
-                )
-            batches = self._read_batch(
-                context=context,
-                mode=mode,
-                deliveries=deliveries,
+        # _active_modes ya respeta _MODE_ORDER y excluye modos ausentes del catálogo.
+        for mode in self._active_modes:
+            deliveries = self._receivers[mode].receive_batch(
+                max_message_count=self._max_message_count
             )
-            if batches is None:
-                return
-            context.raise_if_cancelled()
-            try:
-                result = self._processors[mode].publish(batches)
-            except Exception:
-                self._abandon_deliveries(deliveries)
-                context.increment_execution_counter('messages_abandoned', len(deliveries))
-                raise
+            if not deliveries:
+                continue
 
-            observation = NotPiiStreamObservation(
-                source_last_updated_at_utc=result.source_last_updated_at_utc,
-                changed=any(
-                    publication.status is PublicationStatus.COMMITTED
-                    for publication in result.publications
-                ),
-            )
-            context.raise_if_cancelled()
-            try:
-                manifest = self._producer_state.advance({mode: observation})
-            except Exception:
-                self._abandon_deliveries(deliveries)
-                context.increment_execution_counter('messages_abandoned', len(deliveries))
-                raise
+            context.mark_iteration_work()
+            context.increment_iteration_counter('messages_received', len(deliveries))
+            context.increment_execution_counter('messages_received', len(deliveries))
+            context.increment_execution_counter(mode.value, len(deliveries))
 
-            context.raise_if_cancelled()
-            completed_count = 0
-            try:
+            # Los PeekLocks permanecen renovándose durante todo el flujo atómico del batch.
+            with ExitStack() as locks:
                 for delivery in deliveries:
-                    delivery.complete()
-                    completed_count += 1
-            except Exception:
+                    locks.enter_context(
+                        delivery.auto_renew_lock(
+                            max_duration_seconds=_LOCK_RENEWAL_DURATION_SECONDS,
+                        )
+                    )
+                batches = self._read_batch(
+                    context=context,
+                    mode=mode,
+                    deliveries=deliveries,
+                )
+                if batches is None:
+                    invalid_any = True
+                    continue
+                context.raise_if_cancelled()
+                try:
+                    result = self._processors[mode].publish(batches)
+                except Exception:
+                    self._abandon_deliveries(deliveries)
+                    context.increment_execution_counter('messages_abandoned', len(deliveries))
+                    raise
+
+                observation = NotPiiStreamObservation(
+                    source_last_updated_at_utc=result.source_last_updated_at_utc,
+                    changed=any(
+                        publication.status is PublicationStatus.COMMITTED
+                        for publication in result.publications
+                    ),
+                )
+                context.raise_if_cancelled()
+                try:
+                    manifest = self._producer_state.advance({mode: observation})
+                except Exception:
+                    self._abandon_deliveries(deliveries)
+                    context.increment_execution_counter('messages_abandoned', len(deliveries))
+                    raise
+
+                context.raise_if_cancelled()
+                completed_count = 0
+                try:
+                    for delivery in deliveries:
+                        delivery.complete()
+                        completed_count += 1
+                except Exception:
+                    context.increment_iteration_counter('messages_completed', completed_count)
+                    context.increment_execution_counter('messages_completed', completed_count)
+                    raise
+                context.increment_iteration_counter('messages_completed', completed_count)
                 context.increment_execution_counter('messages_completed', completed_count)
-                raise
-            context.increment_execution_counter('messages_completed', completed_count)
-            self._set_processing_facts(
-                context=context,
-                result=result,
-                source_watermark=manifest.source_watermark_utc,
-                data_revision=manifest.revision,
-                completed_count=completed_count,
-            )
+                self._set_processing_facts(
+                    context=context,
+                    result=result,
+                    source_watermark=manifest.source_watermark_utc,
+                    data_revision=manifest.revision,
+                )
+                completed_any = True
+
+        # La iteración completa si al menos un modo pudo materializar y liquidar su batch.
+        if completed_any:
+            context.set_iteration_fact('outcome', 'completed')
+            return
+        context.set_iteration_fact('outcome', 'skipped')
+        context.set_iteration_fact('reason', 'invalid_message' if invalid_any else 'no_message')
 
     def _read_batch(
         self,
@@ -148,8 +164,6 @@ class NotPiiJob:
                     'messages_abandoned',
                     max(0, active_before - 1),
                 )
-                context.set_iteration_fact('outcome', 'skipped')
-                context.set_iteration_fact('reason', 'invalid_message')
                 context.logger.warning(
                     'Invalid NOT PII batch was rejected before materialization',
                     event_name='notpii.batch.invalid_message',
@@ -190,11 +204,6 @@ class NotPiiJob:
                     manifest.source_watermark_utc,
                 )
 
-    def _next_mode(self) -> PiExtractionMode:
-        mode = self._active_modes[self._next_mode_index]
-        self._next_mode_index = (self._next_mode_index + 1) % len(self._active_modes)
-        return mode
-
     def _set_processing_facts(
         self,
         *,
@@ -202,18 +211,14 @@ class NotPiiJob:
         result: NotPiiProcessingResult,
         source_watermark,
         data_revision: int,
-        completed_count: int,
     ) -> None:
         committed = sum(
-            publication.status is PublicationStatus.COMMITTED
-            for publication in result.publications
+            publication.status is PublicationStatus.COMMITTED for publication in result.publications
         )
-        context.set_iteration_fact('outcome', 'completed')
-        context.set_iteration_fact('messages_completed', completed_count)
-        context.set_iteration_fact('rows_received', result.row_count)
-        context.set_iteration_fact('rows_materialized', result.materialized_row_count)
-        context.set_iteration_fact('publications', len(result.publications))
-        context.set_iteration_fact('publications_committed', committed)
+        context.increment_iteration_counter('rows_received', result.row_count)
+        context.increment_iteration_counter('rows_materialized', result.materialized_row_count)
+        context.increment_iteration_counter('publications', len(result.publications))
+        context.increment_iteration_counter('publications_committed', committed)
         context.set_iteration_fact('data_revision', data_revision)
         context.increment_execution_counter('rows_received', result.row_count)
         context.increment_execution_counter('rows_materialized', result.materialized_row_count)

@@ -51,6 +51,13 @@ echo [6/6] Verifying transport runtime
 uv run --python "%PYTHON_VERSION%" --no-python-downloads --no-sync python -c "import sys; import ada.processes.notpii; assert sys.version_info[:3] == (3, 14, 2), sys.version" || exit /b 1
 
 if exist .venv rmdir /s /q .venv
+for /d /r src %%D in (*.egg-info) do if exist "%%~fD" rmdir /s /q "%%~fD"
+for /d /r src %%D in (*.egg-info) do (
+    if exist "%%~fD" (
+        echo Transport bundle must not contain generated egg-info metadata: %ARTIFACT_PATH% 1>&2
+        exit /b 1
+    )
+)
 
 echo NOTPII transport artifact validated: %ARTIFACT_PATH%
 exit /b 0

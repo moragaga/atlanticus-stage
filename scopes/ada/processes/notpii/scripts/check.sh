@@ -62,5 +62,10 @@ uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-sync python -c \
     "import sys; import ada.processes.notpii; assert sys.version_info[:3] == (3, 14, 2), sys.version"
 
 rm -rf .venv
+find src -type d -name '*.egg-info' -prune -exec rm -rf {} +
+if find src -type d -name '*.egg-info' -print -quit | grep -q .; then
+    echo "Transport bundle must not contain generated egg-info metadata: ${ARTIFACT_PATH}" >&2
+    exit 1
+fi
 
 echo "NOTPII transport artifact validated: ${ARTIFACT_PATH}"

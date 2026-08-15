@@ -33,6 +33,9 @@ class FakeContext:
     def set_iteration_fact(self, key: str, value: object) -> None:
         self.iteration_facts[key] = value
 
+    def increment_iteration_counter(self, key: str, amount: int | float = 1) -> None:
+        self.iteration_facts[key] = self.iteration_facts.get(key, 0) + amount
+
     def set_execution_fact(self, key: str, value: object) -> None:
         self.execution_facts[key] = value
 
@@ -171,10 +174,12 @@ def test_batch_materializes_once_then_commits_state_then_completes(tmp_path) -> 
     assert context.execution_facts['messages_completed'] == 3
 
 
-def test_modes_are_fair_across_fast_iterations(tmp_path) -> None:
+def test_active_modes_run_in_order_within_same_iteration(tmp_path) -> None:
     events: list[str] = []
-    interpolated = FakeReceiver([(FakeDelivery('i1', events),)])
-    recorded = FakeReceiver([(FakeDelivery('r1', events),)])
+    interpolated_delivery = FakeDelivery('i1', events)
+    recorded_delivery = FakeDelivery('r1', events)
+    interpolated = FakeReceiver([(interpolated_delivery,)])
+    recorded = FakeReceiver([(recorded_delivery,)])
     job = NotPiiJob(
         receivers={
             PiExtractionMode.INTERPOLATED: interpolated,
@@ -187,16 +192,48 @@ def test_modes_are_fair_across_fast_iterations(tmp_path) -> None:
         producer_state=_state(tmp_path, events),
         max_message_count=10,
     )
+    context = FakeContext()
 
-    first = FakeContext()
-    second = FakeContext()
-    job.run_iteration(first)
-    job.run_iteration(second)
+    job.run_iteration(context)
 
-    assert first.iteration_facts['extraction_mode'] == 'interpolated'
-    assert second.iteration_facts['extraction_mode'] == 'recorded'
     assert interpolated.requested == [10]
     assert recorded.requested == [10]
+    assert interpolated_delivery.completed is True
+    assert recorded_delivery.completed is True
+    assert events.index('complete:i1') < events.index('read:r1')
+    assert context.iteration_facts['extraction_modes'] == 'interpolated,recorded'
+    assert context.iteration_facts['messages_received'] == 2
+    assert context.iteration_facts['messages_completed'] == 2
+    assert context.iteration_facts['outcome'] == 'completed'
+
+
+def test_empty_interpolated_does_not_skip_recorded(tmp_path) -> None:
+    events: list[str] = []
+    recorded_delivery = FakeDelivery('r1', events)
+    interpolated = FakeReceiver([()])
+    recorded = FakeReceiver([(recorded_delivery,)])
+    job = NotPiiJob(
+        receivers={
+            PiExtractionMode.INTERPOLATED: interpolated,
+            PiExtractionMode.RECORDED: recorded,
+        },
+        processors={
+            PiExtractionMode.INTERPOLATED: FakeProcessor(PiExtractionMode.INTERPOLATED, events),
+            PiExtractionMode.RECORDED: FakeProcessor(PiExtractionMode.RECORDED, events),
+        },
+        producer_state=_state(tmp_path, events),
+        max_message_count=10,
+    )
+    context = FakeContext()
+
+    job.run_iteration(context)
+
+    assert interpolated.requested == [10]
+    assert recorded.requested == [10]
+    assert recorded_delivery.completed is True
+    assert context.iteration_facts['messages_received'] == 1
+    assert context.iteration_facts['messages_completed'] == 1
+    assert context.iteration_facts['outcome'] == 'completed'
 
 
 def test_invalid_message_is_dead_lettered_and_rest_of_batch_is_abandoned(tmp_path) -> None:
