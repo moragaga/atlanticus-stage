@@ -39,25 +39,53 @@ El process mantiene:
 
 `replicaTimeout` pertenece a la configuración de despliegue y no se define en el código del process. Un owner sano debe terminar de forma cooperativa dentro del presupuesto Atlanticus; si queda bloqueado, el hard timeout externo puede terminarlo, tras lo cual el heartbeat deja de renovarse y otra ejecución recupera ownership.
 
-## Idempotencia de replay
+## Adquisición PI
 
-El watermark puede quedar detrás del dataset si una ejecución muere después de materializar y antes de confirmar estado. Por diseño, la siguiente ejecución puede volver a consultar y materializar la misma ventana. Ese replay debe ser idempotente.
+Los límites `points_max_paths`, `interpolated_max_web_ids` y `recorded_max_web_ids` pertenecen a la integración y son validados por ella. El process es responsable de dividir el trabajo antes de llamar a la integración.
 
-Para `INTERPOLATED`, la identidad final de una fila es `slot_timestamp_utc`. Si el slot ya existe en el archivo activo, no se agrega una segunda fila.
+`PI_WEB_API_MAX_DATA_POINTS` es una guarda de planificación del process para requests interpolated. Su valor inicial es `150000`; no se incorpora al cliente PI genérico.
+La estimación incluye el punto del límite derecho que PI puede devolver aunque luego se descarte, por lo que una request interpolated se dimensiona como `(slots + 1) * web_ids`. El process verifica además el tamaño real de cada respuesta. Esto cubre especialmente `RECORDED`, cuya cantidad de eventos no se puede predecir antes de consultar PI.
 
-Para `RECORDED`, los eventos recibidos desde PI se deduplican primero por `(tag_name, native_timestamp_utc)`. Si PI entrega la misma identidad con valores distintos, el último valor recibido gana y el conflicto debe quedar registrado en observabilidad. Después los eventos se proyectan al eje común de slots y la materialización también debe ser idempotente por `slot_timestamp_utc`.
+Una ventana puede dividirse adicionalmente cuando una llamada falla por conexión distinta de timeout, por un HTTP recuperable (`408`, `425`, `429` o `5xx`) o cuando la respuesta real supera `PI_WEB_API_MAX_DATA_POINTS`. Solo se vuelve a intentar la porción fallida. El split continúa hasta ventanas de aproximadamente 60 segundos; si una respuesta sigue excediendo el límite en la ventana mínima, la adquisición falla de forma explícita. Los timeouts de transporte siguen la política específica descrita más abajo y no provocan split después de agotar sus retries. Errores de autenticación, configuración, request local o estructura de respuesta no se degradan mediante split.
 
-La deduplicación y la materialización idempotente pertenecen al siguiente incremento del process; este documento fija el contrato antes de implementarlas.
+El endpoint se consulta hasta `last_slot + interpolation_seconds` para poder representar correctamente un único slot y los eventos recorded de la última celda. Cualquier dato devuelto en el límite derecho se descarta antes de materializar.
+
+## Idempotencia y proyección
+
+Para `INTERPOLATED`, la identidad lógica final es `slot_timestamp_utc`, materializada físicamente en la columna `timestamp_utc` y alineada al eje de slots del catálogo. Duplicados exactos de `tag + timestamp` usan el último valor recibido y los conflictos se observan.
+
+Para `RECORDED`, los eventos se deduplican primero por `(tag_name, native_timestamp_utc)`. Si PI entrega la misma identidad con valores distintos, el último valor recibido gana y el conflicto queda registrado. Luego los eventos se proyectan al eje común de slots. Si distintos eventos del mismo tag caen en un mismo slot, gana el evento de timestamp nativo más reciente y la colisión queda observable.
+
+La materialización final de `DAILY` y `MONTHLY` usa merge idempotente por `timestamp_utc`. `LATEST` usa reemplazo completo y solo está permitido para interpolated por el contrato del catálogo.
+
+## Evolución de schema
+
+Una partición `DAILY` o `MONTHLY` ya existente conserva las columnas con las que fue abierta. Tags nuevos agregan columnas y las filas antiguas reciben `null`. Tags retirados permanecen en esa partición y las filas nuevas reciben `null`.
+
+Una partición nueva se crea exclusivamente con el catálogo vigente, por lo que columnas retiradas desaparecen naturalmente al cambiar de archivo. `LATEST`, al no tener rollover de partición, refleja siempre el catálogo vigente.
+
+Para evitar cargar archivos completos solo para conocer sus columnas, `DatasetRuntime.read_schema()` consulta únicamente el schema confirmado del target.
 
 ## Orden de commit
 
-Cuando exista materialización real, el orden seguro será:
+El orden seguro de cada iteración es:
 
 1. adquirir y conservar ownership del lease;
-2. adquirir/procesar la ventana;
-3. verificar que el runtime siga saludable antes de comenzar escrituras nuevas;
-4. materializar datasets de forma idempotente;
-5. publicar `source_watermark_utc`;
-6. confirmar `committed_watermark_utc`.
+2. completar la preparación de WebIDs y reutilizarla durante el resto de la ejecución;
+3. planificar la ventana pendiente desde el producer watermark;
+4. adquirir y deduplicar datos PI;
+5. comprobar que el runtime siga dentro de su ventana segura;
+6. materializar todos los datasets de forma idempotente, comprobando cancelación antes de iniciar cada escritura;
+7. comprobar nuevamente cancelación;
+8. publicar `source_watermark_utc`;
+9. confirmar `committed_watermark_utc`.
 
-Se prefiere repetir una ventana después de un crash antes que avanzar estado y dejar un hueco silencioso.
+Si ocurre un crash después de una escritura Parquet y antes de los watermarks, la siguiente ejecución repite la ventana. El merge/reemplazo idempotente evita duplicados y se prefiere replay antes que avanzar estado dejando un hueco silencioso.
+## Timeouts transitorios de PI Web API
+
+Los timeouts de transporte de PI Web API se tratan como una degradación temporal de la dependencia, no como una autorización para confirmar datos incompletos. Cada solicitud dispone de un intento inicial y hasta tres reintentos explícitos con pausas de 2, 3 y 5 segundos. La política vive en el process; `atlanticus-http` permanece sin reintentos implícitos.
+
+La misma política cubre la resolución de WebIDs y las lecturas `streamsets`. Si una solicitud se recupera dentro de esos reintentos, la iteración continúa normalmente. Si los tres reintentos se agotan, la iteración termina con `outcome=skipped` y `reason=pi_timeout`: no se publica Parquet y no avanzan ni el source watermark ni el producer watermark. El runtime permanece vivo y puede iniciar otra iteración inmediatamente según su presupuesto restante.
+
+Mientras el timeout persista, las iteraciones siguientes vuelven a intentar desde el mismo watermark confirmado. Cuando PI vuelve a estar disponible, el planner observa el gap acumulado y recupera la ventana pendiente de forma acelerada, dentro del horizonte máximo de recuperación y de los límites de puntos ya definidos. Errores no clasificados como timeout, como autenticación inválida, catálogo inválido, schema inválido o fallos de materialización, continúan propagándose como errores reales.
+

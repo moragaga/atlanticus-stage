@@ -62,7 +62,7 @@ source = { editable = "datasets" }
 
 [[package]]
 name = "atlanticus-datasets-parquet"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "datasets-parquet" }
 dependencies = [
     { name = "atlanticus-datasets" },
@@ -77,7 +77,7 @@ requires-dist = [
 
 [[package]]
 name = "atlanticus-datasets-runtime"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "datasets-runtime" }
 dependencies = [
     { name = "atlanticus-datasets" },

@@ -71,6 +71,7 @@ def configuration(tmp_path: Path) -> ResolvedConfiguration:
         'PI_WEB_API_INTERPOLATED_MAX_WEB_IDS': '100',
         'PI_WEB_API_RECORDED_MAX_WEB_IDS': '100',
         'PI_WEB_API_MAX_RECOVERY_SECONDS': '3600',
+        'PI_WEB_API_MAX_DATA_POINTS': '150000',
         'ATLANTICUS_AZURE_OBSERVABILITY_MODE': 'off',
     }
     specs = tuple(

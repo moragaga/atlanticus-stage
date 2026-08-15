@@ -1,3 +1,4 @@
+# Espejo pedagógico: la fachada agrega una lectura de schema sin cargar filas para evitar I/O innecesario.
 """Fachada bidireccional para publicar y consumir datasets operacionales."""
 
 from __future__ import annotations
@@ -5,6 +6,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from time import monotonic
+
+import pyarrow as pa
 
 from atlanticus.datasets import (
     DatasetDefinition,
@@ -47,7 +50,6 @@ from atlanticus.datasets.runtime.models import (
 class DatasetRuntime:
     """Convierte formatos y delega atomicidad, filtros y archivos al store inyectado."""
 
-    # El composition root crea el store; la fachada nunca decide rutas ni opciones físicas.
     def __init__(
         self,
         *,
@@ -71,7 +73,6 @@ class DatasetRuntime:
         """Publica un artefacto completo desde Pandas o PyArrow."""
 
         started = monotonic()
-        # El contrato lógico se valida aunque la tabla termine activando el guard de vacío.
         _validate_request(
             definition=definition,
             target=target,
@@ -113,7 +114,6 @@ class DatasetRuntime:
             operation='merge',
         )
         table = to_arrow_table(data)
-        # Claves y orden quedan como tuplas estables para validar y delegar exactamente lo mismo.
         keys = normalize_column_names(key_columns, field='key_columns', allow_empty=False)
         ordering = normalize_column_names(order_by, field='order_by', allow_empty=True)
         validate_merge_table(table, key_columns=keys, order_by=ordering)
@@ -155,11 +155,8 @@ class DatasetRuntime:
             layout_type=FileSetLayout,
             operation='publish_parts',
         )
-        # El layout ya fue validado arriba; aquí recuperamos su dimensión autoritativa
-        # para rechazar claves estructuralmente inválidas antes de cualquier atajo por vacío.
         layout = definition.get_materialization(target.materialization).layout
         assert isinstance(layout, FileSetLayout)
-        # Todas las partes se validan y convierten antes del único commit del manifiesto.
         incoming = _normalize_parts(
             parts=parts,
             target=target,
@@ -178,7 +175,6 @@ class DatasetRuntime:
             )
         if not incoming and not removals:
             return self._skipped_empty(target=target, started=started)
-        # El tipo específico de Parquet queda confinado dentro de la fachada.
         try:
             parquet_parts = tuple(
                 ParquetPart(key=part.key, table=to_arrow_table(part.data, field='part data'))
@@ -208,6 +204,34 @@ class DatasetRuntime:
                 f'could not publish dataset parts for {target.identifier}'
             ) from error
 
+    # Esta operación expone solamente metadata confirmada; PI la usa para evolucionar columnas
+    # sin leer el contenido completo de la partición activa.
+    def read_schema(
+        self,
+        *,
+        definition: DatasetDefinition,
+        target: DatasetTarget,
+    ) -> pa.Schema:
+        """Lee solamente el schema confirmado del target sin cargar sus filas."""
+
+        _validate_request(definition=definition, target=target)
+        try:
+            return self._store.read_schema(definition=definition, target=target)
+        except ParquetPublicationNotFoundError as error:
+            raise DatasetRuntimeNotFoundError(
+                f'dataset target has no confirmed publication: {target.identifier}'
+            ) from error
+        except DatasetValidationError as error:
+            raise DatasetRuntimeValidationError('invalid dataset schema read request') from error
+        except ParquetReadError as error:
+            raise DatasetRuntimeReadError(
+                f'could not read dataset schema for {target.identifier}'
+            ) from error
+        except Exception as error:
+            raise DatasetRuntimeReadError(
+                f'could not read dataset schema for {target.identifier}'
+            ) from error
+
     def read_table(
         self,
         *,
@@ -217,7 +241,6 @@ class DatasetRuntime:
         """Lee el target vigente conservando su representación Arrow."""
 
         _validate_request(definition=definition, target=target)
-        # Arrow se conserva para consumidores que no necesitan materializar Pandas.
         try:
             result = self._store.read(definition=definition, target=target)
         except ParquetPublicationNotFoundError as error:
@@ -244,7 +267,6 @@ class DatasetRuntime:
     ) -> DataFrameReadResult:
         """Lee el target vigente y entrega un DataFrame nuevo sin índice persistido."""
 
-        # La conversión ocurre después de que el store aplicó selección, filtros y proyección.
         return _dataframe_result(self.read_table(definition=definition, target=target))
 
     def scan_table(
@@ -257,7 +279,6 @@ class DatasetRuntime:
     ) -> TableReadResult:
         """Proyecta y filtra targets explícitos conservando Arrow."""
 
-        # El runtime nunca descubre particiones: el consumidor declara targets explícitos.
         resolved_targets = _normalize_targets(targets)
         for target in resolved_targets:
             _validate_request(definition=definition, target=target)
@@ -318,7 +339,6 @@ class DatasetRuntime:
         target: DatasetTarget,
         started: float,
     ) -> DatasetPublicationResult:
-        # El resultado neutral conserva la misma semántica de datasets y datasets-parquet.
         return DatasetPublicationResult.skipped_empty(
             target=target,
             finished_at_utc=_resolve_clock(self._clock),
@@ -332,7 +352,6 @@ def _normalize_parts(
     target: DatasetTarget,
     part_dimension: str,
 ) -> tuple[RuntimeDatasetPart, ...]:
-    # No se aceptan claves duplicadas porque una parte entrante es un reemplazo completo.
     if isinstance(parts, RuntimeDatasetPart | str | bytes):
         raise DatasetRuntimeValidationError(
             'parts must be an iterable of RuntimeDatasetPart values'
@@ -347,7 +366,6 @@ def _normalize_parts(
         raise DatasetRuntimeValidationError('parts must contain only RuntimeDatasetPart values')
     if any(item.key.target != target for item in resolved):
         raise DatasetRuntimeValidationError('all parts must reference the requested target')
-    # Una parte puede apuntar al target correcto y aun así usar una dimensión equivocada.
     if any(item.key.dimension != part_dimension for item in resolved):
         raise DatasetRuntimeValidationError(
             f'all parts must use layout part dimension {part_dimension!r}'
@@ -364,7 +382,6 @@ def _normalize_removals(
     target: DatasetTarget,
     part_dimension: str,
 ) -> tuple[DatasetPartKey, ...]:
-    # Las eliminaciones son explícitas y deben pertenecer al mismo target de la publicación.
     if isinstance(remove_parts, DatasetPartKey | str | bytes):
         raise DatasetRuntimeValidationError(
             'remove_parts must be an iterable of DatasetPartKey values'
@@ -379,7 +396,6 @@ def _normalize_removals(
         raise DatasetRuntimeValidationError('remove_parts must contain only DatasetPartKey values')
     if any(item.target != target for item in resolved):
         raise DatasetRuntimeValidationError('all removed parts must reference the requested target')
-    # Las eliminaciones obedecen la misma dimensión declarada por el FileSetLayout.
     if any(item.dimension != part_dimension for item in resolved):
         raise DatasetRuntimeValidationError(
             f'all removed parts must use layout part dimension {part_dimension!r}'
@@ -390,7 +406,6 @@ def _normalize_removals(
 
 
 def _normalize_targets(targets: Iterable[DatasetTarget]) -> tuple[DatasetTarget, ...]:
-    # El orden recibido se conserva para que la concatenación física sea determinística.
     if isinstance(targets, DatasetTarget | str | bytes):
         raise DatasetRuntimeValidationError('targets must be an iterable of DatasetTarget values')
     try:
@@ -407,7 +422,6 @@ def _normalize_targets(targets: Iterable[DatasetTarget]) -> tuple[DatasetTarget,
 
 
 def _normalize_filters(filters: Iterable[ColumnFilter]) -> tuple[ColumnFilter, ...]:
-    # None y valores escalares se rechazan aquí para no filtrar TypeError desde la fachada.
     if isinstance(filters, ColumnFilter | str | bytes):
         raise DatasetRuntimeValidationError('filters must be an iterable of ColumnFilter values')
     try:
@@ -428,7 +442,6 @@ def _validate_request(
     layout_type: type[SingleArtifactLayout] | type[FileSetLayout] | None = None,
     operation: str | None = None,
 ) -> None:
-    # La fachada comprueba identidad y layout antes de cualquier atajo o acceso físico.
     if not isinstance(definition, DatasetDefinition):
         raise DatasetRuntimeValidationError('definition must be a DatasetDefinition')
     try:
@@ -443,7 +456,6 @@ def _validate_request(
 
 
 def _table_result(result: ParquetReadResult) -> TableReadResult:
-    # La fachada copia metadatos, pero Arrow puede pasar sin una conversión innecesaria.
     if not isinstance(result, ParquetReadResult):
         raise DatasetRuntimeReadError('store read did not return a ParquetReadResult')
     return TableReadResult(
@@ -457,7 +469,6 @@ def _table_result(result: ParquetReadResult) -> TableReadResult:
 
 
 def _dataframe_result(result: TableReadResult) -> DataFrameReadResult:
-    # to_pandas_dataframe siempre materializa una instancia nueva y mutable para el consumidor.
     return DataFrameReadResult(
         dataframe=to_pandas_dataframe(result.table),
         targets=result.targets,
@@ -469,7 +480,6 @@ def _dataframe_result(result: TableReadResult) -> DataFrameReadResult:
 
 
 def _resolve_clock(clock: Callable[[], datetime]) -> datetime:
-    # Los resultados técnicos se normalizan a UTC y nunca aceptan fechas ingenuas.
     value = clock()
     if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
         raise DatasetRuntimeValidationError('clock must return a timezone-aware datetime')

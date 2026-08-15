@@ -319,3 +319,30 @@ def test_scan_type_change_after_inspection_is_classified_as_corruption(
             targets=(target,),
             columns=('value',),
         )
+
+
+def test_read_schema_returns_physical_schema_without_loading_table(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path, clock)
+    target = _target(pi_definition)
+    table = pa.table(
+        {
+            'timestamp': timestamp_array('2026-07-21T10:00:00Z'),
+            'value': pa.array([1.0]),
+        }
+    )
+    store.replace(definition=pi_definition, target=target, table=table)
+
+    monkeypatch.setattr(
+        store,
+        'scan',
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('scan must not be used')),
+    )
+
+    schema = store.read_schema(definition=pi_definition, target=target)
+
+    assert schema.equals(table.schema, check_metadata=True)

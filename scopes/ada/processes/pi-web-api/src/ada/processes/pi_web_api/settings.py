@@ -24,6 +24,7 @@ from atlanticus.integrations.pi.web_api import (
 class PiWebApiProcessSettings:
     pi_web_api: PiWebApiSettings
     max_recovery_seconds: int = 3600
+    max_data_points: int = 150_000
 
     @classmethod
     def from_configuration(
@@ -85,6 +86,10 @@ class PiWebApiProcessSettings:
                     configuration,
                     'PI_WEB_API_MAX_RECOVERY_SECONDS',
                 ),
+                max_data_points=_positive_int(
+                    configuration,
+                    'PI_WEB_API_MAX_DATA_POINTS',
+                ),
             )
         except (
             ConfigurationValueError,
@@ -113,6 +118,7 @@ def configuration_specs() -> tuple[ConfigurationVariableSpec, ...]:
         ConfigurationVariableSpec(key='PI_WEB_API_INTERPOLATED_MAX_WEB_IDS', default='100'),
         ConfigurationVariableSpec(key='PI_WEB_API_RECORDED_MAX_WEB_IDS', default='100'),
         ConfigurationVariableSpec(key='PI_WEB_API_MAX_RECOVERY_SECONDS', default='3600'),
+        ConfigurationVariableSpec(key='PI_WEB_API_MAX_DATA_POINTS', default='150000'),
         ConfigurationVariableSpec(
             key='ATLANTICUS_AZURE_OBSERVABILITY_MODE',
             default='off',

@@ -1,4 +1,4 @@
-# Diseño de `atlanticus-datasets-runtime` 0.1.0
+# Diseño de `atlanticus-datasets-runtime` 0.2.0
 
 ## Responsabilidad
 
@@ -17,7 +17,7 @@ materializa Pandas después de que el store resolvió targets, partes, columnas 
 
 ## Dependencia física explícita
 
-`datasets-parquet==0.1.0` utiliza `ParquetPart`, `ColumnFilter` y `ParquetReadResult` como tipos
+`datasets-parquet==0.2.0` utiliza `ParquetPart`, `ColumnFilter` y `ParquetReadResult` como tipos
 concretos. Un protocolo que ocultara esa realidad no sería estructuralmente compatible para las
 partes ni los filtros. Por eso esta versión depende explícitamente del adaptador, aunque el objeto
 store continúe llegando por inyección.
@@ -48,6 +48,10 @@ reconstruido, es la autoridad persistida.
 
 La conversión se realiza sólo después de la lectura proyectada. El runtime no conserva referencias
 a DataFrames entregados ni reutiliza resultados entre llamadas.
+
+Cuando el consumidor necesita únicamente conocer las columnas/tipos confirmados de un target,
+`DatasetRuntime.read_schema()` delega al store Parquet y devuelve el `pa.Schema` sin leer las filas.
+Los errores mantienen la misma clasificación pública de las demás lecturas.
 
 ## Vacíos
 

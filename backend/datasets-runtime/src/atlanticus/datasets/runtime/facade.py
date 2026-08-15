@@ -6,6 +6,8 @@ from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from time import monotonic
 
+import pyarrow as pa
+
 from atlanticus.datasets import (
     DatasetDefinition,
     DatasetPartKey,
@@ -199,6 +201,32 @@ class DatasetRuntime:
         except Exception as error:
             raise DatasetRuntimeWriteError(
                 f'could not publish dataset parts for {target.identifier}'
+            ) from error
+
+    def read_schema(
+        self,
+        *,
+        definition: DatasetDefinition,
+        target: DatasetTarget,
+    ) -> pa.Schema:
+        """Lee solamente el schema confirmado del target sin cargar sus filas."""
+
+        _validate_request(definition=definition, target=target)
+        try:
+            return self._store.read_schema(definition=definition, target=target)
+        except ParquetPublicationNotFoundError as error:
+            raise DatasetRuntimeNotFoundError(
+                f'dataset target has no confirmed publication: {target.identifier}'
+            ) from error
+        except DatasetValidationError as error:
+            raise DatasetRuntimeValidationError('invalid dataset schema read request') from error
+        except ParquetReadError as error:
+            raise DatasetRuntimeReadError(
+                f'could not read dataset schema for {target.identifier}'
+            ) from error
+        except Exception as error:
+            raise DatasetRuntimeReadError(
+                f'could not read dataset schema for {target.identifier}'
             ) from error
 
     def read_table(

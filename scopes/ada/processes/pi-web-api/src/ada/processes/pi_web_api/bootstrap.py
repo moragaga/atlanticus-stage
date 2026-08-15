@@ -6,7 +6,6 @@ from pathlib import Path
 
 from ada.processes.pi_web_api.composition import build_composition
 from ada.processes.pi_web_api.errors import PiWebApiProcessConfigurationError
-from ada.processes.pi_web_api.lease_smoke import lease_smoke_enabled, run_lease_smoke
 from ada.processes.pi_web_api.settings import configuration_specs
 from atlanticus.configuration import ConfigurationBootstrap, ResolvedConfiguration, SecretsManifest
 from atlanticus.connectivity.key_vault import (
@@ -107,12 +106,6 @@ def run(
 ) -> RuntimeExecutionResult:
     root = Path.cwd() if process_root is None else Path(process_root)
     source_values = os.environ if environ is None else environ
-    if lease_smoke_enabled(process_root=root, environ=source_values):
-        return run_lease_smoke(
-            process_root=root,
-            argv=argv,
-            environ=source_values,
-        )
     configuration = load_configuration(process_root=root, environ=source_values)
     return build_composition(configuration=configuration).execute(argv=argv)
 

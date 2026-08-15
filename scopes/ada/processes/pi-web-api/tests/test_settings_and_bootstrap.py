@@ -20,6 +20,7 @@ def test_settings_defaults_are_safe_and_runtime_configurable(configuration) -> N
     assert settings.pi_web_api.limits.interpolated_max_web_ids == 100
     assert settings.pi_web_api.limits.recorded_max_web_ids == 100
     assert settings.max_recovery_seconds == 3600
+    assert settings.max_data_points == 150000
 
 
 def test_configuration_specs_keep_credentials_sensitive() -> None:
@@ -31,6 +32,7 @@ def test_configuration_specs_keep_credentials_sensitive() -> None:
     assert specs['PI_WEB_API_INTERPOLATED_MAX_WEB_IDS'].default == '100'
     assert specs['PI_WEB_API_RECORDED_MAX_WEB_IDS'].default == '100'
     assert specs['PI_WEB_API_MAX_RECOVERY_SECONDS'].default == '3600'
+    assert specs['PI_WEB_API_MAX_DATA_POINTS'].default == '150000'
     assert 'COMPANY_ABREV' not in specs
     assert 'PRODUCT_ABREV' not in specs
 

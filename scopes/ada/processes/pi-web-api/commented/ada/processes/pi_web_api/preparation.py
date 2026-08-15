@@ -1,15 +1,18 @@
+# Espejo pedagógico: la resolución inicial de WebIDs usa la misma política de timeout y conserva por chunk los WebIDs ya resueltos.
 from __future__ import annotations
-
-# Preparación de ejecución: cruza catálogo, cache y resolución de WebIDs faltantes.
 
 from typing import Protocol
 
-from ada.processes.pi_web_api.errors import PiWebApiCatalogError
+from ada.processes.pi_web_api.errors import (
+    PiWebApiCatalogError,
+    PiWebApiTimeoutExhaustedError,
+)
 from ada.processes.pi_web_api.models import (
     PiExecutionPlan,
     PiPreparationResult,
     ResolvedPiTag,
 )
+from ada.processes.pi_web_api.timeout_retry import execute_with_timeout_retries
 from ada.processes.pi_web_api.web_ids import WebIdRegistry
 from atlanticus.integrations.pi.contracts import (
     PiCatalog,
@@ -18,6 +21,7 @@ from atlanticus.integrations.pi.contracts import (
     PiWebApiSource,
 )
 from atlanticus.integrations.pi.web_api import PiPointWebIdResult, PiWebApiLimits
+from atlanticus.runtime import JobRuntimeContext
 
 
 class _PointResource(Protocol):
@@ -33,7 +37,6 @@ class _PiWebApiClient(Protocol):
     points: _PointResource
 
 
-# Resuelve solo WebIDs faltantes y respeta el límite de points/multiple al hacer chunks.
 class PiExecutionPlanPreparer:
     def __init__(self, *, client: _PiWebApiClient, registry: WebIdRegistry) -> None:
         if not hasattr(client, 'points') or not hasattr(client, 'settings'):
@@ -43,7 +46,12 @@ class PiExecutionPlanPreparer:
         self._client = client
         self._registry = registry
 
-    def prepare(self, catalog: PiCatalog) -> PiPreparationResult:
+    def prepare(
+        self,
+        catalog: PiCatalog,
+        *,
+        context: JobRuntimeContext | None = None,
+    ) -> PiPreparationResult:
         definitions = _active_definitions(catalog)
         tag_names = tuple(item.tag_name for item in definitions)
         cached = self._registry.lookup(tag_names)
@@ -57,21 +65,40 @@ class PiExecutionPlanPreparer:
             chunk = missing[offset : offset + limit]
             if not chunk:
                 continue
-            point_request_count += 1
-            results = self._client.points.resolve_web_ids(chunk)
+            if context is None:
+                point_request_count += 1
+                results = self._client.points.resolve_web_ids(chunk)
+            else:
+                try:
+                    results, retry_count = execute_with_timeout_retries(
+                        lambda current_chunk=chunk: self._client.points.resolve_web_ids(
+                            current_chunk
+                        ),
+                        context=context,
+                        operation_name='points.resolve_web_ids',
+                        attributes={'tag_count': len(chunk)},
+                    )
+                except PiWebApiTimeoutExhaustedError as error:
+                    point_request_count += error.retry_count + 1
+                    raise PiWebApiTimeoutExhaustedError(
+                        phase=error.phase,
+                        retry_count=error.retry_count,
+                        point_request_count=point_request_count,
+                    ) from None
+                point_request_count += retry_count + 1
             result_by_name = {item.tag_name: item for item in results}
+            resolved_chunk: dict[str, str] = {}
             for tag_name in chunk:
                 result = result_by_name.get(tag_name)
                 if result is None or result.web_id is None:
                     unresolved.append(tag_name)
                     continue
-                newly_resolved[tag_name] = result.web_id
+                resolved_chunk[tag_name] = result.web_id
+            if resolved_chunk:
+                self._registry.merge(resolved_chunk)
+                newly_resolved.update(resolved_chunk)
 
-        entries = (
-            self._registry.merge(newly_resolved)
-            if newly_resolved
-            else self._registry.current()
-        )
+        entries = self._registry.current()
         unresolved_set = {item.casefold() for item in unresolved}
         interpolated: list[ResolvedPiTag] = []
         recorded: list[ResolvedPiTag] = []

@@ -1,17 +1,17 @@
+# Espejo pedagógico: modela plan, ventana, muestras adquiridas y resultados sin lógica de infraestructura.
 from __future__ import annotations
-
-# Modelos inmutables preparados una sola vez al iniciar el proceso.
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
+from typing import Any
 
+from atlanticus.datasets import DatasetPublicationResult
 from atlanticus.integrations.pi.contracts import PiExtractionMode, PiTagDefinition
 
 
 @dataclass(frozen=True, slots=True)
-# Une una definición de catálogo con su WebID ya resuelto para evitar búsquedas durante el loop.
 class ResolvedPiTag:
     definition: PiTagDefinition
     web_id: str
@@ -38,7 +38,6 @@ class ResolvedPiTag:
 
 
 @dataclass(frozen=True, slots=True)
-# Separa interpolated/recorded y construye una tabla by_name una sola vez en memoria.
 class PiExecutionPlan:
     interpolated: tuple[ResolvedPiTag, ...]
     recorded: tuple[ResolvedPiTag, ...]
@@ -105,7 +104,6 @@ class PiPreparationResult:
 
 
 @dataclass(frozen=True, slots=True)
-# Describe los slots pendientes; todavía no define retries ni división adaptativa de ventanas.
 class PiAcquisitionWindow:
     first_slot_utc: datetime
     last_slot_utc: datetime
@@ -141,3 +139,76 @@ class PiAcquisitionWindow:
     def slot_count(self) -> int:
         seconds = int((self.last_slot_utc - self.first_slot_utc).total_seconds())
         return (seconds // self.interpolation_seconds) + 1
+
+
+@dataclass(frozen=True, slots=True)
+class PiSample:
+    tag_name: str
+    timestamp_utc: datetime
+    value: Any
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.tag_name, str) or not self.tag_name:
+            raise TypeError('tag_name must be non-empty text')
+        if self.tag_name != self.tag_name.strip():
+            raise ValueError('tag_name must not contain surrounding whitespace')
+        if not isinstance(self.timestamp_utc, datetime) or self.timestamp_utc.tzinfo is None:
+            raise TypeError('timestamp_utc must be a timezone-aware datetime')
+        if self.timestamp_utc.utcoffset() != timedelta(0):
+            raise ValueError('timestamp_utc must use UTC')
+        object.__setattr__(self, 'timestamp_utc', self.timestamp_utc.astimezone(UTC))
+
+
+@dataclass(frozen=True, slots=True)
+class PiAcquisitionResult:
+    interpolated: tuple[PiSample, ...]
+    recorded: tuple[PiSample, ...]
+    interpolated_request_count: int = 0
+    recorded_request_count: int = 0
+    split_count: int = 0
+    interpolated_conflict_count: int = 0
+    recorded_conflict_count: int = 0
+    unexpected_record_count: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.interpolated, tuple) or not all(
+            isinstance(item, PiSample) for item in self.interpolated
+        ):
+            raise TypeError('interpolated must be a tuple of PiSample values')
+        if not isinstance(self.recorded, tuple) or not all(
+            isinstance(item, PiSample) for item in self.recorded
+        ):
+            raise TypeError('recorded must be a tuple of PiSample values')
+        for field_name in (
+            'interpolated_request_count',
+            'recorded_request_count',
+            'split_count',
+            'interpolated_conflict_count',
+            'recorded_conflict_count',
+            'unexpected_record_count',
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f'{field_name} must be a non-negative integer')
+
+    @property
+    def request_count(self) -> int:
+        return self.interpolated_request_count + self.recorded_request_count
+
+
+@dataclass(frozen=True, slots=True)
+class PiMaterializationResult:
+    publications: tuple[DatasetPublicationResult, ...]
+    recorded_bucket_conflict_count: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.publications, tuple) or not all(
+            isinstance(item, DatasetPublicationResult) for item in self.publications
+        ):
+            raise TypeError('publications must be a tuple of DatasetPublicationResult values')
+        if (
+            not isinstance(self.recorded_bucket_conflict_count, int)
+            or isinstance(self.recorded_bucket_conflict_count, bool)
+            or self.recorded_bucket_conflict_count < 0
+        ):
+            raise ValueError('recorded_bucket_conflict_count must be a non-negative integer')

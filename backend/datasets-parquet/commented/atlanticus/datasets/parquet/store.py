@@ -1,4 +1,4 @@
-# Espejo comentado: conserva exactamente el contrato ejecutable y añade contexto en español.
+# Espejo pedagógico: read_schema inspecciona metadatos confirmados sin leer el contenido tabular.
 """Store Parquet atómico basado exclusivamente en tablas PyArrow."""
 
 from __future__ import annotations
@@ -193,8 +193,6 @@ class ParquetDatasetStore:
                 finished_at_utc=self._resolve_now(),
                 duration_ms=_elapsed_ms(started),
             )
-        # La lectura, combinación y publicación forman una sola operación crítica. Si dos hilos
-        # leen la misma base antes de publicar, el último podría borrar la actualización del otro.
         with self._write_lock:
             try:
                 current = self.read(definition=definition, target=target)
@@ -223,7 +221,6 @@ class ParquetDatasetStore:
                         item_count=artifact.item_count,
                         artifact_count=1,
                         size_bytes=artifact.size_bytes,
-                        # Los artefactos únicos no tienen manifiesto que conserve esta firma.
                         content_signature=_read_file_signature(artifact.path),
                         started=started,
                     )
@@ -372,6 +369,17 @@ class ParquetDatasetStore:
             started=started,
         )
 
+    # Para SingleArtifact se abre metadata Parquet y no se materializan row groups en memoria.
+    def read_schema(
+        self,
+        *,
+        definition: DatasetDefinition,
+        target: DatasetTarget,
+    ) -> pa.Schema:
+        """Lee solamente el schema confirmado de un target."""
+
+        return self._resolve_publication(definition=definition, target=target).schema
+
     def read(
         self,
         *,
@@ -403,8 +411,6 @@ class ParquetDatasetStore:
         resolved_filters = tuple(filters)
         if not all(isinstance(item, ColumnFilter) for item in resolved_filters):
             raise ParquetValidationError('filters must contain only ColumnFilter values')
-        # Los filtros de la dimensión física viajan a la resolución para descartar partes desde
-        # current.json antes de abrir, hashear o inspeccionar archivos Parquet.
         publications = tuple(
             self._resolve_publication(
                 definition=definition,
@@ -657,8 +663,6 @@ class ParquetDatasetStore:
                 part=part,
                 part_dimension=manifest.part_dimension,
             )
-        # Primero se valida la identidad lógica de todas las entradas del manifiesto. Recién
-        # después se hace pruning y el I/O físico queda restringido a las partes seleccionadas.
         selected_parts = self._select_manifest_parts(
             manifest=manifest,
             filters=filters,
@@ -673,8 +677,6 @@ class ParquetDatasetStore:
                 content_signature=part.content_signature,
                 part_value=part.value,
             )
-            # En lectura, una incompatibilidad entre el artefacto confirmado y su manifiesto
-            # es corrupción de la publicación, no un error de validación del consumidor.
             try:
                 self._validate_physical_schema(
                     physical=artifact.schema,
@@ -720,8 +722,6 @@ class ParquetDatasetStore:
             raise ParquetCorruptionError(
                 f'parquet part size does not match current manifest: {path.name}'
             )
-        # Tamaño, filas y schema no demuestran que los bytes sean los confirmados. La firma enlaza
-        # cada parte física con la identidad declarada en current.json.
         if content_signature is not None and _read_file_signature(path) != content_signature:
             raise ParquetCorruptionError(
                 f'parquet part signature does not match current manifest: {path.name}'
@@ -740,8 +740,6 @@ class ParquetDatasetStore:
             raise ParquetCorruptionError(
                 f'parquet part row count does not match current manifest: {path.name}'
             )
-        # El schema proviene de un artefacto físico ya publicado; cualquier violación
-        # estructural se clasifica como corrupción de lectura.
         try:
             self._validate_schema(schema)
         except ParquetSchemaError as error:
@@ -820,7 +818,6 @@ class ParquetDatasetStore:
         for field in output_schema:
             if field.name in table.column_names:
                 column = table[field.name]
-                # El footer inspeccionado y la tabla efectivamente leída deben coincidir.
                 if column.type != field.type:
                     raise ParquetCorruptionError(
                         f'parquet artifact schema changed while scanning column {field.name}'
@@ -909,7 +906,6 @@ class ParquetDatasetStore:
             metadata=authoritative.metadata,
         )
 
-    # Esta selección opera solo con metadata ya cargada en memoria; no toca el filesystem.
     def _select_manifest_parts(
         self,
         *,
@@ -1337,8 +1333,6 @@ def _empty_table(schema: pa.Schema) -> pa.Table:
     )
 
 
-# Las firmas usadas durante lectura traducen fallos del filesystem a la jerarquía pública del
-# adapter. Las firmas usadas durante escritura siguen siendo capturadas por el flujo de escritura.
 def _read_file_signature(path: Path) -> str:
     try:
         return _file_signature(path)

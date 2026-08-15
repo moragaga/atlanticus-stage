@@ -25,6 +25,30 @@ class FakePoints:
         )
 
 
+class FakeStreamSets:
+    def __init__(self, owner) -> None:
+        self._owner = owner
+        self.interpolated_calls = []
+        self.recorded_calls = []
+
+    def get_interpolated(
+        self,
+        web_ids,
+        *,
+        start_time_utc,
+        end_time_utc,
+        interpolation_seconds,
+    ):
+        assert self._owner.is_open
+        self.interpolated_calls.append(tuple(web_ids))
+        return ()
+
+    def get_recorded(self, web_ids, *, start_time_utc, end_time_utc):
+        assert self._owner.is_open
+        self.recorded_calls.append(tuple(web_ids))
+        return ()
+
+
 class FakeClient:
     def __init__(self, *, settings) -> None:
         self.settings = settings
@@ -32,6 +56,7 @@ class FakeClient:
         self.open_count = 0
         self.close_count = 0
         self.points = FakePoints(self)
+        self.streamsets = FakeStreamSets(self)
 
     def __enter__(self):
         self.open()
@@ -75,6 +100,7 @@ def test_composition_defers_webid_preparation_until_runtime(
     assert composition.client.open_count == 0
     assert composition.client.close_count == 0
     assert composition.planner.interpolation_seconds == 10
+    assert composition.settings.max_data_points == 150000
 
 
 def test_execute_keeps_pi_client_open_while_runtime_invokes_job(

@@ -12,6 +12,9 @@ classifiers = [
 ]
 dependencies = [
     "atlanticus-configuration==0.1.0",
+    "atlanticus-datasets==0.1.0",
+    "atlanticus-datasets-parquet==0.2.0",
+    "atlanticus-datasets-runtime==0.2.0",
     "atlanticus-http==0.1.0",
     "atlanticus-job-runtime==0.4.0",
     "atlanticus-kernel==0.1.0",
@@ -20,6 +23,7 @@ dependencies = [
     "atlanticus-pi-contracts==0.1.0",
     "atlanticus-pi-web-api==0.1.0",
     "atlanticus-state==0.1.0",
+    "pyarrow==25.0.0",
 ]
 
 [dependency-groups]

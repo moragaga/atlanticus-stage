@@ -1,16 +1,14 @@
-# La composición crea una sola vez las dependencias del proceso y deja el lifecycle al runtime.
-# El cliente PI permanece abierto durante execute_job para reutilizar el pool
-# en todas las iteraciones.
-# La cadencia local de 1 segundo detecta slots nuevos sin aumentar llamadas a PI.
-# La espera de lease supera su timeout para permitir handoff limpio y recuperar un dueño muerto.
+# Espejo pedagógico: compone explícitamente cliente PI, datasets, estados, planner y job; no usa clientes globales.
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ada.processes.pi_web_api.acquisition import PiStreamSetAcquirer
 from ada.processes.pi_web_api.catalog import build_catalog
 from ada.processes.pi_web_api.errors import PiWebApiCatalogError
 from ada.processes.pi_web_api.job import PiWebApiJob
+from ada.processes.pi_web_api.materialization import PiWebApiMaterializer
 from ada.processes.pi_web_api.planning import PiSlotPlanner
 from ada.processes.pi_web_api.preparation import PiExecutionPlanPreparer
 from ada.processes.pi_web_api.settings import PiWebApiProcessSettings
@@ -21,6 +19,8 @@ from ada.processes.pi_web_api.watermarks import (
 )
 from ada.processes.pi_web_api.web_ids import WebIdRegistry
 from atlanticus.configuration import ResolvedConfiguration
+from atlanticus.datasets.parquet import ParquetDatasetStore
+from atlanticus.datasets.runtime import DatasetRuntime
 from atlanticus.integrations.pi.contracts import PiCatalog, PiWebApiSource
 from atlanticus.integrations.pi.web_api import PiWebApiClient
 from atlanticus.runtime import (
@@ -56,6 +56,9 @@ class PiWebApiComposition:
     client: PiWebApiClient
     registry: WebIdRegistry
     planner: PiSlotPlanner
+    dataset_runtime: DatasetRuntime
+    acquirer: PiStreamSetAcquirer
+    materializer: PiWebApiMaterializer
     producer_state: PiProducerState
     source_state: PiSourceState
     watermarks: PiWatermarkCoordinator
@@ -101,12 +104,23 @@ def build_composition(
         interpolation_seconds=interpolation_seconds,
         max_recovery_seconds=settings.max_recovery_seconds,
     )
+    dataset_runtime = DatasetRuntime(
+        store=ParquetDatasetStore(root=runtime_configuration.application_root / 'datasets')
+    )
+    acquirer = PiStreamSetAcquirer(
+        client=client,
+        max_data_points=settings.max_data_points,
+    )
+    materializer = PiWebApiMaterializer(runtime=dataset_runtime, catalog=resolved_catalog)
     watermarks = PiWatermarkCoordinator(producer=producer_state, source=source_state)
     job = PiWebApiJob(
         preparer=PiExecutionPlanPreparer(client=client, registry=registry),
         catalog=resolved_catalog,
         planner=planner,
         producer_state=producer_state,
+        acquirer=acquirer,
+        materializer=materializer,
+        watermarks=watermarks,
     )
     return PiWebApiComposition(
         configuration=configuration,
@@ -116,6 +130,9 @@ def build_composition(
         client=client,
         registry=registry,
         planner=planner,
+        dataset_runtime=dataset_runtime,
+        acquirer=acquirer,
+        materializer=materializer,
         producer_state=producer_state,
         source_state=source_state,
         watermarks=watermarks,

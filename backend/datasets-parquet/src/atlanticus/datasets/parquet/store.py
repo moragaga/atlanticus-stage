@@ -368,6 +368,16 @@ class ParquetDatasetStore:
             started=started,
         )
 
+    def read_schema(
+        self,
+        *,
+        definition: DatasetDefinition,
+        target: DatasetTarget,
+    ) -> pa.Schema:
+        """Lee solamente el schema confirmado de un target."""
+
+        return self._resolve_publication(definition=definition, target=target).schema
+
     def read(
         self,
         *,

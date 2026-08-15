@@ -148,3 +148,4 @@ local_sonarqube_scan.sh
 /.scannerwork
 
 artifacts
+.local-volume

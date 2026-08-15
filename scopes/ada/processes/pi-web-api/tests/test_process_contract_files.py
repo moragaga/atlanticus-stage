@@ -16,6 +16,8 @@ def test_process_exposes_entrypoint_and_container_command() -> None:
     assert project['tool']['atlanticus']['container']['command'] == 'ada-pi-web-api'
     assert project['tool']['atlanticus']['container']['system-profile'] == 'base'
     assert 'atlanticus-job-runtime==0.4.0' in project['project']['dependencies']
+    assert 'atlanticus-datasets-runtime==0.2.0' in project['project']['dependencies']
+    assert 'atlanticus-datasets-parquet==0.2.0' in project['project']['dependencies']
 
 
 def test_detail_templates_exist_without_real_local_env() -> None:
@@ -29,7 +31,11 @@ def test_detail_templates_exist_without_real_local_env() -> None:
     assert {'COMPANY_ABREV', 'PRODUCT_ABREV'} <= variables
     assert {'PI_WEB_API_USERNAME', 'PI_WEB_API_PASSWORD'} <= variables
     env_detail = (root / '.env.detail').read_text(encoding='utf-8')
-    assert 'PI_WEB_API_LEASE_SMOKE_MODE=false' in env_detail
+    assert 'PI_WEB_API_LEASE_SMOKE_MODE' not in env_detail
+    assert not (root / 'src' / 'ada' / 'processes' / 'pi_web_api' / 'lease_smoke.py').exists()
+    assert not (root / 'commented' / 'ada' / 'processes' / 'pi_web_api' / 'lease_smoke.py').exists()
+    assert not (root / 'tests' / 'test_lease_smoke.py').exists()
+    assert 'PI_WEB_API_MAX_DATA_POINTS=150000' in env_detail
 
 
 def test_validation_gate_formats_source_and_runs_tests_explicitly() -> None:
@@ -58,3 +64,5 @@ def test_process_contract_documents_single_writer_and_replay_idempotency() -> No
     assert 'slot_timestamp_utc' in contract
     assert '(tag_name, native_timestamp_utc)' in contract
     assert 'último valor recibido gana' in contract
+    assert 'tres reintentos explícitos con pausas de 2, 3 y 5 segundos' in contract
+    assert '`outcome=skipped` y `reason=pi_timeout`' in contract

@@ -1,4 +1,4 @@
-# Diseño de atlanticus-datasets-parquet 0.1.0
+# Diseño de atlanticus-datasets-parquet 0.2.0
 
 ## Frontera
 
@@ -35,6 +35,10 @@ fuera de este adaptador.
 
 En un artefacto único, el schema del Parquet vigente es la autoridad. En un file set, el manifiesto
 almacena el schema Arrow serializado, su firma y una representación legible de sus campos.
+
+`read_schema()` resuelve la publicación confirmada y devuelve únicamente su schema Arrow. No ejecuta
+un `scan()` ni carga filas; permite a capas superiores validar/evolucionar columnas sin pagar I/O de
+datos cuando solo necesitan metadatos.
 
 Una parte física antigua puede carecer de una columna nueva o conservar una columna retirada. El
 lector alinea contra el schema lógico: agrega nulos para la primera y omite la segunda. Un cambio de

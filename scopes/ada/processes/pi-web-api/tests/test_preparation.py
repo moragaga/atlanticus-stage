@@ -2,7 +2,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from ada.processes.pi_web_api import PiExecutionPlanPreparer, PiWebApiCatalogError, WebIdRegistry
+import ada.processes.pi_web_api.timeout_retry as timeout_retry_module
+from ada.processes.pi_web_api import (
+    PiExecutionPlanPreparer,
+    PiWebApiCatalogError,
+    PiWebApiTimeoutExhaustedError,
+    WebIdRegistry,
+)
 from atlanticus.integrations.pi.contracts import (
     NotPiiSource,
     PiCatalog,
@@ -11,7 +17,12 @@ from atlanticus.integrations.pi.contracts import (
     PiTagDefinition,
     PiValueKind,
 )
-from atlanticus.integrations.pi.web_api import PiPointWebIdResult, PiWebApiLimits
+from atlanticus.integrations.pi.web_api import (
+    PiPointWebIdResult,
+    PiWebApiLimits,
+    PiWebApiTimeoutError,
+)
+from atlanticus.runtime import JobDefinition, JobRuntimeContext, RuntimeConfiguration
 
 
 class FakePoints:
@@ -43,6 +54,31 @@ class FakeClient:
                 recorded_max_web_ids=100,
             )
         )
+
+
+def _context(tmp_path) -> JobRuntimeContext:
+    definition = JobDefinition(
+        module_name='tests.pi_preparation',
+        service_name='pi-web-api',
+        execution_timeout_seconds=30,
+        shutdown_grace_seconds=1,
+        iteration_timeout_seconds=10,
+    )
+    configuration = RuntimeConfiguration.from_sources(
+        environ={
+            'ENVIRONMENT': 'local',
+            'APPLICATION': 'ada',
+            'VOLUMEN_PATH': str(tmp_path),
+        }
+    )
+    context = JobRuntimeContext.create(
+        definition=definition,
+        configuration=configuration,
+        run_id='run-id',
+        correlation_id='correlation-id',
+    )
+    context._begin_iteration(1)
+    return context
 
 
 def test_prepare_reuses_cache_and_resolves_only_missing_tags(tmp_path, catalog) -> None:
@@ -151,3 +187,82 @@ def test_prepare_rejects_non_web_api_catalog(tmp_path) -> None:
             client=FakeClient({}),
             registry=WebIdRegistry(path=tmp_path / 'webids.json'),
         ).prepare(catalog)
+
+
+def test_prepare_retries_point_resolution_timeout_three_times(
+    tmp_path,
+    catalog,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        timeout_retry_module,
+        '_TIMEOUT_RETRY_DELAYS_SECONDS',
+        (0.0, 0.0, 0.0),
+    )
+    registry = WebIdRegistry(path=tmp_path / 'webids.json')
+    client = FakeClient({})
+
+    def timeout(tag_names):
+        client.points.calls.append(tag_names)
+        raise PiWebApiTimeoutError(phase='connect')
+
+    monkeypatch.setattr(client.points, 'resolve_web_ids', timeout)
+
+    context = _context(tmp_path)
+    with pytest.raises(PiWebApiTimeoutExhaustedError) as captured:
+        PiExecutionPlanPreparer(client=client, registry=registry).prepare(
+            catalog,
+            context=context,
+        )
+
+    assert context.get_execution_fact('pi_timeout_retries') == 3
+    assert captured.value.phase == 'connect'
+    assert captured.value.retry_count == 3
+    assert captured.value.point_request_count == 4
+    assert len(client.points.calls) == 4
+    assert dict(registry.current()) == {}
+
+
+def test_prepare_preserves_successful_webid_chunks_before_later_timeout(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        timeout_retry_module,
+        '_TIMEOUT_RETRY_DELAYS_SECONDS',
+        (0.0, 0.0, 0.0),
+    )
+    definitions = tuple(
+        PiTagDefinition(
+            tag_name=f'TAG_{index}',
+            alias=f'tag_{index}',
+            value_kind=PiValueKind.NUMBER,
+            extraction_mode=PiExtractionMode.INTERPOLATED,
+            materializations=(PiMaterialization.DAILY,),
+        )
+        for index in range(3)
+    )
+    from atlanticus.integrations.pi.contracts import PiWebApiSource
+
+    catalog = PiCatalog(source=PiWebApiSource(interpolation_seconds=10), definitions=definitions)
+    client = FakeClient({'TAG_0': 'WEB_0', 'TAG_1': 'WEB_1'}, limit=2)
+    registry = WebIdRegistry(path=tmp_path / 'webids.json')
+    original = client.points.resolve_web_ids
+
+    def resolve(tag_names):
+        if tag_names == ('TAG_2',):
+            client.points.calls.append(tag_names)
+            raise PiWebApiTimeoutError(phase='connect')
+        return original(tag_names)
+
+    monkeypatch.setattr(client.points, 'resolve_web_ids', resolve)
+
+    with pytest.raises(PiWebApiTimeoutExhaustedError):
+        PiExecutionPlanPreparer(client=client, registry=registry).prepare(
+            catalog,
+            context=_context(tmp_path),
+        )
+
+    assert dict(registry.current()) == {'TAG_0': 'WEB_0', 'TAG_1': 'WEB_1'}
+    assert client.points.calls[0] == ('TAG_0', 'TAG_1')
+    assert client.points.calls.count(('TAG_2',)) == 4

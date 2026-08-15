@@ -9,6 +9,7 @@ from atlanticus.datasets.runtime import (
     ColumnFilter,
     DataFrameReadResult,
     DatasetRuntime,
+    DatasetRuntimeNotFoundError,
     DatasetRuntimeValidationError,
     FilterOperator,
     TableReadResult,
@@ -148,3 +149,26 @@ def test_read_results_reject_mutable_metadata_collections(
 
     with pytest.raises(DatasetRuntimeValidationError, match='must be a tuple'):
         result_type(**values)  # type: ignore[arg-type]
+
+
+def test_read_schema_returns_confirmed_schema_without_rows(
+    dataset_runtime: DatasetRuntime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    target = _target(pi_definition, day='21')
+    table = pa.table({'timestamp': [1, 2], 'value': [10.0, 20.0]})
+    dataset_runtime.replace(definition=pi_definition, target=target, data=table)
+
+    schema = dataset_runtime.read_schema(definition=pi_definition, target=target)
+
+    assert schema.equals(table.schema, check_metadata=True)
+
+
+def test_read_schema_maps_missing_publication_to_not_found(
+    dataset_runtime: DatasetRuntime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    target = _target(pi_definition, day='21')
+
+    with pytest.raises(DatasetRuntimeNotFoundError, match='no confirmed publication'):
+        dataset_runtime.read_schema(definition=pi_definition, target=target)
