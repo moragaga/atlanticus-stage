@@ -36,6 +36,10 @@ def test_detail_templates_exist_without_real_local_env() -> None:
     assert not (root / 'commented' / 'ada' / 'processes' / 'pi_web_api' / 'lease_smoke.py').exists()
     assert not (root / 'tests' / 'test_lease_smoke.py').exists()
     assert 'PI_WEB_API_MAX_DATA_POINTS=150000' in env_detail
+    assert 'PI_WEB_API_STRESS_BENCHMARK=false' in env_detail
+    assert 'PI_WEB_API_STRESS_LOGICAL_TAGS=1000' in env_detail
+    assert 'PI_WEB_API_STRESS_LOOKBACK_HOURS=24' in env_detail
+    assert 'PI_WEB_API_STRESS_PHYSICAL_TAG_LIMIT=0' in env_detail
 
 
 def test_validation_gate_formats_source_and_runs_tests_explicitly() -> None:

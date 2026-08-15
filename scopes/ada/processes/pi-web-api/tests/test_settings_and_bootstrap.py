@@ -33,6 +33,11 @@ def test_configuration_specs_keep_credentials_sensitive() -> None:
     assert specs['PI_WEB_API_RECORDED_MAX_WEB_IDS'].default == '100'
     assert specs['PI_WEB_API_MAX_RECOVERY_SECONDS'].default == '3600'
     assert specs['PI_WEB_API_MAX_DATA_POINTS'].default == '150000'
+    assert specs['PI_WEB_API_STRESS_BENCHMARK'].default == 'false'
+    assert specs['PI_WEB_API_STRESS_LOGICAL_TAGS'].default == '1000'
+    assert specs['PI_WEB_API_STRESS_LOOKBACK_HOURS'].default == '24'
+    assert specs['PI_WEB_API_STRESS_END_UTC'].required is False
+    assert specs['PI_WEB_API_STRESS_PHYSICAL_TAG_LIMIT'].default == '0'
     assert 'COMPANY_ABREV' not in specs
     assert 'PRODUCT_ABREV' not in specs
 

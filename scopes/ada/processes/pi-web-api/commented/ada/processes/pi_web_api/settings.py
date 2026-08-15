@@ -1,4 +1,5 @@
-# Espejo pedagógico: la guarda de 150000 puntos pertenece al process, no al cliente PI genérico.
+# Espejo pedagógico: estas variables adicionales solo habilitan y parametrizan el benchmark temporal.
+# El contrato productivo de PI, timeouts, límites y credenciales no cambia.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -122,6 +123,14 @@ def configuration_specs() -> tuple[ConfigurationVariableSpec, ...]:
         ConfigurationVariableSpec(key='PI_WEB_API_RECORDED_MAX_WEB_IDS', default='100'),
         ConfigurationVariableSpec(key='PI_WEB_API_MAX_RECOVERY_SECONDS', default='3600'),
         ConfigurationVariableSpec(key='PI_WEB_API_MAX_DATA_POINTS', default='150000'),
+        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_BENCHMARK', default='false'),
+        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_LOGICAL_TAGS', default='1000'),
+        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_LOOKBACK_HOURS', default='24'),
+        ConfigurationVariableSpec(
+            key='PI_WEB_API_STRESS_END_UTC',
+            required=False,
+        ),
+        ConfigurationVariableSpec(key='PI_WEB_API_STRESS_PHYSICAL_TAG_LIMIT', default='0'),
         ConfigurationVariableSpec(
             key='ATLANTICUS_AZURE_OBSERVABILITY_MODE',
             default='off',

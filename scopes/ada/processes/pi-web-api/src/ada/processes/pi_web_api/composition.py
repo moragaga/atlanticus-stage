@@ -5,12 +5,21 @@ from dataclasses import dataclass
 
 from ada.processes.pi_web_api.acquisition import PiStreamSetAcquirer
 from ada.processes.pi_web_api.catalog import build_catalog
+from ada.processes.pi_web_api.catalog.definitions import SOURCE as CATALOG_SOURCE
 from ada.processes.pi_web_api.errors import PiWebApiCatalogError
 from ada.processes.pi_web_api.job import PiWebApiJob
 from ada.processes.pi_web_api.materialization import PiWebApiMaterializer
 from ada.processes.pi_web_api.planning import PiSlotPlanner
 from ada.processes.pi_web_api.preparation import PiExecutionPlanPreparer
 from ada.processes.pi_web_api.settings import PiWebApiProcessSettings
+from ada.processes.pi_web_api.stress_benchmark import (
+    PiStressBenchmarkAcquirer,
+    PiStressBenchmarkJob,
+    PiStressBenchmarkMaterializer,
+    PiStressBenchmarkPlanner,
+    PiStressBenchmarkSettings,
+    build_stress_physical_catalog,
+)
 from ada.processes.pi_web_api.watermarks import (
     PiProducerState,
     PiSourceState,
@@ -80,7 +89,24 @@ def build_composition(
 ) -> PiWebApiComposition:
     if not isinstance(configuration, ResolvedConfiguration):
         raise TypeError('configuration must be a ResolvedConfiguration')
-    resolved_catalog = build_catalog() if catalog is None else catalog
+    stress = PiStressBenchmarkSettings.from_configuration(configuration)
+    if stress.enabled and catalog is not None:
+        raise PiWebApiCatalogError('catalog override is not allowed in stress benchmark mode')
+    if stress.enabled:
+        if not isinstance(CATALOG_SOURCE, PiWebApiSource):
+            raise PiWebApiCatalogError(
+                'productive catalog source must be PiWebApiSource for stress benchmark'
+            )
+        if CATALOG_SOURCE.interpolation_seconds is None:
+            raise PiWebApiCatalogError(
+                'productive catalog source must define interpolation for stress benchmark'
+            )
+        resolved_catalog = build_stress_physical_catalog(
+            interpolation_seconds=CATALOG_SOURCE.interpolation_seconds,
+            physical_tag_limit=stress.physical_tag_limit,
+        )
+    else:
+        resolved_catalog = build_catalog() if catalog is None else catalog
     if not isinstance(resolved_catalog, PiCatalog):
         raise TypeError('catalog must be a PiCatalog')
     if not isinstance(resolved_catalog.source, PiWebApiSource):
@@ -99,28 +125,63 @@ def build_composition(
     )
     producer_state = PiProducerState(store=state_store)
     source_state = PiSourceState(store=state_store)
-    planner = PiSlotPlanner(
+    planner: PiSlotPlanner = PiSlotPlanner(
         interpolation_seconds=interpolation_seconds,
         max_recovery_seconds=settings.max_recovery_seconds,
     )
     dataset_runtime = DatasetRuntime(
         store=ParquetDatasetStore(root=runtime_configuration.application_root / 'datasets')
     )
-    acquirer = PiStreamSetAcquirer(
+    acquirer: PiStreamSetAcquirer = PiStreamSetAcquirer(
         client=client,
         max_data_points=settings.max_data_points,
     )
-    materializer = PiWebApiMaterializer(runtime=dataset_runtime, catalog=resolved_catalog)
-    watermarks = PiWatermarkCoordinator(producer=producer_state, source=source_state)
-    job = PiWebApiJob(
-        preparer=PiExecutionPlanPreparer(client=client, registry=registry),
+    materializer: PiWebApiMaterializer = PiWebApiMaterializer(
+        runtime=dataset_runtime,
         catalog=resolved_catalog,
-        planner=planner,
-        producer_state=producer_state,
-        acquirer=acquirer,
-        materializer=materializer,
-        watermarks=watermarks,
     )
+    if stress.enabled:
+        assert stress.end_utc is not None
+        planner = PiStressBenchmarkPlanner(
+            interpolation_seconds=interpolation_seconds,
+            max_recovery_seconds=settings.max_recovery_seconds,
+            benchmark_end_utc=stress.end_utc,
+            lookback_hours=stress.lookback_hours,
+        )
+        acquirer = PiStressBenchmarkAcquirer(
+            client=client,
+            max_data_points=settings.max_data_points,
+        )
+        materializer = PiStressBenchmarkMaterializer(
+            runtime=dataset_runtime,
+            physical_catalog=resolved_catalog,
+            logical_tag_count=stress.logical_tag_count,
+        )
+    watermarks = PiWatermarkCoordinator(producer=producer_state, source=source_state)
+    preparer = PiExecutionPlanPreparer(client=client, registry=registry)
+    job: PiWebApiJob
+    if stress.enabled:
+        assert stress.end_utc is not None
+        job = PiStressBenchmarkJob(
+            benchmark_end_utc=stress.end_utc,
+            preparer=preparer,
+            catalog=resolved_catalog,
+            planner=planner,
+            producer_state=producer_state,
+            acquirer=acquirer,
+            materializer=materializer,
+            watermarks=watermarks,
+        )
+    else:
+        job = PiWebApiJob(
+            preparer=preparer,
+            catalog=resolved_catalog,
+            planner=planner,
+            producer_state=producer_state,
+            acquirer=acquirer,
+            materializer=materializer,
+            watermarks=watermarks,
+        )
     return PiWebApiComposition(
         configuration=configuration,
         runtime_configuration=runtime_configuration,
