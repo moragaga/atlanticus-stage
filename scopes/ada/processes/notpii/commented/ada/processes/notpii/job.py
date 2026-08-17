@@ -57,7 +57,8 @@ class NotPiiJob:
             'extraction_modes',
             ','.join(mode.value for mode in self._active_modes),
         )
-        completed_any = False
+        received_any = False
+        committed_any = False
         invalid_any = False
 
         # _active_modes ya respeta _MODE_ORDER y excluye modos ausentes del catálogo.
@@ -68,7 +69,8 @@ class NotPiiJob:
             if not deliveries:
                 continue
 
-            context.mark_iteration_work()
+            # Recibir y liquidar mensajes no implica que el dataset haya cambiado.
+            received_any = True
             context.increment_iteration_counter('messages_received', len(deliveries))
             context.increment_execution_counter('messages_received', len(deliveries))
             context.increment_execution_counter(mode.value, len(deliveries))
@@ -97,12 +99,14 @@ class NotPiiJob:
                     context.increment_execution_counter('messages_abandoned', len(deliveries))
                     raise
 
+                # Sólo una publicación COMMITTED representa trabajo material para el runtime.
+                mode_committed = any(
+                    publication.status is PublicationStatus.COMMITTED
+                    for publication in result.publications
+                )
                 observation = NotPiiStreamObservation(
                     source_last_updated_at_utc=result.source_last_updated_at_utc,
-                    changed=any(
-                        publication.status is PublicationStatus.COMMITTED
-                        for publication in result.publications
-                    ),
+                    changed=mode_committed,
                 )
                 context.raise_if_cancelled()
                 try:
@@ -130,14 +134,21 @@ class NotPiiJob:
                     source_watermark=manifest.source_watermark_utc,
                     data_revision=manifest.revision,
                 )
-                completed_any = True
+                committed_any = committed_any or mode_committed
 
-        # La iteración completa si al menos un modo pudo materializar y liquidar su batch.
-        if completed_any:
+        # El runtime cuenta trabajo sólo cuando hubo un cambio material confirmado.
+        if committed_any:
+            context.mark_iteration_work()
             context.set_iteration_fact('outcome', 'completed')
             return
         context.set_iteration_fact('outcome', 'skipped')
-        context.set_iteration_fact('reason', 'invalid_message' if invalid_any else 'no_message')
+        # Un mensaje inválido sigue siendo trabajo operacional porque genera dead-letter y warning.
+        if invalid_any:
+            context.mark_iteration_work()
+            context.set_iteration_fact('reason', 'invalid_message')
+            return
+        # Mensajes válidos sin publicaciones confirmadas se drenaron sin cambiar el dataset.
+        context.set_iteration_fact('reason', 'no_relevant_data' if received_any else 'no_message')
 
     def _read_batch(
         self,

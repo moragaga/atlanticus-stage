@@ -53,7 +53,8 @@ class NotPiiJob:
             'extraction_modes',
             ','.join(mode.value for mode in self._active_modes),
         )
-        completed_any = False
+        received_any = False
+        committed_any = False
         invalid_any = False
 
         for mode in self._active_modes:
@@ -63,7 +64,7 @@ class NotPiiJob:
             if not deliveries:
                 continue
 
-            context.mark_iteration_work()
+            received_any = True
             context.increment_iteration_counter('messages_received', len(deliveries))
             context.increment_execution_counter('messages_received', len(deliveries))
             context.increment_execution_counter(mode.value, len(deliveries))
@@ -91,12 +92,13 @@ class NotPiiJob:
                     context.increment_execution_counter('messages_abandoned', len(deliveries))
                     raise
 
+                mode_committed = any(
+                    publication.status is PublicationStatus.COMMITTED
+                    for publication in result.publications
+                )
                 observation = NotPiiStreamObservation(
                     source_last_updated_at_utc=result.source_last_updated_at_utc,
-                    changed=any(
-                        publication.status is PublicationStatus.COMMITTED
-                        for publication in result.publications
-                    ),
+                    changed=mode_committed,
                 )
                 context.raise_if_cancelled()
                 try:
@@ -124,13 +126,18 @@ class NotPiiJob:
                     source_watermark=manifest.source_watermark_utc,
                     data_revision=manifest.revision,
                 )
-                completed_any = True
+                committed_any = committed_any or mode_committed
 
-        if completed_any:
+        if committed_any:
+            context.mark_iteration_work()
             context.set_iteration_fact('outcome', 'completed')
             return
         context.set_iteration_fact('outcome', 'skipped')
-        context.set_iteration_fact('reason', 'invalid_message' if invalid_any else 'no_message')
+        if invalid_any:
+            context.mark_iteration_work()
+            context.set_iteration_fact('reason', 'invalid_message')
+            return
+        context.set_iteration_fact('reason', 'no_relevant_data' if received_any else 'no_message')
 
     def _read_batch(
         self,

@@ -11,6 +11,13 @@ from ada.connectors.notpii import NotPiiBatch, NotPiiSourceError
 from ada.processes.notpii.job import NotPiiJob
 from ada.processes.notpii.models import NotPiiProcessingResult
 from ada.processes.notpii.producer_state import NotPiiProducerState
+from atlanticus.datasets import (
+    DatasetKey,
+    DatasetPublicationResult,
+    DatasetTarget,
+    PublicationQuality,
+    PublicationStatus,
+)
 from atlanticus.integrations.pi.contracts import PiExtractionMode
 from atlanticus.state import AtomicStateStore
 
@@ -97,37 +104,69 @@ class FakeReceiver:
 
 
 class FakeProcessor:
-    def __init__(self, mode: PiExtractionMode, events: list[str], *, invalid_id: str | None = None):
+    def __init__(
+        self,
+        mode: PiExtractionMode,
+        events: list[str],
+        *,
+        invalid_id: str | None = None,
+        relevant_data: bool = True,
+    ) -> None:
         self.mode = mode
         self.events = events
         self.invalid_id = invalid_id
+        self.relevant_data = relevant_data
 
     def read(self, message) -> NotPiiBatch:
         message_id = str(message.message_id)
         self.events.append(f'read:{message_id}')
         if message_id == self.invalid_id:
             raise NotPiiSourceError('controlled invalid payload')
-        return NotPiiBatch(
-            message_id=message_id,
-            data=pd.DataFrame(
+        data = (
+            pd.DataFrame(
                 {
                     'timestamp_utc': [datetime(2026, 8, 15, 12, 0, tzinfo=UTC)],
                     'value': [1.0],
                 }
-            ),
+            )
+            if self.relevant_data
+            else pd.DataFrame(columns=('timestamp_utc', 'value'))
+        )
+        return NotPiiBatch(
+            message_id=message_id,
+            data=data,
             extraction_mode=self.mode,
         )
 
     def publish(self, batches) -> NotPiiProcessingResult:
         resolved = tuple(batches)
         self.events.append('publish')
+        row_count = sum(len(item.data) for item in resolved)
+        publications = (_committed_publication(),) if row_count else ()
         return NotPiiProcessingResult(
             message_count=len(resolved),
-            row_count=sum(len(item.data) for item in resolved),
-            materialized_row_count=1,
-            publications=(),
-            source_last_updated_at_utc=datetime(2026, 8, 15, 12, 0, tzinfo=UTC),
+            row_count=row_count,
+            materialized_row_count=1 if row_count else 0,
+            publications=publications,
+            source_last_updated_at_utc=(
+                datetime(2026, 8, 15, 12, 0, tzinfo=UTC) if row_count else None
+            ),
         )
+
+
+def _committed_publication() -> DatasetPublicationResult:
+    return DatasetPublicationResult(
+        target=DatasetTarget(
+            dataset=DatasetKey(namespace=('tests',), name='notpii'),
+            materialization='latest',
+        ),
+        status=PublicationStatus.COMMITTED,
+        quality=PublicationQuality.SUCCESS,
+        finished_at_utc=datetime(2026, 8, 15, 12, 0, tzinfo=UTC),
+        duration_ms=1.0,
+        item_count=1,
+        artifact_count=1,
+    )
 
 
 class ObservedProducerState(NotPiiProducerState):
@@ -265,6 +304,7 @@ def test_invalid_message_is_dead_lettered_and_rest_of_batch_is_abandoned(tmp_pat
     assert 'publish' not in events
     assert 'state' not in events
     assert context.iteration_facts['outcome'] == 'skipped'
+    assert context.iteration_work is True
     assert context.iteration_facts['reason'] == 'invalid_message'
 
 
@@ -307,3 +347,71 @@ def test_empty_receive_is_skipped_without_state_change(tmp_path) -> None:
     assert context.iteration_facts['outcome'] == 'skipped'
     assert context.iteration_facts['reason'] == 'no_message'
     assert state.current().revision == 0
+
+
+def test_messages_without_relevant_data_are_completed_and_iteration_is_skipped(tmp_path) -> None:
+    events: list[str] = []
+    deliveries = tuple(FakeDelivery(f'm{index}', events) for index in range(1, 4))
+    state = _state(tmp_path, events)
+    job = NotPiiJob(
+        receivers={PiExtractionMode.RECORDED: FakeReceiver([deliveries])},
+        processors={
+            PiExtractionMode.RECORDED: FakeProcessor(
+                PiExtractionMode.RECORDED,
+                events,
+                relevant_data=False,
+            )
+        },
+        producer_state=state,
+        max_message_count=10,
+    )
+    context = FakeContext()
+
+    job.run_iteration(context)
+
+    assert all(item.completed for item in deliveries)
+    assert context.iteration_work is False
+    assert context.iteration_facts['messages_received'] == 3
+    assert context.iteration_facts['messages_completed'] == 3
+    assert context.iteration_facts['rows_received'] == 0
+    assert context.iteration_facts['rows_materialized'] == 0
+    assert context.iteration_facts['publications'] == 0
+    assert context.iteration_facts['publications_committed'] == 0
+    assert context.iteration_facts['outcome'] == 'skipped'
+    assert context.iteration_facts['reason'] == 'no_relevant_data'
+    assert state.current().revision == 0
+
+
+def test_irrelevant_interpolated_does_not_hide_recorded_materialization(tmp_path) -> None:
+    events: list[str] = []
+    interpolated_delivery = FakeDelivery('i1', events)
+    recorded_delivery = FakeDelivery('r1', events)
+    job = NotPiiJob(
+        receivers={
+            PiExtractionMode.INTERPOLATED: FakeReceiver([(interpolated_delivery,)]),
+            PiExtractionMode.RECORDED: FakeReceiver([(recorded_delivery,)]),
+        },
+        processors={
+            PiExtractionMode.INTERPOLATED: FakeProcessor(
+                PiExtractionMode.INTERPOLATED,
+                events,
+                relevant_data=False,
+            ),
+            PiExtractionMode.RECORDED: FakeProcessor(PiExtractionMode.RECORDED, events),
+        },
+        producer_state=_state(tmp_path, events),
+        max_message_count=10,
+    )
+    context = FakeContext()
+
+    job.run_iteration(context)
+
+    assert interpolated_delivery.completed is True
+    assert recorded_delivery.completed is True
+    assert events.index('complete:i1') < events.index('read:r1')
+    assert context.iteration_work is True
+    assert context.iteration_facts['messages_received'] == 2
+    assert context.iteration_facts['messages_completed'] == 2
+    assert context.iteration_facts['rows_received'] == 1
+    assert context.iteration_facts['publications_committed'] == 1
+    assert context.iteration_facts['outcome'] == 'completed'
