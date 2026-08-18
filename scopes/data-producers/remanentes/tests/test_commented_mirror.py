@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+
+def test_commented_tree_is_behaviorally_equivalent() -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    source_root = project_root / 'src' / 'atlanticus' / 'data_producers' / 'remanentes'
+    commented_root = project_root / 'commented' / 'atlanticus' / 'data_producers' / 'remanentes'
+    source_files = sorted(path.relative_to(source_root) for path in source_root.rglob('*.py'))
+    commented_files = sorted(
+        path.relative_to(commented_root) for path in commented_root.rglob('*.py')
+    )
+    assert commented_files == source_files
+    for relative in source_files:
+        source_ast = ast.dump(
+            ast.parse((source_root / relative).read_text()), include_attributes=False
+        )
+        commented_ast = ast.dump(
+            ast.parse((commented_root / relative).read_text()), include_attributes=False
+        )
+        assert commented_ast == source_ast, relative
