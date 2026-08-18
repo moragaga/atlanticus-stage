@@ -1,16 +1,5 @@
-from __future__ import annotations
+from atlanticus.data_producers.sql import SqlSourceExecutor
 
-from typing import Protocol, runtime_checkable
+BlockgradeSourceExecutor = SqlSourceExecutor
 
-from ada.processes.blockgrade.models import BlockgradeSourceExecutionResult, BlockgradeSourcePlan
-from atlanticus.runtime import JobRuntimeContext
-
-
-@runtime_checkable
-class BlockgradeSourceExecutor(Protocol):
-    def execute(
-        self,
-        *,
-        plan: BlockgradeSourcePlan,
-        context: JobRuntimeContext,
-    ) -> BlockgradeSourceExecutionResult: ...
+__all__ = ['BlockgradeSourceExecutor']

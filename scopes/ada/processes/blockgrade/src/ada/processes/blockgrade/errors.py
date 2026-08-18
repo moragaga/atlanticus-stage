@@ -1,3 +1,10 @@
+from atlanticus.data_producers.sql import (
+    SqlDataProducerMaterializationError,
+    SqlDataProducerReadError,
+    SqlDataProducerSchemaError,
+)
+
+
 class BlockgradeProcessError(RuntimeError):
     pass
 
@@ -10,13 +17,6 @@ class BlockgradeCatalogError(ValueError):
     pass
 
 
-class BlockgradeSqlReadError(BlockgradeProcessError):
-    pass
-
-
-class BlockgradeSchemaError(BlockgradeProcessError):
-    pass
-
-
-class BlockgradeMaterializationError(BlockgradeProcessError):
-    pass
+BlockgradeSqlReadError = SqlDataProducerReadError
+BlockgradeSchemaError = SqlDataProducerSchemaError
+BlockgradeMaterializationError = SqlDataProducerMaterializationError

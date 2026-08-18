@@ -1,4 +1,11 @@
-# Agrupa errores propios del proceso para separar fallos de dominio e infraestructura.
+# Conserva errores propios del proceso y reexporta errores técnicos comunes.
+from atlanticus.data_producers.sql import (
+    SqlDataProducerMaterializationError,
+    SqlDataProducerReadError,
+    SqlDataProducerSchemaError,
+)
+
+
 class BlockgradeProcessError(RuntimeError):
     pass
 
@@ -11,13 +18,6 @@ class BlockgradeCatalogError(ValueError):
     pass
 
 
-class BlockgradeSqlReadError(BlockgradeProcessError):
-    pass
-
-
-class BlockgradeSchemaError(BlockgradeProcessError):
-    pass
-
-
-class BlockgradeMaterializationError(BlockgradeProcessError):
-    pass
+BlockgradeSqlReadError = SqlDataProducerReadError
+BlockgradeSchemaError = SqlDataProducerSchemaError
+BlockgradeMaterializationError = SqlDataProducerMaterializationError

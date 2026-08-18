@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from ada.processes.blockgrade.catalog.definitions import DEFINITIONS
 from ada.processes.blockgrade.errors import BlockgradeCatalogError
-from ada.processes.blockgrade.models import BlockgradeSourceDefinition
+from atlanticus.data_producers.sql import SqlSourceDefinition
 
 
-def build_catalog() -> tuple[BlockgradeSourceDefinition, ...]:
+def build_catalog() -> tuple[SqlSourceDefinition, ...]:
     if not isinstance(DEFINITIONS, tuple):
         raise BlockgradeCatalogError('Blockgrade catalog definitions must be a tuple')
     if not DEFINITIONS:
         raise BlockgradeCatalogError('Blockgrade catalog must contain at least one source')
-    if not all(isinstance(definition, BlockgradeSourceDefinition) for definition in DEFINITIONS):
+    if not all(isinstance(definition, SqlSourceDefinition) for definition in DEFINITIONS):
         raise BlockgradeCatalogError('Blockgrade catalog contains an invalid source definition')
     source_keys = tuple(definition.source_key.lower() for definition in DEFINITIONS)
     if len(source_keys) != len(set(source_keys)):

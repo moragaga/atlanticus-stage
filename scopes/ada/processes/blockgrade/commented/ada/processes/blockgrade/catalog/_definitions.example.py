@@ -1,58 +1,58 @@
-# Muestra cómo declarar fuentes nuevas sin acoplarlas al motor genérico Blockgrade.
-from ada.processes.blockgrade.models import (
-    BlockgradeColumnDefinition,
-    BlockgradeLoadStrategy,
-    BlockgradeSourceDefinition,
-    BlockgradeStorageMode,
-    BlockgradeValueKind,
+# Muestra cómo declarar fuentes scoped o latest con el contrato SQL global.
+from atlanticus.data_producers.sql import (
+    DataValueKind,
+    SqlColumnDefinition,
+    SqlLoadStrategy,
+    SqlSourceDefinition,
+    SqlStorageMode,
 )
 
 EXAMPLE_DEFINITIONS = (
-    BlockgradeSourceDefinition(
-        source_key='shift_source',
-        source_table='dbo.shift_source',
-        enabled=True,
-        storage_mode=BlockgradeStorageMode.SHIFT,
-        load_strategy=BlockgradeLoadStrategy.SHIFT_WINDOW,
-        shift_id_column='ShiftId',
-        source_last_update_output_column='event_time',
+    SqlSourceDefinition(
+        source_key='example_shift',
+        source_table='dbo.example_shift',
+        storage_mode=SqlStorageMode.PARTITIONED,
+        load_strategy=SqlLoadStrategy.SCOPED,
+        scope_column='ShiftId',
+        scope_output_column='shift_id',
+        materialization_name='shift',
+        partition_dimensions=('year', 'month', 'day', 'turn'),
         columns=(
-            BlockgradeColumnDefinition(
+            SqlColumnDefinition(
                 source_name='ShiftId',
                 output_name='shift_id',
-                value_kind=BlockgradeValueKind.INTEGER,
+                value_kind=DataValueKind.INTEGER,
                 required=True,
             ),
-            BlockgradeColumnDefinition(
-                source_name='EventTime',
-                output_name='event_time',
-                value_kind=BlockgradeValueKind.DATETIME,
+            SqlColumnDefinition(
+                source_name='Moment',
+                output_name='moment',
+                value_kind=DataValueKind.DATETIME,
                 source_timezone='America/Santiago',
             ),
-            BlockgradeColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Value',
                 output_name='value',
-                value_kind=BlockgradeValueKind.FLOAT,
+                value_kind=DataValueKind.FLOAT,
             ),
         ),
     ),
-    BlockgradeSourceDefinition(
-        source_key='snapshot_source',
-        source_table='dbo.snapshot_source',
-        enabled=False,
-        storage_mode=BlockgradeStorageMode.LATEST,
-        load_strategy=BlockgradeLoadStrategy.FULL_SNAPSHOT,
+    SqlSourceDefinition(
+        source_key='example_latest',
+        source_table='dbo.example_latest',
+        storage_mode=SqlStorageMode.LATEST,
+        load_strategy=SqlLoadStrategy.FULL_SNAPSHOT,
         columns=(
-            BlockgradeColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Id',
                 output_name='id',
-                value_kind=BlockgradeValueKind.INTEGER,
+                value_kind=DataValueKind.INTEGER,
                 required=True,
             ),
-            BlockgradeColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Name',
                 output_name='name',
-                value_kind=BlockgradeValueKind.TEXT,
+                value_kind=DataValueKind.TEXT,
             ),
         ),
     ),

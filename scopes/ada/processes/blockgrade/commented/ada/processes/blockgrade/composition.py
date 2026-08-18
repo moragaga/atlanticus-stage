@@ -1,29 +1,24 @@
-# Ensambla explícitamente SQL, state, datasets, planner, processor y job runtime.
+# Compone Blockgrade como consumidor del SQL Data Producer conservando su runtime y rutas.
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ada.processes.blockgrade.catalog import build_catalog
-from ada.processes.blockgrade.extraction import BlockgradeSqlReader
-from ada.processes.blockgrade.job import BlockgradeJob
-from ada.processes.blockgrade.materialization import BlockgradeMaterializer
-from ada.processes.blockgrade.models import BlockgradeSourceDefinition
-from ada.processes.blockgrade.planning import BlockgradePlanner
-from ada.processes.blockgrade.processor import BlockgradeSourceProcessor
-from ada.processes.blockgrade.producer_state import BlockgradeProducerState
+from ada.processes.blockgrade.scope import BlockgradeShiftScopeProvider
 from ada.processes.blockgrade.settings import BlockgradeSettings
 from atlanticus.configuration import ResolvedConfiguration
-from atlanticus.connectivity.sql import SqlClient
-from atlanticus.datasets.parquet import ParquetDatasetStore
-from atlanticus.datasets.runtime import DatasetRuntime
+from atlanticus.data_producers.sql import (
+    SqlDataProducerComponents,
+    SqlSourceDefinition,
+    build_sql_data_producer,
+)
 from atlanticus.runtime import (
     JobDefinition,
     RuntimeConfiguration,
     RuntimeExecutionResult,
     execute_job,
 )
-from atlanticus.state.store import AtomicStateStore
 
 BLOCKGRADE_JOB_DEFINITION = JobDefinition(
     module_name='ada.processes.blockgrade',
@@ -46,18 +41,37 @@ class BlockgradeComposition:
     configuration: ResolvedConfiguration
     runtime_configuration: RuntimeConfiguration
     settings: BlockgradeSettings
-    catalog: tuple[BlockgradeSourceDefinition, ...]
-    reader: BlockgradeSqlReader
-    producer_state: BlockgradeProducerState
-    planner: BlockgradePlanner
-    materializer: BlockgradeMaterializer
-    processor: BlockgradeSourceProcessor
-    job: BlockgradeJob
+    catalog: tuple[SqlSourceDefinition, ...]
+    producer: SqlDataProducerComponents
+
+    @property
+    def reader(self):
+        return self.producer.reader
+
+    @property
+    def producer_state(self):
+        return self.producer.producer_state
+
+    @property
+    def planner(self):
+        return self.producer.planner
+
+    @property
+    def materializer(self):
+        return self.producer.materializer
+
+    @property
+    def processor(self):
+        return self.producer.processor
+
+    @property
+    def job(self):
+        return self.producer.job
 
     def execute(self, *, argv: Sequence[str] | None = None) -> RuntimeExecutionResult:
         return execute_job(
             definition=BLOCKGRADE_JOB_DEFINITION,
-            iteration=self.job.run_iteration,
+            iteration=self.producer.job.run_iteration,
             argv=argv,
             environ=self.configuration.values,
         )
@@ -66,51 +80,31 @@ class BlockgradeComposition:
 def build_composition(
     *,
     configuration: ResolvedConfiguration,
-    catalog: tuple[BlockgradeSourceDefinition, ...] | None = None,
+    catalog: tuple[SqlSourceDefinition, ...] | None = None,
 ) -> BlockgradeComposition:
     if not isinstance(configuration, ResolvedConfiguration):
         raise TypeError('configuration must be a ResolvedConfiguration')
     resolved_catalog = build_catalog() if catalog is None else tuple(catalog)
     if not resolved_catalog or not all(
-        isinstance(definition, BlockgradeSourceDefinition) for definition in resolved_catalog
+        isinstance(definition, SqlSourceDefinition) for definition in resolved_catalog
     ):
-        raise TypeError('catalog must contain BlockgradeSourceDefinition values')
+        raise TypeError('catalog must contain SqlSourceDefinition values')
     settings = BlockgradeSettings.from_configuration(configuration)
     runtime_configuration = RuntimeConfiguration.from_sources(environ=configuration.values)
-    reader = BlockgradeSqlReader(
-        sql=SqlClient(settings=settings.sql),
+    producer = build_sql_data_producer(
+        producer_key='blockgrade',
+        definitions=resolved_catalog,
+        sql_settings=settings.sql,
         retry_policy=settings.retry_policy,
-        max_rows=settings.sql.max_query_rows,
-    )
-    producer_state = BlockgradeProducerState(
-        store=AtomicStateStore(
-            volume_path=runtime_configuration.volume_path,
-            application=runtime_configuration.application,
-        )
-    )
-    planner = BlockgradePlanner(reader=reader, producer_state=producer_state)
-    materializer = BlockgradeMaterializer(
-        runtime=DatasetRuntime(
-            store=ParquetDatasetStore(root=runtime_configuration.application_root / 'datasets')
-        ),
-        definitions=resolved_catalog,
-    )
-    processor = BlockgradeSourceProcessor(reader=reader, materializer=materializer)
-    job = BlockgradeJob(
-        definitions=resolved_catalog,
-        planner=planner,
-        producer_state=producer_state,
-        executor=processor,
+        runtime_configuration=runtime_configuration,
+        dataset_namespace=('blockgrade',),
+        scope_provider=BlockgradeShiftScopeProvider(),
+        missing_scope_fact_name='missing_shift_ids',
     )
     return BlockgradeComposition(
         configuration=configuration,
         runtime_configuration=runtime_configuration,
         settings=settings,
         catalog=resolved_catalog,
-        reader=reader,
-        producer_state=producer_state,
-        planner=planner,
-        materializer=materializer,
-        processor=processor,
-        job=job,
+        producer=producer,
     )

@@ -2,66 +2,70 @@ from __future__ import annotations
 
 import pytest
 
-from ada.processes.blockgrade.models import (
-    BlockgradeColumnDefinition,
-    BlockgradeLoadStrategy,
-    BlockgradeSourceDefinition,
-    BlockgradeStorageMode,
-    BlockgradeValueKind,
+from atlanticus.data_producers.sql import (
+    DataValueKind,
+    SqlColumnDefinition,
+    SqlLoadStrategy,
+    SqlSourceDefinition,
+    SqlStorageMode,
 )
 
 
 @pytest.fixture
-def shift_definition() -> BlockgradeSourceDefinition:
-    return BlockgradeSourceDefinition(
+def shift_definition() -> SqlSourceDefinition:
+    return SqlSourceDefinition(
         source_key='source_shift',
         source_table='dbo.source_shift',
-        storage_mode=BlockgradeStorageMode.SHIFT,
-        load_strategy=BlockgradeLoadStrategy.SHIFT_WINDOW,
-        shift_id_column='ShiftId',
+        storage_mode=SqlStorageMode.PARTITIONED,
+        load_strategy=SqlLoadStrategy.SCOPED,
+        scope_column='ShiftId',
+        scope_output_column='shift_id',
+        materialization_name='shift',
+        partition_dimensions=('year', 'month', 'day', 'turn'),
         source_last_update_output_column='moment',
         enabled=True,
         columns=(
-            BlockgradeColumnDefinition(
+            SqlColumnDefinition(
                 source_name='ShiftId',
                 output_name='shift_id',
-                value_kind=BlockgradeValueKind.INTEGER,
+                value_kind=DataValueKind.INTEGER,
                 required=True,
             ),
-            BlockgradeColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Moment',
                 output_name='moment',
-                value_kind=BlockgradeValueKind.DATETIME,
+                value_kind=DataValueKind.DATETIME,
                 source_timezone='America/Santiago',
             ),
-            BlockgradeColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Value',
                 output_name='value',
-                value_kind=BlockgradeValueKind.FLOAT,
+                value_kind=DataValueKind.FLOAT,
             ),
         ),
     )
 
 
 @pytest.fixture
-def snapshot_definition() -> BlockgradeSourceDefinition:
-    return BlockgradeSourceDefinition(
+def snapshot_definition() -> SqlSourceDefinition:
+    return SqlSourceDefinition(
         source_key='source_latest',
         source_table='dbo.source_latest',
-        storage_mode=BlockgradeStorageMode.LATEST,
-        load_strategy=BlockgradeLoadStrategy.FULL_SNAPSHOT,
+        storage_mode=SqlStorageMode.LATEST,
+        load_strategy=SqlLoadStrategy.FULL_SNAPSHOT,
+        materialization_name='latest',
         enabled=True,
         columns=(
-            BlockgradeColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Id',
                 output_name='id',
-                value_kind=BlockgradeValueKind.INTEGER,
+                value_kind=DataValueKind.INTEGER,
                 required=True,
             ),
-            BlockgradeColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Name',
                 output_name='name',
-                value_kind=BlockgradeValueKind.TEXT,
+                value_kind=DataValueKind.TEXT,
             ),
         ),
     )

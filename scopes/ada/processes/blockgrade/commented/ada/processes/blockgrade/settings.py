@@ -1,74 +1,45 @@
-# Resuelve la conexión SQL nombrada BLOCKGRADE y la política de retry del proceso.
+# Conserva la configuración BLOCKGRADE y delega la política de retry al scope global.
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 from ada.processes.blockgrade.errors import BlockgradeProcessConfigurationError
 from atlanticus.configuration import ConfigurationVariableSpec, ResolvedConfiguration
 from atlanticus.connectivity.sql import SqlSettings, build_sql_configuration_keys
+from atlanticus.data_producers.sql import SqlRetryPolicy
 
 BLOCKGRADE_SQL_SUFFIX = 'BLOCKGRADE'
 _DEFAULT_RETRY_ATTEMPTS = 10
 _DEFAULT_RETRY_DELAY_SECONDS = 5.0
 
 
-@dataclass(frozen=True, slots=True)
-class BlockgradeSqlRetryPolicy:
-    attempts: int = _DEFAULT_RETRY_ATTEMPTS
-    delay_seconds: float = _DEFAULT_RETRY_DELAY_SECONDS
-
-    def __post_init__(self) -> None:
-        if (
-            not isinstance(self.attempts, int)
-            or isinstance(self.attempts, bool)
-            or self.attempts <= 0
-        ):
-            raise ValueError('attempts must be an integer greater than zero')
-        if isinstance(self.delay_seconds, bool):
-            raise ValueError('delay_seconds must be a number greater than or equal to zero')
-        try:
-            delay_seconds = float(self.delay_seconds)
-        except (TypeError, ValueError):
-            raise ValueError(
-                'delay_seconds must be a number greater than or equal to zero'
-            ) from None
-        if delay_seconds < 0:
-            raise ValueError('delay_seconds must be a number greater than or equal to zero')
-        object.__setattr__(self, 'delay_seconds', delay_seconds)
-
+class BlockgradeSqlRetryPolicy(SqlRetryPolicy):
     @classmethod
-    def from_mapping(cls, values: Mapping[str, Any]) -> BlockgradeSqlRetryPolicy:
-        return cls(
-            attempts=_parse_positive_integer(
-                values.get('BLOCKGRADE_SQL_RETRY_ATTEMPTS'),
-                default=_DEFAULT_RETRY_ATTEMPTS,
-                field_name='BLOCKGRADE_SQL_RETRY_ATTEMPTS',
-            ),
-            delay_seconds=_parse_non_negative_number(
-                values.get('BLOCKGRADE_SQL_RETRY_DELAY_SECONDS'),
-                default=_DEFAULT_RETRY_DELAY_SECONDS,
-                field_name='BLOCKGRADE_SQL_RETRY_DELAY_SECONDS',
-            ),
-        )
+    def from_mapping(cls, values):
+        resolved = SqlRetryPolicy.from_mapping(values, prefix=BLOCKGRADE_SQL_SUFFIX)
+        return cls(attempts=resolved.attempts, delay_seconds=resolved.delay_seconds)
 
 
 @dataclass(frozen=True, slots=True)
 class BlockgradeSettings:
     sql: SqlSettings
-    retry_policy: BlockgradeSqlRetryPolicy
+    retry_policy: SqlRetryPolicy
 
     @classmethod
     def from_configuration(cls, configuration: ResolvedConfiguration) -> BlockgradeSettings:
         if not isinstance(configuration, ResolvedConfiguration):
-            raise BlockgradeProcessConfigurationError('configuration must be a ResolvedConfiguration')
+            raise BlockgradeProcessConfigurationError(
+                'configuration must be a ResolvedConfiguration'
+            )
         return cls(
             sql=SqlSettings.from_mapping(
                 values=configuration.values,
                 suffix=BLOCKGRADE_SQL_SUFFIX,
             ),
-            retry_policy=BlockgradeSqlRetryPolicy.from_mapping(configuration.values),
+            retry_policy=SqlRetryPolicy.from_mapping(
+                configuration.values,
+                prefix=BLOCKGRADE_SQL_SUFFIX,
+            ),
         )
 
 
@@ -103,31 +74,3 @@ def configuration_specs() -> tuple[ConfigurationVariableSpec, ...]:
             sensitive=True,
         ),
     )
-
-
-def _parse_positive_integer(value: Any, *, default: int, field_name: str) -> int:
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return default
-    if isinstance(value, bool):
-        raise ValueError(f'{field_name} must be an integer greater than zero')
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        raise ValueError(f'{field_name} must be an integer greater than zero') from None
-    if parsed <= 0 or str(value).strip() not in {str(parsed), f'+{parsed}'}:
-        raise ValueError(f'{field_name} must be an integer greater than zero')
-    return parsed
-
-
-def _parse_non_negative_number(value: Any, *, default: float, field_name: str) -> float:
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return default
-    if isinstance(value, bool):
-        raise ValueError(f'{field_name} must be a number greater than or equal to zero')
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        raise ValueError(f'{field_name} must be a number greater than or equal to zero') from None
-    if parsed < 0:
-        raise ValueError(f'{field_name} must be a number greater than or equal to zero')
-    return parsed

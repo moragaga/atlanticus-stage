@@ -8,7 +8,6 @@ import pytest
 
 from ada.processes.blockgrade.errors import BlockgradeSqlReadError
 from ada.processes.blockgrade.extraction import BlockgradeSqlReader
-from ada.processes.blockgrade.models import BlockgradeSourcePlan
 from ada.processes.blockgrade.settings import BlockgradeSqlRetryPolicy
 from atlanticus.connectivity.sql import (
     SqlBatch,
@@ -18,6 +17,8 @@ from atlanticus.connectivity.sql import (
     SqlSettings,
     SqlTableChangeMarker,
 )
+from atlanticus.data_producers.core import SourceScope, SourceScopeItem
+from atlanticus.data_producers.sql import SqlSourcePlan
 
 
 class _Stream:
@@ -70,8 +71,24 @@ class _Sql(SqlClient):
         return _Stream(self.batches)
 
 
-def _plan(definition) -> BlockgradeSourcePlan:
-    return BlockgradeSourcePlan(
+def _scope() -> SourceScope:
+    return SourceScope(
+        token='260817002|260817001',
+        items=(
+            SourceScopeItem(
+                value=260817002,
+                partition={'year': '2026', 'month': '08', 'day': '17', 'turn': '002'},
+            ),
+            SourceScopeItem(
+                value=260817001,
+                partition={'year': '2026', 'month': '08', 'day': '17', 'turn': '001'},
+            ),
+        ),
+    )
+
+
+def _plan(definition) -> SqlSourcePlan:
+    return SqlSourcePlan(
         definition=definition,
         change_marker=SqlTableChangeMarker(
             source_table=definition.source_table,
@@ -79,8 +96,7 @@ def _plan(definition) -> BlockgradeSourcePlan:
             last_user_update_token='token',
             user_updates=1,
         ),
-        scope_token='260817002|260817001',
-        shift_ids=(260817002, 260817001),
+        scope=_scope(),
     )
 
 
@@ -132,7 +148,7 @@ def test_change_marker_retry_recovers_transient_connection_error(
         sql=sql,
         retry_policy=BlockgradeSqlRetryPolicy(attempts=2, delay_seconds=0),
     )
-    monkeypatch.setattr('ada.processes.blockgrade.extraction.time.sleep', lambda _: None)
+    monkeypatch.setattr('atlanticus.data_producers.sql.extraction.time.sleep', lambda _: None)
 
     markers = reader.read_change_markers((shift_definition,))
 

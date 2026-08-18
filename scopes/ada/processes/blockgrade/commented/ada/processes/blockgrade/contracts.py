@@ -1,17 +1,6 @@
-# Define el contrato mínimo que el job exige a un ejecutor de fuentes Blockgrade.
-from __future__ import annotations
+# Mantiene un alias de transición hacia el contrato común del executor.
+from atlanticus.data_producers.sql import SqlSourceExecutor
 
-from typing import Protocol, runtime_checkable
+BlockgradeSourceExecutor = SqlSourceExecutor
 
-from ada.processes.blockgrade.models import BlockgradeSourceExecutionResult, BlockgradeSourcePlan
-from atlanticus.runtime import JobRuntimeContext
-
-
-@runtime_checkable
-class BlockgradeSourceExecutor(Protocol):
-    def execute(
-        self,
-        *,
-        plan: BlockgradeSourcePlan,
-        context: JobRuntimeContext,
-    ) -> BlockgradeSourceExecutionResult: ...
+__all__ = ['BlockgradeSourceExecutor']

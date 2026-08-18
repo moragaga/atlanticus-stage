@@ -1,34 +1,35 @@
 import pytest
 
-from ada.processes.blockgrade.models import (
-    BlockgradeColumnDefinition,
-    BlockgradeLoadStrategy,
-    BlockgradeSourceDefinition,
-    BlockgradeStorageMode,
-    BlockgradeValueKind,
+from atlanticus.data_producers.sql import (
+    DataValueKind,
+    SqlColumnDefinition,
+    SqlLoadStrategy,
+    SqlSourceDefinition,
+    SqlStorageMode,
 )
 
 
-def test_shift_source_requires_shift_column() -> None:
-    with pytest.raises(ValueError, match='shift_id_column is required'):
-        BlockgradeSourceDefinition(
+def test_scoped_source_requires_scope_columns() -> None:
+    with pytest.raises(ValueError, match='scope_column and scope_output_column'):
+        SqlSourceDefinition(
             source_key='a',
             source_table='dbo.a',
-            storage_mode=BlockgradeStorageMode.SHIFT,
-            load_strategy=BlockgradeLoadStrategy.SHIFT_WINDOW,
-            columns=(BlockgradeColumnDefinition('Id', 'id', BlockgradeValueKind.INTEGER),),
+            storage_mode=SqlStorageMode.PARTITIONED,
+            load_strategy=SqlLoadStrategy.SCOPED,
+            partition_dimensions=('partition',),
+            columns=(SqlColumnDefinition('Id', 'id', DataValueKind.INTEGER),),
         )
 
 
-def test_last_update_must_reference_datetime_output(shift_definition) -> None:
+def test_last_update_must_reference_datetime_output() -> None:
     with pytest.raises(ValueError, match='datetime column'):
-        BlockgradeSourceDefinition(
+        SqlSourceDefinition(
             source_key='a',
             source_table='dbo.a',
-            storage_mode=BlockgradeStorageMode.LATEST,
-            load_strategy=BlockgradeLoadStrategy.FULL_SNAPSHOT,
+            storage_mode=SqlStorageMode.LATEST,
+            load_strategy=SqlLoadStrategy.FULL_SNAPSHOT,
             source_last_update_output_column='id',
-            columns=(BlockgradeColumnDefinition('Id', 'id', BlockgradeValueKind.INTEGER),),
+            columns=(SqlColumnDefinition('Id', 'id', DataValueKind.INTEGER),),
         )
 
 
