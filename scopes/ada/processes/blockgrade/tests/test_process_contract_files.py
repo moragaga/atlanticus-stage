@@ -37,6 +37,23 @@ def test_data_producer_dependencies_are_split_by_capability() -> None:
     assert 'atlanticus-data-producers-core==0.1.0' in dependencies
     assert 'atlanticus-data-producers-sql==0.1.0' in dependencies
     assert 'atlanticus-data-producers==0.1.0' not in dependencies
-    assert sources['atlanticus-data-producers-core']['path'] == '../../../data-producers/core'
-    assert sources['atlanticus-data-producers-sql']['path'] == '../../../data-producers/sql'
     assert 'atlanticus-data-producers' not in sources
+
+    if project['tool']['uv'].get('default-groups') == []:
+        core_path = sources['atlanticus-data-producers-core']['path']
+        sql_path = sources['atlanticus-data-producers-sql']['path']
+        assert core_path.startswith('wheels/atlanticus_data_producers_core-')
+        assert core_path.endswith('.whl')
+        assert (root / core_path).is_file()
+        assert sql_path.startswith('wheels/atlanticus_data_producers_sql-')
+        assert sql_path.endswith('.whl')
+        assert (root / sql_path).is_file()
+    else:
+        assert sources['atlanticus-data-producers-core'] == {
+            'path': '../../../data-producers/core',
+            'editable': True,
+        }
+        assert sources['atlanticus-data-producers-sql'] == {
+            'path': '../../../data-producers/sql',
+            'editable': True,
+        }
