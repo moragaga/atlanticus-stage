@@ -1,57 +1,60 @@
-from ada.processes.dispatch.models import (
-    DispatchColumnDefinition,
-    DispatchLoadStrategy,
-    DispatchSourceDefinition,
-    DispatchStorageMode,
-    DispatchValueKind,
+from atlanticus.data_producers.sql import (
+    DataValueKind,
+    SqlColumnDefinition,
+    SqlLoadStrategy,
+    SqlSourceDefinition,
+    SqlStorageMode,
 )
 
 EXAMPLE_DEFINITIONS = (
-    DispatchSourceDefinition(
+    SqlSourceDefinition(
         source_key='shift_source',
         source_table='dbo.shift_source',
         enabled=True,
-        storage_mode=DispatchStorageMode.SHIFT,
-        load_strategy=DispatchLoadStrategy.SHIFT_WINDOW,
-        shift_id_column='ShiftId',
+        storage_mode=SqlStorageMode.PARTITIONED,
+        load_strategy=SqlLoadStrategy.SCOPED,
+        scope_column='ShiftId',
+        scope_output_column='shift_id',
+        materialization_name='shift',
+        partition_dimensions=('year', 'month', 'day', 'turn'),
         source_last_update_output_column='event_time',
         columns=(
-            DispatchColumnDefinition(
+            SqlColumnDefinition(
                 source_name='ShiftId',
                 output_name='shift_id',
-                value_kind=DispatchValueKind.INTEGER,
+                value_kind=DataValueKind.INTEGER,
                 required=True,
             ),
-            DispatchColumnDefinition(
+            SqlColumnDefinition(
                 source_name='EventTime',
                 output_name='event_time',
-                value_kind=DispatchValueKind.DATETIME,
+                value_kind=DataValueKind.DATETIME,
                 source_timezone='America/Santiago',
             ),
-            DispatchColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Value',
                 output_name='value',
-                value_kind=DispatchValueKind.FLOAT,
+                value_kind=DataValueKind.FLOAT,
             ),
         ),
     ),
-    DispatchSourceDefinition(
+    SqlSourceDefinition(
         source_key='snapshot_source',
         source_table='dbo.snapshot_source',
         enabled=False,
-        storage_mode=DispatchStorageMode.LATEST,
-        load_strategy=DispatchLoadStrategy.FULL_SNAPSHOT,
+        storage_mode=SqlStorageMode.LATEST,
+        load_strategy=SqlLoadStrategy.FULL_SNAPSHOT,
         columns=(
-            DispatchColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Id',
                 output_name='id',
-                value_kind=DispatchValueKind.INTEGER,
+                value_kind=DataValueKind.INTEGER,
                 required=True,
             ),
-            DispatchColumnDefinition(
+            SqlColumnDefinition(
                 source_name='Name',
                 output_name='name',
-                value_kind=DispatchValueKind.TEXT,
+                value_kind=DataValueKind.TEXT,
             ),
         ),
     ),

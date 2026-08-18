@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from ada.processes.dispatch.catalog.definitions import DEFINITIONS
 from ada.processes.dispatch.errors import DispatchCatalogError
-from ada.processes.dispatch.models import DispatchSourceDefinition
+from atlanticus.data_producers.sql import SqlSourceDefinition
 
 
-def build_catalog() -> tuple[DispatchSourceDefinition, ...]:
+def build_catalog() -> tuple[SqlSourceDefinition, ...]:
     if not isinstance(DEFINITIONS, tuple):
         raise DispatchCatalogError('Dispatch catalog definitions must be a tuple')
     if not DEFINITIONS:
         raise DispatchCatalogError('Dispatch catalog must contain at least one source')
-    if not all(isinstance(definition, DispatchSourceDefinition) for definition in DEFINITIONS):
+    if not all(isinstance(definition, SqlSourceDefinition) for definition in DEFINITIONS):
         raise DispatchCatalogError('Dispatch catalog contains an invalid source definition')
     source_keys = tuple(definition.source_key.lower() for definition in DEFINITIONS)
     if len(source_keys) != len(set(source_keys)):

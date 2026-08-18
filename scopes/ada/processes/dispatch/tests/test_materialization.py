@@ -5,15 +5,29 @@ import pytest
 
 from ada.processes.dispatch.errors import DispatchSchemaError
 from ada.processes.dispatch.materialization import DispatchMaterializer
-from ada.processes.dispatch.models import DispatchSourcePlan
 from atlanticus.connectivity.sql import SqlTableChangeMarker
+from atlanticus.data_producers.core import SourceScope, SourceScopeItem
+from atlanticus.data_producers.sql import SqlSourcePlan
 from atlanticus.datasets.parquet import ParquetDatasetStore
 from atlanticus.datasets.results import PublicationStatus
 from atlanticus.datasets.runtime import DatasetRuntime
 
 
-def _plan(definition, *, shift_ids=(260817002, 260817001)) -> DispatchSourcePlan:
-    return DispatchSourcePlan(
+def _scope(shift_ids=(260817002, 260817001)) -> SourceScope:
+    partitions = {
+        260817002: {'year': '2026', 'month': '08', 'day': '17', 'turn': '002'},
+        260817001: {'year': '2026', 'month': '08', 'day': '17', 'turn': '001'},
+    }
+    return SourceScope(
+        token='|'.join(str(value) for value in shift_ids),
+        items=tuple(
+            SourceScopeItem(value=value, partition=partitions[value]) for value in shift_ids
+        ),
+    )
+
+
+def _plan(definition, *, shift_ids=(260817002, 260817001)) -> SqlSourcePlan:
+    return SqlSourcePlan(
         definition=definition,
         change_marker=SqlTableChangeMarker(
             source_table=definition.source_table,
@@ -21,8 +35,7 @@ def _plan(definition, *, shift_ids=(260817002, 260817001)) -> DispatchSourcePlan
             last_user_update_token='token',
             user_updates=1,
         ),
-        scope_token='|'.join(str(value) for value in shift_ids),
-        shift_ids=shift_ids,
+        scope=_scope(shift_ids),
     )
 
 
@@ -95,7 +108,7 @@ def test_unexpected_shift_is_rejected(tmp_path, shift_definition) -> None:
         }
     )
 
-    with pytest.raises(DispatchSchemaError, match='unexpected shift'):
+    with pytest.raises(DispatchSchemaError, match='unexpected scope value'):
         materializer.publish(plan=_plan(shift_definition), table=table)
 
 

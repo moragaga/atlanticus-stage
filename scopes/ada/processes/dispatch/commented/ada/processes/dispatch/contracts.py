@@ -1,17 +1,6 @@
-# Define el contrato mínimo que el job exige a un ejecutor de fuentes Dispatch.
-from __future__ import annotations
+# Mantiene un alias de transición hacia el contrato común del executor.
+from atlanticus.data_producers.sql import SqlSourceExecutor
 
-from typing import Protocol, runtime_checkable
+DispatchSourceExecutor = SqlSourceExecutor
 
-from ada.processes.dispatch.models import DispatchSourceExecutionResult, DispatchSourcePlan
-from atlanticus.runtime import JobRuntimeContext
-
-
-@runtime_checkable
-class DispatchSourceExecutor(Protocol):
-    def execute(
-        self,
-        *,
-        plan: DispatchSourcePlan,
-        context: JobRuntimeContext,
-    ) -> DispatchSourceExecutionResult: ...
+__all__ = ['DispatchSourceExecutor']

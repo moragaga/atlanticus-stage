@@ -8,7 +8,6 @@ import pytest
 
 from ada.processes.dispatch.errors import DispatchSqlReadError
 from ada.processes.dispatch.extraction import DispatchSqlReader
-from ada.processes.dispatch.models import DispatchSourcePlan
 from ada.processes.dispatch.settings import DispatchSqlRetryPolicy
 from atlanticus.connectivity.sql import (
     SqlBatch,
@@ -18,6 +17,8 @@ from atlanticus.connectivity.sql import (
     SqlSettings,
     SqlTableChangeMarker,
 )
+from atlanticus.data_producers.core import SourceScope, SourceScopeItem
+from atlanticus.data_producers.sql import SqlSourcePlan
 
 
 class _Stream:
@@ -70,8 +71,24 @@ class _Sql(SqlClient):
         return _Stream(self.batches)
 
 
-def _plan(definition) -> DispatchSourcePlan:
-    return DispatchSourcePlan(
+def _scope() -> SourceScope:
+    return SourceScope(
+        token='260817002|260817001',
+        items=(
+            SourceScopeItem(
+                value=260817002,
+                partition={'year': '2026', 'month': '08', 'day': '17', 'turn': '002'},
+            ),
+            SourceScopeItem(
+                value=260817001,
+                partition={'year': '2026', 'month': '08', 'day': '17', 'turn': '001'},
+            ),
+        ),
+    )
+
+
+def _plan(definition) -> SqlSourcePlan:
+    return SqlSourcePlan(
         definition=definition,
         change_marker=SqlTableChangeMarker(
             source_table=definition.source_table,
@@ -79,8 +96,7 @@ def _plan(definition) -> DispatchSourcePlan:
             last_user_update_token='token',
             user_updates=1,
         ),
-        scope_token='260817002|260817001',
-        shift_ids=(260817002, 260817001),
+        scope=_scope(),
     )
 
 
@@ -107,6 +123,46 @@ def test_reader_builds_projected_shift_query_and_arrow_table(shift_definition) -
     assert '[Moment] AS [moment]' in sql.statement
 
 
+def test_real_dispatch_catalog_builds_tiempos_mlp_shift_query() -> None:
+    from ada.processes.dispatch.catalog import build_catalog
+
+    definition = build_catalog()[0]
+    sql = _Sql()
+    reader = DispatchSqlReader(sql=sql, retry_policy=DispatchSqlRetryPolicy(attempts=1))
+
+    table = reader.read_source(_plan(definition))
+
+    assert table.num_rows == 0
+    assert 'FROM [dbo].[tiempos_mlp]' in sql.statement
+    assert '[ShiftId] AS [shift_id]' in sql.statement
+    assert '[ShiftId] IN (?, ?)' in sql.statement
+    assert sql.parameters == (260817002, 260817001)
+
+
+def test_std_truck_builds_full_snapshot_query() -> None:
+    from ada.processes.dispatch.catalog import build_catalog
+
+    definition = next(item for item in build_catalog() if item.source_key == 'std_truck')
+    sql = _Sql()
+    reader = DispatchSqlReader(sql=sql, retry_policy=DispatchSqlRetryPolicy(attempts=1))
+    plan = SqlSourcePlan(
+        definition=definition,
+        change_marker=SqlTableChangeMarker(
+            source_table=definition.source_table,
+            generation_token='generation',
+            last_user_update_token='token',
+            user_updates=1,
+        ),
+    )
+
+    table = reader.read_source(plan)
+
+    assert table.num_rows == 0
+    assert 'FROM [std].[StdTruck]' in sql.statement
+    assert ' WHERE ' not in sql.statement
+    assert sql.parameters == ()
+
+
 def test_change_marker_retry_recovers_transient_connection_error(
     shift_definition, monkeypatch
 ) -> None:
@@ -116,7 +172,7 @@ def test_change_marker_retry_recovers_transient_connection_error(
         sql=sql,
         retry_policy=DispatchSqlRetryPolicy(attempts=2, delay_seconds=0),
     )
-    monkeypatch.setattr('ada.processes.dispatch.extraction.time.sleep', lambda _: None)
+    monkeypatch.setattr('atlanticus.data_producers.sql.extraction.time.sleep', lambda _: None)
 
     markers = reader.read_change_markers((shift_definition,))
 

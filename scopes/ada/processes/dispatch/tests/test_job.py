@@ -4,15 +4,15 @@ import pytest
 
 from ada.processes.dispatch.errors import DispatchProcessError
 from ada.processes.dispatch.job import DispatchJob
-from ada.processes.dispatch.models import (
-    DispatchExecutionPlan,
-    DispatchPublicationResult,
-    DispatchSourceExecutionResult,
-    DispatchSourcePlan,
-)
 from ada.processes.dispatch.planning import DispatchPlanner
 from ada.processes.dispatch.producer_state import DispatchProducerState, DispatchSourceState
 from atlanticus.connectivity.sql import SqlTableChangeMarker
+from atlanticus.data_producers.sql import (
+    SqlExecutionPlan,
+    SqlPublicationResult,
+    SqlSourceExecutionResult,
+    SqlSourcePlan,
+)
 from atlanticus.datasets.models import DatasetKey, DatasetTarget
 from atlanticus.datasets.results import (
     DatasetPublicationResult,
@@ -117,8 +117,8 @@ class _Context:
         self.delay = seconds
 
 
-def _source(definition) -> DispatchSourcePlan:
-    return DispatchSourcePlan(
+def _source(definition) -> SqlSourcePlan:
+    return SqlSourcePlan(
         definition=definition,
         change_marker=SqlTableChangeMarker(
             source_table=definition.source_table,
@@ -126,11 +126,10 @@ def _source(definition) -> DispatchSourcePlan:
             last_user_update_token=definition.source_key,
             user_updates=1,
         ),
-        scope_token=None,
     )
 
 
-def _committed(source_key: str) -> DispatchSourceExecutionResult:
+def _committed(source_key: str) -> SqlSourceExecutionResult:
     target = DatasetTarget(
         dataset=DatasetKey(namespace=('dispatch',), name=source_key), materialization='latest'
     )
@@ -145,10 +144,10 @@ def _committed(source_key: str) -> DispatchSourceExecutionResult:
         size_bytes=10,
         content_signature='signature',
     )
-    return DispatchSourceExecutionResult(
+    return SqlSourceExecutionResult(
         source_key=source_key,
         source_row_count=1,
-        publications=(DispatchPublicationResult(publication=publication),),
+        publications=(SqlPublicationResult(publication=publication),),
     )
 
 
@@ -158,11 +157,12 @@ def test_job_uses_one_plan_and_commits_sources_independently(snapshot_definition
         source_table='dbo.source_b',
         storage_mode=snapshot_definition.storage_mode,
         load_strategy=snapshot_definition.load_strategy,
+        materialization_name=snapshot_definition.materialization_name,
         columns=snapshot_definition.columns,
     )
     sources = (_source(snapshot_definition), _source(second))
     planner = _Planner(
-        DispatchExecutionPlan(
+        SqlExecutionPlan(
             captured_at_utc=datetime(2026, 8, 17, 22, 0, tzinfo=UTC),
             sources=sources,
         )
@@ -171,9 +171,7 @@ def test_job_uses_one_plan_and_commits_sources_independently(snapshot_definition
     executor = _Executor(
         (
             _committed('source_latest'),
-            DispatchSourceExecutionResult(
-                source_key='source_b', source_row_count=0, publications=()
-            ),
+            SqlSourceExecutionResult(source_key='source_b', source_row_count=0, publications=()),
         )
     )
     job = DispatchJob(
@@ -206,11 +204,12 @@ def test_failed_source_does_not_block_next_source(snapshot_definition) -> None:
         source_table='dbo.source_b',
         storage_mode=snapshot_definition.storage_mode,
         load_strategy=snapshot_definition.load_strategy,
+        materialization_name=snapshot_definition.materialization_name,
         columns=snapshot_definition.columns,
     )
     sources = (_source(snapshot_definition), _source(second))
     planner = _Planner(
-        DispatchExecutionPlan(
+        SqlExecutionPlan(
             captured_at_utc=datetime(2026, 8, 17, 22, 0, tzinfo=UTC),
             sources=sources,
         )
@@ -238,7 +237,7 @@ def test_failed_source_does_not_block_next_source(snapshot_definition) -> None:
 def test_runtime_cancellation_is_not_converted_to_source_failure(snapshot_definition) -> None:
     source = _source(snapshot_definition)
     planner = _Planner(
-        DispatchExecutionPlan(
+        SqlExecutionPlan(
             captured_at_utc=datetime(2026, 8, 17, 22, 0, tzinfo=UTC),
             sources=(source,),
         )

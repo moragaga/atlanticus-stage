@@ -11,16 +11,12 @@ classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "ada-operational-calendar==0.2.0",
     "atlanticus-configuration==0.1.0",
-    "atlanticus-datasets==0.1.0",
-    "atlanticus-datasets-parquet==0.2.0",
-    "atlanticus-datasets-runtime==0.2.0",
+    "atlanticus-data-producers==0.1.0",
     "atlanticus-job-runtime==0.5.0",
     "atlanticus-kernel==0.1.0",
     "atlanticus-key-vault==0.1.0",
     "atlanticus-observability-azure==0.1.0",
     "atlanticus-sql==0.1.0",
-    "atlanticus-state==0.1.0",
-    "pyarrow==25.0.0",
 ]
 
 [dependency-groups]
@@ -34,18 +30,15 @@ command = "ada-dispatch"
 system-profile = "sqlserver"
 
 [tool.uv.sources]
+atlanticus-data-producers = { path = "../../../data-producers", editable = true }
 ada-operational-calendar = { path = "../../operational-calendar", editable = true }
 atlanticus-configuration = { path = "../../../../backend/configuration", editable = true }
-atlanticus-datasets = { path = "../../../../backend/datasets", editable = true }
-atlanticus-datasets-parquet = { path = "../../../../backend/datasets-parquet", editable = true }
-atlanticus-datasets-runtime = { path = "../../../../backend/datasets-runtime", editable = true }
 atlanticus-job-runtime = { path = "../../../../backend/runtime", editable = true }
 atlanticus-kernel = { path = "../../../../backend/kernel", editable = true }
 atlanticus-key-vault = { path = "../../../../connectivity/key-vault", editable = true }
 atlanticus-observability = { path = "../../../../backend/observability", editable = true }
 atlanticus-observability-azure = { path = "../../../../backend/observability-azure", editable = true }
 atlanticus-sql = { path = "../../../../connectivity/sql", editable = true }
-atlanticus-state = { path = "../../../../backend/state", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["src"]

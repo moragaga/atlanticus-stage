@@ -14,16 +14,12 @@ source = { editable = "." }
 dependencies = [
     { name = "ada-operational-calendar" },
     { name = "atlanticus-configuration" },
-    { name = "atlanticus-datasets" },
-    { name = "atlanticus-datasets-parquet" },
-    { name = "atlanticus-datasets-runtime" },
+    { name = "atlanticus-data-producers" },
     { name = "atlanticus-job-runtime" },
     { name = "atlanticus-kernel" },
     { name = "atlanticus-key-vault" },
     { name = "atlanticus-observability-azure" },
     { name = "atlanticus-sql" },
-    { name = "atlanticus-state" },
-    { name = "pyarrow" },
 ]
 
 [package.dev-dependencies]
@@ -36,16 +32,12 @@ dev = [
 requires-dist = [
     { name = "ada-operational-calendar", editable = "../../operational-calendar" },
     { name = "atlanticus-configuration", editable = "../../../../backend/configuration" },
-    { name = "atlanticus-datasets", editable = "../../../../backend/datasets" },
-    { name = "atlanticus-datasets-parquet", editable = "../../../../backend/datasets-parquet" },
-    { name = "atlanticus-datasets-runtime", editable = "../../../../backend/datasets-runtime" },
+    { name = "atlanticus-data-producers", editable = "../../../data-producers" },
     { name = "atlanticus-job-runtime", editable = "../../../../backend/runtime" },
     { name = "atlanticus-kernel", editable = "../../../../backend/kernel" },
     { name = "atlanticus-key-vault", editable = "../../../../connectivity/key-vault" },
     { name = "atlanticus-observability-azure", editable = "../../../../backend/observability-azure" },
     { name = "atlanticus-sql", editable = "../../../../connectivity/sql" },
-    { name = "atlanticus-state", editable = "../../../../backend/state" },
-    { name = "pyarrow", specifier = "==25.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -80,6 +72,37 @@ dependencies = [
 requires-dist = [
     { name = "atlanticus-kernel", editable = "../../../../backend/kernel" },
     { name = "python-dotenv", specifier = "==1.2.2" },
+]
+
+[[package]]
+name = "atlanticus-data-producers"
+version = "0.1.0"
+source = { editable = "../../../data-producers" }
+dependencies = [
+    { name = "atlanticus-datasets" },
+    { name = "atlanticus-datasets-parquet" },
+    { name = "atlanticus-datasets-runtime" },
+    { name = "atlanticus-job-runtime" },
+    { name = "atlanticus-sql" },
+    { name = "atlanticus-state" },
+    { name = "pyarrow" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "atlanticus-datasets", editable = "../../../../backend/datasets" },
+    { name = "atlanticus-datasets-parquet", editable = "../../../../backend/datasets-parquet" },
+    { name = "atlanticus-datasets-runtime", editable = "../../../../backend/datasets-runtime" },
+    { name = "atlanticus-job-runtime", editable = "../../../../backend/runtime" },
+    { name = "atlanticus-sql", editable = "../../../../connectivity/sql" },
+    { name = "atlanticus-state", editable = "../../../../backend/state" },
+    { name = "pyarrow", specifier = "==25.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
 ]
 
 [[package]]

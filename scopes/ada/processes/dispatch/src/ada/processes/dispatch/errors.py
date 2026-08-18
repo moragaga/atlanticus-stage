@@ -1,3 +1,10 @@
+from atlanticus.data_producers.sql import (
+    SqlDataProducerMaterializationError,
+    SqlDataProducerReadError,
+    SqlDataProducerSchemaError,
+)
+
+
 class DispatchProcessError(RuntimeError):
     pass
 
@@ -10,13 +17,6 @@ class DispatchCatalogError(ValueError):
     pass
 
 
-class DispatchSqlReadError(DispatchProcessError):
-    pass
-
-
-class DispatchSchemaError(DispatchProcessError):
-    pass
-
-
-class DispatchMaterializationError(DispatchProcessError):
-    pass
+DispatchSqlReadError = SqlDataProducerReadError
+DispatchSchemaError = SqlDataProducerSchemaError
+DispatchMaterializationError = SqlDataProducerMaterializationError

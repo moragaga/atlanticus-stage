@@ -1,16 +1,5 @@
-from __future__ import annotations
+from atlanticus.data_producers.sql import SqlSourceExecutor
 
-from typing import Protocol, runtime_checkable
+DispatchSourceExecutor = SqlSourceExecutor
 
-from ada.processes.dispatch.models import DispatchSourceExecutionResult, DispatchSourcePlan
-from atlanticus.runtime import JobRuntimeContext
-
-
-@runtime_checkable
-class DispatchSourceExecutor(Protocol):
-    def execute(
-        self,
-        *,
-        plan: DispatchSourcePlan,
-        context: JobRuntimeContext,
-    ) -> DispatchSourceExecutionResult: ...
+__all__ = ['DispatchSourceExecutor']

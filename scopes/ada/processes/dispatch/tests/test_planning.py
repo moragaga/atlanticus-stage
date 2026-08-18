@@ -43,8 +43,13 @@ def test_plan_captures_markers_once_and_uses_current_previous_shift(shift_defini
     )
 
     assert reader.calls == 1
-    assert plan.sources[0].shift_ids == (260817002, 260817001)
+    assert plan.sources[0].scope is not None
+    assert plan.sources[0].scope.values == (260817002, 260817001)
     assert plan.sources[0].scope_token == '260817002|260817001'
+    assert tuple(item.partition for item in plan.sources[0].scope.items) == (
+        {'year': '2026', 'month': '08', 'day': '17', 'turn': '002'},
+        {'year': '2026', 'month': '08', 'day': '17', 'turn': '001'},
+    )
 
 
 def test_plan_skips_source_when_marker_and_scope_are_committed(shift_definition) -> None:
@@ -75,6 +80,7 @@ def test_plan_prioritizes_sources_that_have_not_been_synchronized_recently(
         source_table='dbo.source_b',
         storage_mode=snapshot_definition.storage_mode,
         load_strategy=snapshot_definition.load_strategy,
+        materialization_name=snapshot_definition.materialization_name,
         columns=snapshot_definition.columns,
     )
     recently_synced = DispatchSourceState(
