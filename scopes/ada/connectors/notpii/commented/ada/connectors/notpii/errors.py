@@ -1,12 +1,8 @@
-# Espejo comentado del conector NOTPII: adquisición Service Bus/Storage sin lógica adicional.
-# Este archivo conserva exactamente el comportamiento productivo y agrega solo contexto.
-class NotPiiConnectorError(RuntimeError):
-    pass
+# Fachada de compatibilidad hacia el productor NOT PII global.
+from atlanticus.data_producers.notpii.errors import (
+    NotPiiConfigurationError,
+    NotPiiConnectorError,
+    NotPiiSourceError,
+)
 
-
-class NotPiiConfigurationError(NotPiiConnectorError, ValueError):
-    pass
-
-
-class NotPiiSourceError(NotPiiConnectorError):
-    pass
+__all__ = ['NotPiiConfigurationError', 'NotPiiConnectorError', 'NotPiiSourceError']

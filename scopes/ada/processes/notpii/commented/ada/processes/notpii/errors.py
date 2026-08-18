@@ -1,16 +1,14 @@
-# Espejo comentado del proceso NOTPII: composición, batch, materialización, estado y settlement.
-# Este archivo conserva exactamente el comportamiento productivo y agrega solo contexto.
-class NotPiiProcessError(RuntimeError):
-    pass
+# Fachada o composición ADA sobre el productor NOT PII global.
+from atlanticus.data_producers.notpii.errors import (
+    NotPiiCatalogError,
+    NotPiiMaterializationError,
+    NotPiiProcessConfigurationError,
+    NotPiiProcessError,
+)
 
-
-class NotPiiProcessConfigurationError(NotPiiProcessError, ValueError):
-    pass
-
-
-class NotPiiCatalogError(NotPiiProcessError, ValueError):
-    pass
-
-
-class NotPiiMaterializationError(NotPiiProcessError):
-    pass
+__all__ = [
+    'NotPiiCatalogError',
+    'NotPiiMaterializationError',
+    'NotPiiProcessConfigurationError',
+    'NotPiiProcessError',
+]

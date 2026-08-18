@@ -5,22 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ada-notpii-connector"
 version = "0.1.0"
-description = "NOT PII message and Storage acquisition connector for ADA."
+description = "Compatibility facade for the reusable Atlanticus NOT PII data producer."
 requires-python = "==3.14.2"
 classifiers = ["Private :: Do Not Upload"]
-dependencies = [
-    "atlanticus-pi-contracts==0.1.0",
-    "atlanticus-service-bus==0.1.0",
-    "atlanticus-storage==0.1.0",
-    "pandas==3.0.3",
-    "pyarrow==25.0.0",
-]
+dependencies = ["atlanticus-data-producers-notpii==0.1.0"]
 
 [dependency-groups]
-dev = [
-    "pytest==9.1.1",
-    "ruff==0.15.22",
-]
+dev = ["pytest==9.1.1", "ruff==0.15.22"]
+
+[tool.uv.sources]
+atlanticus-data-producers-notpii = { path = "../../../data-producers/notpii", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["src"]

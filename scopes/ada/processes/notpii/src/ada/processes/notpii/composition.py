@@ -4,19 +4,18 @@ from collections.abc import Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 
-from ada.connectors.notpii import NotPiiConnector
 from ada.processes.notpii.catalog import active_extraction_modes, build_catalog
 from ada.processes.notpii.errors import NotPiiCatalogError
-from ada.processes.notpii.job import NotPiiJob
-from ada.processes.notpii.materialization import NotPiiMaterializer
-from ada.processes.notpii.processor import NotPiiProcessor
-from ada.processes.notpii.producer_state import NotPiiProducerState
 from ada.processes.notpii.settings import NotPiiSettings
 from atlanticus.configuration import ResolvedConfiguration
 from atlanticus.connectivity.service_bus import ServiceBusTopicReceiver
-from atlanticus.connectivity.storage import StorageSasReader
-from atlanticus.datasets.parquet import ParquetDatasetStore
-from atlanticus.datasets.runtime import DatasetRuntime
+from atlanticus.data_producers.notpii import (
+    NotPiiDataProducerComponents,
+    NotPiiJob,
+    NotPiiProcessor,
+    NotPiiProducerState,
+    build_notpii_data_producer,
+)
 from atlanticus.integrations.pi.contracts import NotPiiSource, PiCatalog, PiExtractionMode
 from atlanticus.runtime import (
     JobDefinition,
@@ -24,7 +23,6 @@ from atlanticus.runtime import (
     RuntimeExecutionResult,
     execute_job,
 )
-from atlanticus.state import AtomicStateStore
 
 NOTPII_JOB_DEFINITION = JobDefinition(
     module_name='ada.processes.notpii',
@@ -41,8 +39,6 @@ NOTPII_JOB_DEFINITION = JobDefinition(
     resource_sample_seconds=5,
 )
 
-_MODE_ORDER = (PiExtractionMode.INTERPOLATED, PiExtractionMode.RECORDED)
-
 
 @dataclass(slots=True)
 class NotPiiComposition:
@@ -50,6 +46,7 @@ class NotPiiComposition:
     runtime_configuration: RuntimeConfiguration
     settings: NotPiiSettings
     catalog: PiCatalog
+    producer: NotPiiDataProducerComponents
     receivers: Mapping[PiExtractionMode, ServiceBusTopicReceiver]
     processors: Mapping[PiExtractionMode, NotPiiProcessor]
     producer_state: NotPiiProducerState
@@ -85,48 +82,23 @@ def build_composition(
         active_modes=active_modes,
     )
     runtime_configuration = RuntimeConfiguration.from_sources(environ=configuration.values)
-    dataset_runtime = DatasetRuntime(
-        store=ParquetDatasetStore(root=runtime_configuration.application_root / 'datasets')
-    )
-    connector = NotPiiConnector(
-        storage_reader=StorageSasReader(),
+    producer = build_notpii_data_producer(
+        runtime_configuration=runtime_configuration,
+        catalog=resolved_catalog,
+        service_buses=settings.service_buses,
         raw_batch_size=settings.raw_batch_size,
-    )
-    processors = {
-        mode: NotPiiProcessor(
-            connector=connector,
-            materializer=NotPiiMaterializer(
-                runtime=dataset_runtime,
-                catalog=resolved_catalog,
-                extraction_mode=mode,
-            ),
-            catalog=resolved_catalog,
-            extraction_mode=mode,
-        )
-        for mode in active_modes
-    }
-    receivers = {
-        mode: ServiceBusTopicReceiver(settings=settings.service_buses[mode])
-        for mode in active_modes
-    }
-    producer_state = NotPiiProducerState(
-        store=AtomicStateStore(
-            volume_path=runtime_configuration.volume_path,
-            application=runtime_configuration.application,
-        )
+        max_message_count=settings.max_message_count,
+        producer_key='notpii',
+        dataset_namespace=('pi', 'not_pii'),
     )
     return NotPiiComposition(
         configuration=configuration,
         runtime_configuration=runtime_configuration,
         settings=settings,
         catalog=resolved_catalog,
-        receivers=receivers,
-        processors=processors,
-        producer_state=producer_state,
-        job=NotPiiJob(
-            receivers=receivers,
-            processors=processors,
-            producer_state=producer_state,
-            max_message_count=settings.max_message_count,
-        ),
+        producer=producer,
+        receivers=producer.receivers,
+        processors=producer.processors,
+        producer_state=producer.producer_state,
+        job=producer.job,
     )

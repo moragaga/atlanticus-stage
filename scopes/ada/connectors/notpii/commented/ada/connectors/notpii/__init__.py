@@ -1,12 +1,13 @@
-# Espejo comentado del conector NOTPII: adquisición Service Bus/Storage sin lógica adicional.
-# Este archivo conserva exactamente el comportamiento productivo y agrega solo contexto.
-from ada.connectors.notpii.connector import NotPiiConnector, decode_message
-from ada.connectors.notpii.errors import (
+# Fachada de compatibilidad hacia el productor NOT PII global.
+from atlanticus.data_producers.notpii import (
+    NotPiiBatch,
+    NotPiiBlobMessage,
     NotPiiConfigurationError,
+    NotPiiConnector,
     NotPiiConnectorError,
     NotPiiSourceError,
+    decode_message,
 )
-from ada.connectors.notpii.models import NotPiiBatch, NotPiiBlobMessage
 
 __version__ = '0.1.0'
 

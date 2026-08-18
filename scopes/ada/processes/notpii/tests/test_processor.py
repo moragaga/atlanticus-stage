@@ -8,10 +8,10 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from ada.connectors.notpii import NotPiiBatch, NotPiiConnector
 from ada.processes.notpii.processor import _coalesce_by_timestamp, _source_last_updated_at_utc
 from atlanticus.connectivity.service_bus import ServiceBusMessage
 from atlanticus.connectivity.storage import StorageSasReader
+from atlanticus.data_producers.notpii import NotPiiBatch, NotPiiConnector
 from atlanticus.integrations.pi.contracts import (
     NotPiiSource,
     PiCatalog,

@@ -1,7 +1,8 @@
-# Espejo comentado del proceso NOTPII: composición, batch, materialización, estado y settlement.
-# Este archivo conserva exactamente el comportamiento productivo y agrega solo contexto.
 from atlanticus.integrations.pi.contracts import NotPiiSource, PiTagDefinition
 
+# Fuente NOTPII utilizada por este proceso.
 SOURCE = NotPiiSource()
 
+# El catálogo productivo se entrega deliberadamente vacío.
+# Las definiciones concretas se incorporan únicamente en el entorno correspondiente.
 DEFINITIONS: tuple[PiTagDefinition, ...] = ()

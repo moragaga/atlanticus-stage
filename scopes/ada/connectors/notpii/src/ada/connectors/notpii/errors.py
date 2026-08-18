@@ -1,10 +1,7 @@
-class NotPiiConnectorError(RuntimeError):
-    pass
+from atlanticus.data_producers.notpii.errors import (
+    NotPiiConfigurationError,
+    NotPiiConnectorError,
+    NotPiiSourceError,
+)
 
-
-class NotPiiConfigurationError(NotPiiConnectorError, ValueError):
-    pass
-
-
-class NotPiiSourceError(NotPiiConnectorError):
-    pass
+__all__ = ['NotPiiConfigurationError', 'NotPiiConnectorError', 'NotPiiSourceError']

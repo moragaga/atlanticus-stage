@@ -7,14 +7,13 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from ada.connectors.notpii import NotPiiBatch, NotPiiSourceError
 from ada.processes.notpii.job import NotPiiJob
 from ada.processes.notpii.models import NotPiiProcessingResult
 from ada.processes.notpii.producer_state import NotPiiProducerState
-from atlanticus.datasets import (
-    DatasetKey,
+from atlanticus.data_producers.notpii import NotPiiBatch, NotPiiSourceError
+from atlanticus.datasets.models import DatasetKey, DatasetTarget
+from atlanticus.datasets.results import (
     DatasetPublicationResult,
-    DatasetTarget,
     PublicationQuality,
     PublicationStatus,
 )

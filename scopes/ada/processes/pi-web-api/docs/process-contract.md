@@ -10,6 +10,8 @@ Una misma clave puede existir en otra `APPLICATION`, porque cambia el namespace 
 
 Cada dataset materializado tiene exactamente un productor propietario. Dos processes distintos no pueden escribir sobre el mismo destino, aunque las escrituras individuales sean atómicas. La atomicidad protege contra archivos parciales; no resuelve coordinación multi-writer.
 
+El process ADA declara catálogo, configuración y composición. La mecánica reutilizable de producción PI —preparación de WebIDs, planificación temporal, adquisición, retries/splits, materialización y watermarks— pertenece a `atlanticus.data_producers.pi`. `integrations/pi/web-api` permanece como integración técnica y no conoce datasets ni estado del productor.
+
 
 ## Catálogo productivo
 
@@ -49,9 +51,9 @@ Cuando el producer watermark está al día, el process calcula el próximo bound
 
 ## Adquisición PI
 
-Los límites `points_max_paths`, `interpolated_max_web_ids` y `recorded_max_web_ids` pertenecen a la integración y son validados por ella. El process es responsable de dividir el trabajo antes de llamar a la integración. El valor inicial de `PI_WEB_API_INTERPOLATED_MAX_WEB_IDS` es `200`. Los chunks `INTERPOLATED` independientes pueden ejecutarse con hasta `PI_WEB_API_INTERPOLATED_MAX_PARALLEL_REQUESTS=3`; los resultados se reúnen en orden determinista antes de continuar. Normalización, dedupe, pivot, Parquet, state y watermarks permanecen en un único flujo y un único writer.
+Los límites `points_max_paths`, `interpolated_max_web_ids` y `recorded_max_web_ids` pertenecen a la integración y son validados por ella. `atlanticus.data_producers.pi` es responsable de dividir el trabajo antes de llamar a la integración. El valor inicial de `PI_WEB_API_INTERPOLATED_MAX_WEB_IDS` es `200`. Los chunks `INTERPOLATED` independientes pueden ejecutarse con hasta `PI_WEB_API_INTERPOLATED_MAX_PARALLEL_REQUESTS=3`; los resultados se reúnen en orden determinista antes de continuar. Normalización, dedupe, pivot, Parquet, state y watermarks permanecen en un único flujo y un único writer.
 
-`PI_WEB_API_MAX_DATA_POINTS` es una guarda de planificación del process para requests interpolated. Su valor inicial es `150000`; no se incorpora al cliente PI genérico.
+`PI_WEB_API_MAX_DATA_POINTS` es una guarda de planificación del producer PI para requests interpolated. Su valor inicial es `150000`; no se incorpora al cliente PI genérico.
 La estimación incluye el punto del límite derecho que PI puede devolver aunque luego se descarte, por lo que una request interpolated se dimensiona como `(slots + 1) * web_ids`. El process verifica además el tamaño real de cada respuesta. Esto cubre especialmente `RECORDED`, cuya cantidad de eventos no se puede predecir antes de consultar PI.
 
 Una ventana puede dividirse adicionalmente cuando una llamada falla por conexión distinta de timeout, por un HTTP recuperable (`408`, `425`, `429` o `5xx`) o cuando la respuesta real supera `PI_WEB_API_MAX_DATA_POINTS`. Solo se vuelve a intentar la porción fallida. El split continúa hasta ventanas de aproximadamente 60 segundos; si una respuesta sigue excediendo el límite en la ventana mínima, la adquisición falla de forma explícita. Los timeouts de transporte siguen la política específica descrita más abajo y no provocan split después de agotar sus retries. Errores de autenticación, configuración, request local o estructura de respuesta no se degradan mediante split.
@@ -93,7 +95,7 @@ El orden seguro de cada iteración es:
 Si ocurre un crash después de una escritura Parquet y antes de los watermarks, la siguiente ejecución repite la ventana. El merge/reemplazo idempotente evita duplicados y se prefiere replay antes que avanzar estado dejando un hueco silencioso.
 ## Timeouts transitorios de PI Web API
 
-Los timeouts de transporte de PI Web API se tratan como una degradación temporal de la dependencia, no como una autorización para confirmar datos incompletos. Cada solicitud dispone de un intento inicial y hasta tres reintentos explícitos con pausas de 2, 3 y 5 segundos. La política vive en el process; `atlanticus-http` permanece sin reintentos implícitos.
+Los timeouts de transporte de PI Web API se tratan como una degradación temporal de la dependencia, no como una autorización para confirmar datos incompletos. Cada solicitud dispone de un intento inicial y hasta tres reintentos explícitos con pausas de 2, 3 y 5 segundos. La política vive en `atlanticus.data_producers.pi`; `atlanticus-http` permanece sin reintentos implícitos.
 
 La misma política cubre la resolución de WebIDs y las lecturas `streamsets`. Si una solicitud se recupera dentro de esos reintentos, la iteración continúa normalmente. Si los tres reintentos se agotan, la iteración termina con `outcome=skipped` y `reason=pi_timeout`: no se publica Parquet y no avanzan ni el source watermark ni el producer watermark. El runtime permanece vivo y puede iniciar otra iteración inmediatamente según su presupuesto restante.
 

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import ada.processes.pi_web_api.timeout_retry as timeout_retry_module
+import atlanticus.data_producers.pi.timeout_retry as timeout_retry_module
 from ada.processes.pi_web_api import (
     PiAcquisitionWindow,
     PiExecutionPlan,

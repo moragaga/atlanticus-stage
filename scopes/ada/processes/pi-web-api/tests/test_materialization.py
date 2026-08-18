@@ -12,8 +12,8 @@ from ada.processes.pi_web_api import (
     PiWebApiMaterializationError,
     PiWebApiMaterializer,
 )
-from atlanticus.datasets import PublicationStatus
 from atlanticus.datasets.parquet import ParquetDatasetStore
+from atlanticus.datasets.results import PublicationStatus
 from atlanticus.datasets.runtime import DatasetRuntime, DatasetRuntimeNotFoundError
 from atlanticus.integrations.pi.contracts import (
     PiCatalog,

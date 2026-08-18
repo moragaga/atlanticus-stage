@@ -12,9 +12,7 @@ classifiers = [
 ]
 dependencies = [
     "atlanticus-configuration==0.1.0",
-    "atlanticus-datasets==0.1.0",
-    "atlanticus-datasets-parquet==0.2.0",
-    "atlanticus-datasets-runtime==0.2.0",
+    "atlanticus-data-producers-pi==0.1.0",
     "atlanticus-http==0.1.0",
     "atlanticus-job-runtime==0.5.0",
     "atlanticus-kernel==0.1.0",
@@ -22,8 +20,6 @@ dependencies = [
     "atlanticus-observability-azure==0.1.0",
     "atlanticus-pi-contracts==0.1.0",
     "atlanticus-pi-web-api==0.1.0",
-    "atlanticus-state==0.1.0",
-    "pyarrow==25.0.0",
 ]
 
 [dependency-groups]
@@ -31,6 +27,17 @@ dev = [
     "pytest==9.1.1",
     "ruff==0.15.22",
 ]
+
+[tool.uv.sources]
+atlanticus-data-producers-pi = { path = "../../../data-producers/pi", editable = true }
+atlanticus-configuration = { path = "../../../../backend/configuration", editable = true }
+atlanticus-http = { path = "../../../../connectivity/http-client", editable = true }
+atlanticus-job-runtime = { path = "../../../../backend/runtime", editable = true }
+atlanticus-kernel = { path = "../../../../backend/kernel", editable = true }
+atlanticus-key-vault = { path = "../../../../connectivity/key-vault", editable = true }
+atlanticus-observability-azure = { path = "../../../../backend/observability-azure", editable = true }
+atlanticus-pi-contracts = { path = "../../../../integrations/pi/contracts", editable = true }
+atlanticus-pi-web-api = { path = "../../../../integrations/pi/web-api", editable = true }
 
 [project.scripts]
 ada-pi-web-api = "ada.processes.pi_web_api.bootstrap:main"

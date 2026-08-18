@@ -1,14 +1,13 @@
-class NotPiiProcessError(RuntimeError):
-    pass
+from atlanticus.data_producers.notpii.errors import (
+    NotPiiCatalogError,
+    NotPiiMaterializationError,
+    NotPiiProcessConfigurationError,
+    NotPiiProcessError,
+)
 
-
-class NotPiiProcessConfigurationError(NotPiiProcessError, ValueError):
-    pass
-
-
-class NotPiiCatalogError(NotPiiProcessError, ValueError):
-    pass
-
-
-class NotPiiMaterializationError(NotPiiProcessError):
-    pass
+__all__ = [
+    'NotPiiCatalogError',
+    'NotPiiMaterializationError',
+    'NotPiiProcessConfigurationError',
+    'NotPiiProcessError',
+]

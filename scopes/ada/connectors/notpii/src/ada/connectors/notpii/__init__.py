@@ -1,10 +1,12 @@
-from ada.connectors.notpii.connector import NotPiiConnector, decode_message
-from ada.connectors.notpii.errors import (
+from atlanticus.data_producers.notpii import (
+    NotPiiBatch,
+    NotPiiBlobMessage,
     NotPiiConfigurationError,
+    NotPiiConnector,
     NotPiiConnectorError,
     NotPiiSourceError,
+    decode_message,
 )
-from ada.connectors.notpii.models import NotPiiBatch, NotPiiBlobMessage
 
 __version__ = '0.1.0'
 

@@ -1,0 +1,614 @@
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from threading import Lock
+from typing import Any, Protocol
+
+from atlanticus.data_producers.pi.errors import (
+    PiDataProducerAcquisitionError,
+    PiDataProducerTimeoutExhaustedError,
+)
+from atlanticus.data_producers.pi.models import (
+    PiAcquisitionResult,
+    PiAcquisitionWindow,
+    PiExecutionPlan,
+    PiSample,
+    ResolvedPiTag,
+)
+from atlanticus.data_producers.pi.timeout_retry import execute_with_timeout_retries
+from atlanticus.integrations.pi.contracts import PiExtractionMode
+from atlanticus.integrations.pi.web_api import (
+    PiWebApiConnectionError,
+    PiWebApiLimits,
+    PiWebApiStatusError,
+)
+from atlanticus.observability import with_current_context
+from atlanticus.runtime import JobRuntimeContext
+
+_MIN_RECOVERY_WINDOW_SECONDS = 60
+_RECOVERABLE_STATUS_CODES = frozenset({408, 425, 429})
+
+
+class _StreamSetsResource(Protocol):
+    def get_interpolated(
+        self,
+        web_ids: Iterable[str],
+        *,
+        start_time_utc: datetime,
+        end_time_utc: datetime,
+        interpolation_seconds: int,
+    ) -> tuple[dict[str, Any], ...]: ...
+
+    def get_recorded(
+        self,
+        web_ids: Iterable[str],
+        *,
+        start_time_utc: datetime,
+        end_time_utc: datetime,
+    ) -> tuple[dict[str, Any], ...]: ...
+
+
+class _ClientSettings(Protocol):
+    limits: PiWebApiLimits
+
+
+class _PiWebApiClient(Protocol):
+    settings: _ClientSettings
+    streamsets: _StreamSetsResource
+
+
+@dataclass(slots=True)
+class _AcquisitionStats:
+    interpolated_requests: int = 0
+    recorded_requests: int = 0
+    splits: int = 0
+    interpolated_conflicts: int = 0
+    recorded_conflicts: int = 0
+    unexpected_records: int = 0
+
+    def merge(self, other: _AcquisitionStats) -> None:
+        self.interpolated_requests += other.interpolated_requests
+        self.recorded_requests += other.recorded_requests
+        self.splits += other.splits
+        self.interpolated_conflicts += other.interpolated_conflicts
+        self.recorded_conflicts += other.recorded_conflicts
+        self.unexpected_records += other.unexpected_records
+
+
+@dataclass(slots=True)
+class _ParallelChunkResult:
+    index: int
+    samples: tuple[PiSample, ...]
+    stats: _AcquisitionStats
+    error: Exception | None = None
+
+
+class PiStreamSetAcquirer:
+    def __init__(
+        self,
+        *,
+        client: _PiWebApiClient,
+        max_data_points: int = 150_000,
+        interpolated_max_parallel_requests: int = 3,
+    ) -> None:
+        if not hasattr(client, 'streamsets') or not hasattr(client, 'settings'):
+            raise TypeError('client must expose streamsets and settings')
+        if (
+            not isinstance(max_data_points, int)
+            or isinstance(max_data_points, bool)
+            or max_data_points <= 0
+        ):
+            raise ValueError('max_data_points must be a positive integer')
+        if (
+            not isinstance(interpolated_max_parallel_requests, int)
+            or isinstance(interpolated_max_parallel_requests, bool)
+            or not 1 <= interpolated_max_parallel_requests <= 3
+        ):
+            raise ValueError('interpolated_max_parallel_requests must be between 1 and 3')
+        self._client = client
+        self._max_data_points = max_data_points
+        self._interpolated_max_parallel_requests = interpolated_max_parallel_requests
+        self._counter_lock = Lock()
+
+    @property
+    def interpolated_max_parallel_requests(self) -> int:
+        return self._interpolated_max_parallel_requests
+
+    def acquire(
+        self,
+        *,
+        plan: PiExecutionPlan,
+        window: PiAcquisitionWindow,
+        context: JobRuntimeContext,
+    ) -> PiAcquisitionResult:
+        if not isinstance(plan, PiExecutionPlan):
+            raise TypeError('plan must be a PiExecutionPlan')
+        if not isinstance(window, PiAcquisitionWindow):
+            raise TypeError('window must be a PiAcquisitionWindow')
+        if not isinstance(context, JobRuntimeContext):
+            raise TypeError('context must be a JobRuntimeContext')
+
+        stats = _AcquisitionStats()
+        interpolated = self._acquire_mode(
+            tags=plan.interpolated,
+            mode=PiExtractionMode.INTERPOLATED,
+            window=window,
+            context=context,
+            stats=stats,
+        )
+        recorded = self._acquire_mode(
+            tags=plan.recorded,
+            mode=PiExtractionMode.RECORDED,
+            window=window,
+            context=context,
+            stats=stats,
+        )
+        interpolated, interpolated_conflicts = _deduplicate_samples(interpolated)
+        recorded, recorded_conflicts = _deduplicate_samples(recorded)
+        stats.interpolated_conflicts += interpolated_conflicts
+        stats.recorded_conflicts += recorded_conflicts
+        if stats.interpolated_conflicts:
+            context.logger.warning(
+                'Conflicting interpolated PI samples were resolved by last received value',
+                event_name='pi_web_api.interpolated.conflict',
+                conflict_count=stats.interpolated_conflicts,
+            )
+        if stats.recorded_conflicts:
+            context.logger.warning(
+                'Conflicting recorded PI samples were resolved by last received value',
+                event_name='pi_web_api.recorded.conflict',
+                conflict_count=stats.recorded_conflicts,
+            )
+        if stats.unexpected_records:
+            context.logger.warning(
+                'Unexpected PI streamset records were ignored',
+                event_name='pi_web_api.streamsets.unexpected_records',
+                record_count=stats.unexpected_records,
+            )
+        return PiAcquisitionResult(
+            interpolated=interpolated,
+            recorded=recorded,
+            interpolated_request_count=stats.interpolated_requests,
+            recorded_request_count=stats.recorded_requests,
+            split_count=stats.splits,
+            interpolated_conflict_count=stats.interpolated_conflicts,
+            recorded_conflict_count=stats.recorded_conflicts,
+            unexpected_record_count=stats.unexpected_records,
+        )
+
+    def _acquire_mode(
+        self,
+        *,
+        tags: tuple[ResolvedPiTag, ...],
+        mode: PiExtractionMode,
+        window: PiAcquisitionWindow,
+        context: JobRuntimeContext,
+        stats: _AcquisitionStats,
+    ) -> tuple[PiSample, ...]:
+        if not tags:
+            return ()
+        limit = (
+            self._client.settings.limits.interpolated_max_web_ids
+            if mode is PiExtractionMode.INTERPOLATED
+            else self._client.settings.limits.recorded_max_web_ids
+        )
+        chunks = tuple(tags[offset : offset + limit] for offset in range(0, len(tags), limit))
+        if (
+            mode is PiExtractionMode.INTERPOLATED
+            and self._interpolated_max_parallel_requests > 1
+            and len(chunks) > 1
+        ):
+            return self._acquire_interpolated_parallel(
+                chunks=chunks,
+                window=window,
+                context=context,
+                stats=stats,
+            )
+        samples: list[PiSample] = []
+        for chunk in chunks:
+            samples.extend(
+                self._acquire_chunk(
+                    tags=chunk,
+                    mode=mode,
+                    window=window,
+                    context=context,
+                    stats=stats,
+                )
+            )
+        return tuple(samples)
+
+    def _acquire_interpolated_parallel(
+        self,
+        *,
+        chunks: tuple[tuple[ResolvedPiTag, ...], ...],
+        window: PiAcquisitionWindow,
+        context: JobRuntimeContext,
+        stats: _AcquisitionStats,
+    ) -> tuple[PiSample, ...]:
+        max_workers = min(self._interpolated_max_parallel_requests, len(chunks))
+
+        def execute(index: int, chunk: tuple[ResolvedPiTag, ...]) -> _ParallelChunkResult:
+            local_stats = _AcquisitionStats()
+            try:
+                samples = self._acquire_chunk(
+                    tags=chunk,
+                    mode=PiExtractionMode.INTERPOLATED,
+                    window=window,
+                    context=context,
+                    stats=local_stats,
+                )
+            except Exception as error:
+                return _ParallelChunkResult(
+                    index=index,
+                    samples=(),
+                    stats=local_stats,
+                    error=error,
+                )
+            return _ParallelChunkResult(
+                index=index,
+                samples=samples,
+                stats=local_stats,
+            )
+
+        thread_execute = with_current_context(execute)
+        with ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix='pi-interpolated',
+        ) as executor:
+            futures = [
+                executor.submit(thread_execute, index, chunk) for index, chunk in enumerate(chunks)
+            ]
+            results = tuple(
+                sorted((future.result() for future in futures), key=lambda item: item.index)
+            )
+
+        samples: list[PiSample] = []
+        for result in results:
+            stats.merge(result.stats)
+            samples.extend(result.samples)
+
+        errors = tuple(result.error for result in results if result.error is not None)
+        hard_errors = tuple(
+            error for error in errors if not isinstance(error, PiDataProducerTimeoutExhaustedError)
+        )
+        if hard_errors:
+            raise hard_errors[0]
+        if errors:
+            first_timeout = errors[0]
+            assert isinstance(first_timeout, PiDataProducerTimeoutExhaustedError)
+            raise PiDataProducerTimeoutExhaustedError(
+                phase=first_timeout.phase,
+                retry_count=max(
+                    error.retry_count
+                    for error in errors
+                    if isinstance(error, PiDataProducerTimeoutExhaustedError)
+                ),
+                interpolated_request_count=stats.interpolated_requests,
+                recorded_request_count=stats.recorded_requests,
+                split_count=stats.splits,
+            ) from None
+        return tuple(samples)
+
+    def _acquire_chunk(
+        self,
+        *,
+        tags: tuple[ResolvedPiTag, ...],
+        mode: PiExtractionMode,
+        window: PiAcquisitionWindow,
+        context: JobRuntimeContext,
+        stats: _AcquisitionStats,
+    ) -> tuple[PiSample, ...]:
+        segments = (
+            _segment_for_point_limit(
+                window=window,
+                tag_count=len(tags),
+                max_data_points=self._max_data_points,
+            )
+            if mode is PiExtractionMode.INTERPOLATED
+            else (window,)
+        )
+        samples: list[PiSample] = []
+        for segment in segments:
+            context.raise_if_cancelled()
+            samples.extend(
+                self._fetch_with_recovery(
+                    tags=tags,
+                    mode=mode,
+                    window=segment,
+                    context=context,
+                    stats=stats,
+                )
+            )
+        return tuple(samples)
+
+    def _fetch_with_recovery(
+        self,
+        *,
+        tags: tuple[ResolvedPiTag, ...],
+        mode: PiExtractionMode,
+        window: PiAcquisitionWindow,
+        context: JobRuntimeContext,
+        stats: _AcquisitionStats,
+    ) -> tuple[PiSample, ...]:
+        context.raise_if_cancelled()
+        try:
+            records = self._fetch_with_timeout_retries(
+                tags=tags,
+                mode=mode,
+                window=window,
+                context=context,
+                stats=stats,
+            )
+        except PiDataProducerTimeoutExhaustedError:
+            raise
+        except Exception as error:
+            if not _is_recoverable(error) or not _can_split(window):
+                raise
+            return self._split_and_retry(
+                tags=tags,
+                mode=mode,
+                window=window,
+                context=context,
+                stats=stats,
+                reason_type=type(error).__name__,
+                reason_status_code=(
+                    error.status_code if isinstance(error, PiWebApiStatusError) else None
+                ),
+            )
+        if len(records) > self._max_data_points:
+            if not _can_split(window):
+                raise PiDataProducerAcquisitionError(
+                    'PI Web API response exceeds PI_WEB_API_MAX_DATA_POINTS at minimum window'
+                )
+            return self._split_and_retry(
+                tags=tags,
+                mode=mode,
+                window=window,
+                context=context,
+                stats=stats,
+                reason_type='response_too_large',
+                response_point_count=len(records),
+            )
+        return _map_records(
+            records=records,
+            tags=tags,
+            window=window,
+            stats=stats,
+        )
+
+    def _fetch_with_timeout_retries(
+        self,
+        *,
+        tags: tuple[ResolvedPiTag, ...],
+        mode: PiExtractionMode,
+        window: PiAcquisitionWindow,
+        context: JobRuntimeContext,
+        stats: _AcquisitionStats,
+    ) -> tuple[dict[str, Any], ...]:
+        try:
+            records, _ = execute_with_timeout_retries(
+                lambda: self._fetch(tags=tags, mode=mode, window=window, stats=stats),
+                context=context,
+                operation_name=f'streamsets.{mode.value}',
+                attributes={
+                    'extraction_mode': mode.value,
+                    'first_slot_utc': window.first_slot_utc,
+                    'last_slot_utc': window.last_slot_utc,
+                },
+                counter_lock=self._counter_lock,
+            )
+            return records
+        except PiDataProducerTimeoutExhaustedError as error:
+            raise PiDataProducerTimeoutExhaustedError(
+                phase=error.phase,
+                retry_count=error.retry_count,
+                interpolated_request_count=stats.interpolated_requests,
+                recorded_request_count=stats.recorded_requests,
+                split_count=stats.splits,
+            ) from None
+
+    def _split_and_retry(
+        self,
+        *,
+        tags: tuple[ResolvedPiTag, ...],
+        mode: PiExtractionMode,
+        window: PiAcquisitionWindow,
+        context: JobRuntimeContext,
+        stats: _AcquisitionStats,
+        reason_type: str,
+        reason_status_code: int | None = None,
+        response_point_count: int | None = None,
+    ) -> tuple[PiSample, ...]:
+        left, right = _split_window(window)
+        stats.splits += 1
+        context.logger.warning(
+            'PI window will be split and retried',
+            event_name='pi_web_api.window.split',
+            extraction_mode=mode.value,
+            first_slot_utc=window.first_slot_utc,
+            last_slot_utc=window.last_slot_utc,
+            left_last_slot_utc=left.last_slot_utc,
+            right_first_slot_utc=right.first_slot_utc,
+            reason_type=reason_type,
+            reason_status_code=reason_status_code,
+            response_point_count=response_point_count,
+            max_data_points=self._max_data_points,
+        )
+        return (
+            *self._fetch_with_recovery(
+                tags=tags,
+                mode=mode,
+                window=left,
+                context=context,
+                stats=stats,
+            ),
+            *self._fetch_with_recovery(
+                tags=tags,
+                mode=mode,
+                window=right,
+                context=context,
+                stats=stats,
+            ),
+        )
+
+    def _fetch(
+        self,
+        *,
+        tags: tuple[ResolvedPiTag, ...],
+        mode: PiExtractionMode,
+        window: PiAcquisitionWindow,
+        stats: _AcquisitionStats,
+    ) -> tuple[dict[str, Any], ...]:
+        web_ids = tuple(tag.web_id for tag in tags)
+        end_time = window.last_slot_utc + timedelta(seconds=window.interpolation_seconds)
+        if mode is PiExtractionMode.INTERPOLATED:
+            stats.interpolated_requests += 1
+            return self._client.streamsets.get_interpolated(
+                web_ids,
+                start_time_utc=window.first_slot_utc,
+                end_time_utc=end_time,
+                interpolation_seconds=window.interpolation_seconds,
+            )
+        stats.recorded_requests += 1
+        return self._client.streamsets.get_recorded(
+            web_ids,
+            start_time_utc=window.first_slot_utc,
+            end_time_utc=end_time,
+        )
+
+
+def _segment_for_point_limit(
+    *,
+    window: PiAcquisitionWindow,
+    tag_count: int,
+    max_data_points: int,
+) -> tuple[PiAcquisitionWindow, ...]:
+    if tag_count <= 0:
+        return ()
+    max_samples_per_tag = max_data_points // tag_count
+    max_slots = max_samples_per_tag - 1
+    if max_slots <= 0:
+        raise PiDataProducerAcquisitionError(
+            'PI_WEB_API_MAX_DATA_POINTS is too low for one interpolated slot and tag chunk'
+        )
+    if window.slot_count <= max_slots:
+        return (window,)
+    segments: list[PiAcquisitionWindow] = []
+    first = window.first_slot_utc
+    remaining = window.slot_count
+    while remaining:
+        slot_count = min(max_slots, remaining)
+        last = first + timedelta(seconds=(slot_count - 1) * window.interpolation_seconds)
+        segments.append(
+            PiAcquisitionWindow(
+                first_slot_utc=first,
+                last_slot_utc=last,
+                interpolation_seconds=window.interpolation_seconds,
+                recovery_truncated=window.recovery_truncated,
+            )
+        )
+        remaining -= slot_count
+        first = last + timedelta(seconds=window.interpolation_seconds)
+    return tuple(segments)
+
+
+def _can_split(window: PiAcquisitionWindow) -> bool:
+    span_seconds = window.slot_count * window.interpolation_seconds
+    return window.slot_count > 1 and span_seconds > _MIN_RECOVERY_WINDOW_SECONDS
+
+
+def _split_window(
+    window: PiAcquisitionWindow,
+) -> tuple[PiAcquisitionWindow, PiAcquisitionWindow]:
+    if window.slot_count < 2:
+        raise PiDataProducerAcquisitionError('PI acquisition window cannot be split further')
+    left_count = window.slot_count // 2
+    left_last = window.first_slot_utc + timedelta(
+        seconds=(left_count - 1) * window.interpolation_seconds
+    )
+    right_first = left_last + timedelta(seconds=window.interpolation_seconds)
+    return (
+        PiAcquisitionWindow(
+            first_slot_utc=window.first_slot_utc,
+            last_slot_utc=left_last,
+            interpolation_seconds=window.interpolation_seconds,
+            recovery_truncated=window.recovery_truncated,
+        ),
+        PiAcquisitionWindow(
+            first_slot_utc=right_first,
+            last_slot_utc=window.last_slot_utc,
+            interpolation_seconds=window.interpolation_seconds,
+            recovery_truncated=window.recovery_truncated,
+        ),
+    )
+
+
+def _is_recoverable(error: BaseException) -> bool:
+    if isinstance(error, PiWebApiConnectionError):
+        return True
+    if isinstance(error, PiWebApiStatusError):
+        return error.status_code in _RECOVERABLE_STATUS_CODES or error.status_code >= 500
+    return False
+
+
+def _map_records(
+    *,
+    records: tuple[dict[str, Any], ...],
+    tags: tuple[ResolvedPiTag, ...],
+    window: PiAcquisitionWindow,
+    stats: _AcquisitionStats,
+) -> tuple[PiSample, ...]:
+    expected = {tag.tag_name.casefold(): tag.tag_name for tag in tags}
+    end_exclusive = window.last_slot_utc + timedelta(seconds=window.interpolation_seconds)
+    samples: list[PiSample] = []
+    for record in records:
+        if not isinstance(record, Mapping):
+            stats.unexpected_records += 1
+            continue
+        name = record.get('name')
+        timestamp = record.get('timestamp')
+        if not isinstance(name, str) or name.casefold() not in expected:
+            stats.unexpected_records += 1
+            continue
+        parsed = _parse_timestamp(timestamp)
+        if parsed is None:
+            stats.unexpected_records += 1
+            continue
+        if not window.first_slot_utc <= parsed < end_exclusive:
+            continue
+        samples.append(
+            PiSample(
+                tag_name=expected[name.casefold()],
+                timestamp_utc=parsed,
+                value=record.get('value'),
+            )
+        )
+    return tuple(samples)
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    candidate = value[:-1] + '+00:00' if value.endswith('Z') else value
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
+def _deduplicate_samples(samples: tuple[PiSample, ...]) -> tuple[tuple[PiSample, ...], int]:
+    selected: dict[tuple[str, datetime], PiSample] = {}
+    conflicts = 0
+    for sample in samples:
+        key = (sample.tag_name.casefold(), sample.timestamp_utc)
+        previous = selected.get(key)
+        if previous is not None and previous.value != sample.value:
+            conflicts += 1
+        selected[key] = sample
+    return tuple(selected.values()), conflicts

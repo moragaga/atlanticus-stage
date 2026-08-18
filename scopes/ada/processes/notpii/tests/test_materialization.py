@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 import pandas as pd
 import pyarrow as pa
 
-from ada.connectors.notpii import NotPiiBatch
 from ada.processes.notpii.materialization import NotPiiMaterializer
+from atlanticus.data_producers.notpii import NotPiiBatch
 from atlanticus.datasets.parquet import ParquetDatasetStore
 from atlanticus.datasets.runtime import DatasetRuntime
 from atlanticus.integrations.pi.contracts import (
