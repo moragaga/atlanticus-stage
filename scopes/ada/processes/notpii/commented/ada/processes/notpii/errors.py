@@ -1,14 +1,13 @@
-# Fachada o composición ADA sobre el productor NOT PII global.
-from atlanticus.data_producers.notpii.errors import (
-    NotPiiCatalogError,
-    NotPiiMaterializationError,
-    NotPiiProcessConfigurationError,
-    NotPiiProcessError,
-)
+# Error base de la composición NOTPII específica de ADA.
+class NotPiiProcessError(RuntimeError):
+    pass
 
-__all__ = [
-    'NotPiiCatalogError',
-    'NotPiiMaterializationError',
-    'NotPiiProcessConfigurationError',
-    'NotPiiProcessError',
-]
+
+# Error de configuración del proceso; también se comporta como ValueError.
+class NotPiiProcessConfigurationError(NotPiiProcessError, ValueError):
+    pass
+
+
+# Error del catálogo concreto que ADA entrega al producer NOTPII.
+class NotPiiCatalogError(ValueError):
+    pass

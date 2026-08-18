@@ -1,24 +1,13 @@
-# Espejo comentado del proceso ADA PI Web API: errors.py
-from atlanticus.data_producers.pi.errors import (
-    PiDataProducerAcquisitionError,
-    PiDataProducerCatalogError,
-    PiDataProducerError,
-    PiDataProducerMaterializationError,
-    PiDataProducerPlannerError,
-    PiDataProducerTimeoutExhaustedError,
-    PiDataProducerWatermarkError,
-    PiDataProducerWebIdRegistryError,
-)
-
-PiWebApiProcessError = PiDataProducerError
-PiWebApiCatalogError = PiDataProducerCatalogError
-PiWebApiWebIdRegistryError = PiDataProducerWebIdRegistryError
-PiWebApiWatermarkError = PiDataProducerWatermarkError
-PiWebApiPlannerError = PiDataProducerPlannerError
-PiWebApiAcquisitionError = PiDataProducerAcquisitionError
-PiWebApiTimeoutExhaustedError = PiDataProducerTimeoutExhaustedError
-PiWebApiMaterializationError = PiDataProducerMaterializationError
+# Error base de la composición PI Web API específica de ADA.
+class PiWebApiProcessError(RuntimeError):
+    pass
 
 
-class PiWebApiProcessConfigurationError(PiDataProducerError):
+# Error de configuración resuelta para el proceso PI Web API.
+class PiWebApiProcessConfigurationError(PiWebApiProcessError, ValueError):
+    pass
+
+
+# Error del catálogo concreto que ADA entrega al producer PI.
+class PiWebApiCatalogError(ValueError):
     pass

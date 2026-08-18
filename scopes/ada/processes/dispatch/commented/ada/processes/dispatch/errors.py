@@ -1,23 +1,13 @@
-# Conserva errores propios del proceso y reexporta errores técnicos comunes.
-from atlanticus.data_producers.sql import (
-    SqlDataProducerMaterializationError,
-    SqlDataProducerReadError,
-    SqlDataProducerSchemaError,
-)
-
-
+# Error base exclusivo de la composición Dispatch de ADA.
 class DispatchProcessError(RuntimeError):
     pass
 
 
+# Error de configuración resuelta para este proceso concreto.
 class DispatchProcessConfigurationError(DispatchProcessError):
     pass
 
 
+# Error de definición del catálogo concreto de Dispatch.
 class DispatchCatalogError(ValueError):
     pass
-
-
-DispatchSqlReadError = SqlDataProducerReadError
-DispatchSchemaError = SqlDataProducerSchemaError
-DispatchMaterializationError = SqlDataProducerMaterializationError

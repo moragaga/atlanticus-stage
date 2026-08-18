@@ -16,9 +16,3 @@ class NotPiiMaterializationError(NotPiiDataProducerError):
 
 class NotPiiSourceError(NotPiiDataProducerError):
     pass
-
-
-NotPiiConnectorError = NotPiiDataProducerError
-NotPiiConfigurationError = NotPiiDataProducerConfigurationError
-NotPiiProcessError = NotPiiDataProducerError
-NotPiiProcessConfigurationError = NotPiiDataProducerConfigurationError

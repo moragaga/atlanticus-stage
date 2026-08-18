@@ -1,23 +1,10 @@
-from atlanticus.data_producers.pi.errors import (
-    PiDataProducerAcquisitionError,
-    PiDataProducerCatalogError,
-    PiDataProducerError,
-    PiDataProducerMaterializationError,
-    PiDataProducerPlannerError,
-    PiDataProducerTimeoutExhaustedError,
-    PiDataProducerWatermarkError,
-    PiDataProducerWebIdRegistryError,
-)
-
-PiWebApiProcessError = PiDataProducerError
-PiWebApiCatalogError = PiDataProducerCatalogError
-PiWebApiWebIdRegistryError = PiDataProducerWebIdRegistryError
-PiWebApiWatermarkError = PiDataProducerWatermarkError
-PiWebApiPlannerError = PiDataProducerPlannerError
-PiWebApiAcquisitionError = PiDataProducerAcquisitionError
-PiWebApiTimeoutExhaustedError = PiDataProducerTimeoutExhaustedError
-PiWebApiMaterializationError = PiDataProducerMaterializationError
+class PiWebApiProcessError(RuntimeError):
+    pass
 
 
-class PiWebApiProcessConfigurationError(PiDataProducerError):
+class PiWebApiProcessConfigurationError(PiWebApiProcessError, ValueError):
+    pass
+
+
+class PiWebApiCatalogError(ValueError):
     pass

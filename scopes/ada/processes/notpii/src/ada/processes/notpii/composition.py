@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 
@@ -8,15 +8,11 @@ from ada.processes.notpii.catalog import active_extraction_modes, build_catalog
 from ada.processes.notpii.errors import NotPiiCatalogError
 from ada.processes.notpii.settings import NotPiiSettings
 from atlanticus.configuration import ResolvedConfiguration
-from atlanticus.connectivity.service_bus import ServiceBusTopicReceiver
 from atlanticus.data_producers.notpii import (
     NotPiiDataProducerComponents,
-    NotPiiJob,
-    NotPiiProcessor,
-    NotPiiProducerState,
     build_notpii_data_producer,
 )
-from atlanticus.integrations.pi.contracts import NotPiiSource, PiCatalog, PiExtractionMode
+from atlanticus.integrations.pi.contracts import NotPiiSource, PiCatalog
 from atlanticus.runtime import (
     JobDefinition,
     RuntimeConfiguration,
@@ -47,18 +43,14 @@ class NotPiiComposition:
     settings: NotPiiSettings
     catalog: PiCatalog
     producer: NotPiiDataProducerComponents
-    receivers: Mapping[PiExtractionMode, ServiceBusTopicReceiver]
-    processors: Mapping[PiExtractionMode, NotPiiProcessor]
-    producer_state: NotPiiProducerState
-    job: NotPiiJob
 
     def execute(self, *, argv: Sequence[str] | None = None) -> RuntimeExecutionResult:
         with ExitStack() as stack:
-            for receiver in self.receivers.values():
+            for receiver in self.producer.receivers.values():
                 stack.enter_context(receiver)
             return execute_job(
                 definition=NOTPII_JOB_DEFINITION,
-                iteration=self.job.run_iteration,
+                iteration=self.producer.job.run_iteration,
                 argv=argv,
                 environ=self.configuration.values,
             )
@@ -97,8 +89,4 @@ def build_composition(
         settings=settings,
         catalog=resolved_catalog,
         producer=producer,
-        receivers=producer.receivers,
-        processors=producer.processors,
-        producer_state=producer.producer_state,
-        job=producer.job,
     )

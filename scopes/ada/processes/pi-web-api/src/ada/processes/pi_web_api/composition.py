@@ -7,18 +7,7 @@ from ada.processes.pi_web_api.catalog import build_catalog
 from ada.processes.pi_web_api.errors import PiWebApiCatalogError
 from ada.processes.pi_web_api.settings import PiWebApiProcessSettings
 from atlanticus.configuration import ResolvedConfiguration
-from atlanticus.data_producers.pi import (
-    PiDataProducerComponents,
-    PiDataProducerJob,
-    PiDataProducerMaterializer,
-    PiProducerState,
-    PiSlotPlanner,
-    PiSourceState,
-    PiStreamSetAcquirer,
-    PiWatermarkCoordinator,
-    WebIdRegistry,
-    build_pi_data_producer,
-)
+from atlanticus.data_producers.pi import PiDataProducerComponents, build_pi_data_producer
 from atlanticus.integrations.pi.contracts import PiCatalog, PiWebApiSource
 from atlanticus.integrations.pi.web_api import PiWebApiClient
 from atlanticus.runtime import (
@@ -53,47 +42,11 @@ class PiWebApiComposition:
     client: PiWebApiClient
     producer: PiDataProducerComponents
 
-    @property
-    def registry(self) -> WebIdRegistry:
-        return self.producer.registry
-
-    @property
-    def planner(self) -> PiSlotPlanner:
-        return self.producer.planner
-
-    @property
-    def dataset_runtime(self):
-        return self.producer.dataset_runtime
-
-    @property
-    def acquirer(self) -> PiStreamSetAcquirer:
-        return self.producer.acquirer
-
-    @property
-    def materializer(self) -> PiDataProducerMaterializer:
-        return self.producer.materializer
-
-    @property
-    def producer_state(self) -> PiProducerState:
-        return self.producer.producer_state
-
-    @property
-    def source_state(self) -> PiSourceState:
-        return self.producer.source_state
-
-    @property
-    def watermarks(self) -> PiWatermarkCoordinator:
-        return self.producer.watermarks
-
-    @property
-    def job(self) -> PiDataProducerJob:
-        return self.producer.job
-
     def execute(self, *, argv: Sequence[str] | None = None) -> RuntimeExecutionResult:
         with self.client:
             return execute_job(
                 definition=PI_WEB_API_JOB_DEFINITION,
-                iteration=self.job.run_iteration,
+                iteration=self.producer.job.run_iteration,
                 argv=argv,
                 environ=self.configuration.values,
             )

@@ -1,54 +1,37 @@
-from pkgutil import extend_path
+from __future__ import annotations
 
-from ada.processes.notpii.bootstrap import load_configuration, run
-from ada.processes.notpii.catalog import build_catalog
-from ada.processes.notpii.composition import (
-    NOTPII_JOB_DEFINITION,
-    NotPiiComposition,
-    build_composition,
-)
-from ada.processes.notpii.errors import (
-    NotPiiCatalogError,
-    NotPiiMaterializationError,
-    NotPiiProcessConfigurationError,
-    NotPiiProcessError,
-)
-from ada.processes.notpii.job import NotPiiJob
-from ada.processes.notpii.materialization import NotPiiMaterializer
-from ada.processes.notpii.models import NotPiiProcessingResult
-from ada.processes.notpii.processor import NotPiiProcessor
-from ada.processes.notpii.producer_state import (
-    NotPiiProducerManifest,
-    NotPiiProducerState,
-    NotPiiStreamObservation,
-    NotPiiStreamState,
-)
-from ada.processes.notpii.settings import NotPiiSettings, configuration_specs
-
-__path__ = extend_path(__path__, __name__)
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
 
 __version__ = '0.1.0'
 
 __all__ = [
-    'NOTPII_JOB_DEFINITION',
-    'NotPiiCatalogError',
-    'NotPiiComposition',
-    'NotPiiJob',
-    'NotPiiMaterializationError',
-    'NotPiiMaterializer',
-    'NotPiiProcessConfigurationError',
-    'NotPiiProcessError',
-    'NotPiiProcessingResult',
-    'NotPiiProcessor',
-    'NotPiiProducerManifest',
-    'NotPiiProducerState',
-    'NotPiiSettings',
-    'NotPiiStreamObservation',
-    'NotPiiStreamState',
     '__version__',
     'build_catalog',
     'build_composition',
-    'configuration_specs',
-    'load_configuration',
     'run',
 ]
+
+
+def build_catalog() -> Any:
+    from ada.processes.notpii.catalog import build_catalog as _build_catalog
+
+    return _build_catalog()
+
+
+def build_composition(*, configuration: Any, catalog: Any = None) -> Any:
+    from ada.processes.notpii.composition import build_composition as _build_composition
+
+    return _build_composition(configuration=configuration, catalog=catalog)
+
+
+def run(
+    *,
+    argv: Sequence[str] | None = None,
+    environ: Mapping[str, str] | None = None,
+    process_root: str | Path | None = None,
+) -> Any:
+    from ada.processes.notpii.bootstrap import run as _run
+
+    return _run(argv=argv, environ=environ, process_root=process_root)

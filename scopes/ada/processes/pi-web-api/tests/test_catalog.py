@@ -1,6 +1,6 @@
 import pytest
 
-from ada.processes.pi_web_api import PiWebApiCatalogError
+from ada.processes.pi_web_api.errors import PiWebApiCatalogError
 from atlanticus.integrations.pi.contracts import (
     PiExtractionMode,
     PiMaterialization,

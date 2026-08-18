@@ -12,13 +12,6 @@ _DEFAULT_RETRY_ATTEMPTS = 10
 _DEFAULT_RETRY_DELAY_SECONDS = 5.0
 
 
-class BlockgradeSqlRetryPolicy(SqlRetryPolicy):
-    @classmethod
-    def from_mapping(cls, values):
-        resolved = SqlRetryPolicy.from_mapping(values, prefix=BLOCKGRADE_SQL_SUFFIX)
-        return cls(attempts=resolved.attempts, delay_seconds=resolved.delay_seconds)
-
-
 @dataclass(frozen=True, slots=True)
 class BlockgradeSettings:
     sql: SqlSettings

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from ada.processes.pi_web_api import PI_WEB_API_JOB_DEFINITION, build_composition
+from ada.processes.pi_web_api.composition import PI_WEB_API_JOB_DEFINITION, build_composition
 from atlanticus.integrations.pi.web_api import PiPointWebIdResult
 from atlanticus.runtime import JobRuntimeContext, RuntimeConfiguration
 
@@ -96,13 +96,13 @@ def test_composition_defers_webid_preparation_until_runtime(
     monkeypatch.setattr(composition_module, 'PiWebApiClient', FakeClient)
     composition = build_composition(configuration=configuration, catalog=catalog)
 
-    assert composition.job.preparation is None
+    assert composition.producer.job.preparation is None
     assert composition.client.open_count == 0
     assert composition.client.close_count == 0
-    assert composition.planner.interpolation_seconds == 10
-    assert composition.planner.max_recovery_lookback_seconds == 3600
-    assert composition.planner.max_recovery_window_seconds == 3600
-    assert composition.acquirer.interpolated_max_parallel_requests == 3
+    assert composition.producer.planner.interpolation_seconds == 10
+    assert composition.producer.planner.max_recovery_lookback_seconds == 3600
+    assert composition.producer.planner.max_recovery_window_seconds == 3600
+    assert composition.producer.acquirer.interpolated_max_parallel_requests == 3
     assert composition.settings.max_data_points == 150000
 
 
@@ -139,5 +139,7 @@ def test_execute_keeps_pi_client_open_while_runtime_invokes_job(
     assert composition.client.open_count == 1
     assert composition.client.close_count == 1
     assert composition.client.points.calls == [('TAG_A', 'TAG_B')]
-    assert composition.job.preparation is not None
-    assert [item.tag_name for item in composition.job.preparation.plan.interpolated] == ['TAG_A']
+    assert composition.producer.job.preparation is not None
+    assert [item.tag_name for item in composition.producer.job.preparation.plan.interpolated] == [
+        'TAG_A'
+    ]

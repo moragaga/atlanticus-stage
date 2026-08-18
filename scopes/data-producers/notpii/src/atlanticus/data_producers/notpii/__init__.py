@@ -5,13 +5,9 @@ from atlanticus.data_producers.notpii.composition import (
 from atlanticus.data_producers.notpii.connector import NotPiiConnector, decode_message
 from atlanticus.data_producers.notpii.errors import (
     NotPiiCatalogError,
-    NotPiiConfigurationError,
-    NotPiiConnectorError,
     NotPiiDataProducerConfigurationError,
     NotPiiDataProducerError,
     NotPiiMaterializationError,
-    NotPiiProcessConfigurationError,
-    NotPiiProcessError,
     NotPiiSourceError,
 )
 from atlanticus.data_producers.notpii.job import NotPiiJob
@@ -35,17 +31,13 @@ __all__ = [
     'NotPiiBatch',
     'NotPiiBlobMessage',
     'NotPiiCatalogError',
-    'NotPiiConfigurationError',
     'NotPiiConnector',
-    'NotPiiConnectorError',
     'NotPiiDataProducerComponents',
     'NotPiiDataProducerConfigurationError',
     'NotPiiDataProducerError',
     'NotPiiJob',
     'NotPiiMaterializationError',
     'NotPiiMaterializer',
-    'NotPiiProcessConfigurationError',
-    'NotPiiProcessError',
     'NotPiiProcessingResult',
     'NotPiiProcessor',
     'NotPiiProducerManifest',

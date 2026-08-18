@@ -1,4 +1,3 @@
-# Compone Dispatch como consumidor del SQL Data Producer conservando su runtime y rutas.
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -36,6 +35,7 @@ DISPATCH_JOB_DEFINITION = JobDefinition(
 )
 
 
+# La composición conserva sólo contexto ADA y una referencia al producer reutilizable.
 @dataclass(slots=True)
 class DispatchComposition:
     configuration: ResolvedConfiguration
@@ -43,30 +43,6 @@ class DispatchComposition:
     settings: DispatchSettings
     catalog: tuple[SqlSourceDefinition, ...]
     producer: SqlDataProducerComponents
-
-    @property
-    def reader(self):
-        return self.producer.reader
-
-    @property
-    def producer_state(self):
-        return self.producer.producer_state
-
-    @property
-    def planner(self):
-        return self.producer.planner
-
-    @property
-    def materializer(self):
-        return self.producer.materializer
-
-    @property
-    def processor(self):
-        return self.producer.processor
-
-    @property
-    def job(self):
-        return self.producer.job
 
     def execute(self, *, argv: Sequence[str] | None = None) -> RuntimeExecutionResult:
         return execute_job(
@@ -77,6 +53,7 @@ class DispatchComposition:
         )
 
 
+# Construye el producer con las decisiones concretas de este proceso.
 def build_composition(
     *,
     configuration: ResolvedConfiguration,

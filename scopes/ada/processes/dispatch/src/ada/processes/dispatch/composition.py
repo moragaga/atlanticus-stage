@@ -43,30 +43,6 @@ class DispatchComposition:
     catalog: tuple[SqlSourceDefinition, ...]
     producer: SqlDataProducerComponents
 
-    @property
-    def reader(self):
-        return self.producer.reader
-
-    @property
-    def producer_state(self):
-        return self.producer.producer_state
-
-    @property
-    def planner(self):
-        return self.producer.planner
-
-    @property
-    def materializer(self):
-        return self.producer.materializer
-
-    @property
-    def processor(self):
-        return self.producer.processor
-
-    @property
-    def job(self):
-        return self.producer.job
-
     def execute(self, *, argv: Sequence[str] | None = None) -> RuntimeExecutionResult:
         return execute_job(
             definition=DISPATCH_JOB_DEFINITION,

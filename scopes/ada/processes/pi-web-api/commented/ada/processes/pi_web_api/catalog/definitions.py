@@ -1,11 +1,38 @@
 # Catálogo concreto del process PI Web API.
-# El motor permanece genérico; las definiciones de tags se agregan aquí de forma explícita.
-# Mantener este archivo sin credenciales ni lógica de adquisición/materialización.
+# Los tags permanecen en ADA; adquisición, planificación y materialización viven en Data Producers.
 
-from atlanticus.integrations.pi.contracts import PiTagDefinition, PiWebApiSource
+from atlanticus.integrations.pi.contracts import (
+    PiExtractionMode,
+    PiMaterialization,
+    PiTagDefinition,
+    PiValueKind,
+    PiWebApiSource,
+)
 
-# Intervalo transversal usado por el planner para INTERPOLATED y por las ventanas de consulta.
+# Intervalo común del catálogo PI Web API.
 SOURCE = PiWebApiSource(interpolation_seconds=10)
 
-# Zona de desarrollo: agregar PiTagDefinition productivas antes de ejecutar el process.
-DEFINITIONS: tuple[PiTagDefinition, ...] = ()
+# Definiciones concretas usadas por ADA para esta fuente.
+DEFINITIONS: tuple[PiTagDefinition, ...] = (
+    PiTagDefinition(
+        tag_name='ML001ARUN',
+        alias='estado_sag_1_inst',
+        value_kind=PiValueKind.TEXT,
+        extraction_mode=PiExtractionMode.INTERPOLATED,
+        materializations=(PiMaterialization.LATEST,),
+    ),
+    PiTagDefinition(
+        tag_name='320:L1.F80(INCH)',
+        alias='f80_sag_1_inst',
+        value_kind=PiValueKind.NUMBER,
+        extraction_mode=PiExtractionMode.INTERPOLATED,
+        materializations=(PiMaterialization.DAILY,),
+    ),
+    PiTagDefinition(
+        tag_name='330:RECCU_AJUST.H',
+        alias='recuperacion_ajustada_hora_inst',
+        value_kind=PiValueKind.NUMBER,
+        extraction_mode=PiExtractionMode.RECORDED,
+        materializations=(PiMaterialization.MONTHLY,),
+    ),
+)

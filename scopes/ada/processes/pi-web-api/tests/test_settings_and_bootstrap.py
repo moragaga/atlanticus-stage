@@ -3,12 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from ada.processes.pi_web_api import (
-    PiWebApiProcessConfigurationError,
-    PiWebApiProcessSettings,
-    configuration_specs,
-    load_configuration,
-)
+from ada.processes.pi_web_api.bootstrap import load_configuration
+from ada.processes.pi_web_api.errors import PiWebApiProcessConfigurationError
+from ada.processes.pi_web_api.settings import PiWebApiProcessSettings, configuration_specs
 from atlanticus.connectivity.http import HttpAuthMode
 
 

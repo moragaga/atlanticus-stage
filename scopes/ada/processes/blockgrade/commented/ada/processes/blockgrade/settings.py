@@ -1,4 +1,3 @@
-# Conserva la configuración BLOCKGRADE y delega la política de retry al scope global.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,18 +7,13 @@ from atlanticus.configuration import ConfigurationVariableSpec, ResolvedConfigur
 from atlanticus.connectivity.sql import SqlSettings, build_sql_configuration_keys
 from atlanticus.data_producers.sql import SqlRetryPolicy
 
+# Sufijo de la conexión SQL nombrada que pertenece a Blockgrade.
 BLOCKGRADE_SQL_SUFFIX = 'BLOCKGRADE'
 _DEFAULT_RETRY_ATTEMPTS = 10
 _DEFAULT_RETRY_DELAY_SECONDS = 5.0
 
 
-class BlockgradeSqlRetryPolicy(SqlRetryPolicy):
-    @classmethod
-    def from_mapping(cls, values):
-        resolved = SqlRetryPolicy.from_mapping(values, prefix=BLOCKGRADE_SQL_SUFFIX)
-        return cls(attempts=resolved.attempts, delay_seconds=resolved.delay_seconds)
-
-
+# Configuración concreta que ADA entrega al producer SQL reutilizable.
 @dataclass(frozen=True, slots=True)
 class BlockgradeSettings:
     sql: SqlSettings
@@ -43,6 +37,7 @@ class BlockgradeSettings:
         )
 
 
+# Contrato de variables del proceso; la mecánica SQL permanece en Data Producers.
 def configuration_specs() -> tuple[ConfigurationVariableSpec, ...]:
     keys = build_sql_configuration_keys(suffix=BLOCKGRADE_SQL_SUFFIX)
     return (
