@@ -1,0 +1,58 @@
+from ada.processes.blockgrade.models import (
+    BlockgradeColumnDefinition,
+    BlockgradeLoadStrategy,
+    BlockgradeSourceDefinition,
+    BlockgradeStorageMode,
+    BlockgradeValueKind,
+)
+
+EXAMPLE_DEFINITIONS = (
+    BlockgradeSourceDefinition(
+        source_key='shift_source',
+        source_table='dbo.shift_source',
+        enabled=True,
+        storage_mode=BlockgradeStorageMode.SHIFT,
+        load_strategy=BlockgradeLoadStrategy.SHIFT_WINDOW,
+        shift_id_column='ShiftId',
+        source_last_update_output_column='event_time',
+        columns=(
+            BlockgradeColumnDefinition(
+                source_name='ShiftId',
+                output_name='shift_id',
+                value_kind=BlockgradeValueKind.INTEGER,
+                required=True,
+            ),
+            BlockgradeColumnDefinition(
+                source_name='EventTime',
+                output_name='event_time',
+                value_kind=BlockgradeValueKind.DATETIME,
+                source_timezone='America/Santiago',
+            ),
+            BlockgradeColumnDefinition(
+                source_name='Value',
+                output_name='value',
+                value_kind=BlockgradeValueKind.FLOAT,
+            ),
+        ),
+    ),
+    BlockgradeSourceDefinition(
+        source_key='snapshot_source',
+        source_table='dbo.snapshot_source',
+        enabled=False,
+        storage_mode=BlockgradeStorageMode.LATEST,
+        load_strategy=BlockgradeLoadStrategy.FULL_SNAPSHOT,
+        columns=(
+            BlockgradeColumnDefinition(
+                source_name='Id',
+                output_name='id',
+                value_kind=BlockgradeValueKind.INTEGER,
+                required=True,
+            ),
+            BlockgradeColumnDefinition(
+                source_name='Name',
+                output_name='name',
+                value_kind=BlockgradeValueKind.TEXT,
+            ),
+        ),
+    ),
+)
