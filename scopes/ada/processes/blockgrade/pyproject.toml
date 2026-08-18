@@ -11,7 +11,8 @@ classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "ada-operational-calendar==0.2.0",
     "atlanticus-configuration==0.1.0",
-    "atlanticus-data-producers==0.1.0",
+    "atlanticus-data-producers-core==0.1.0",
+    "atlanticus-data-producers-sql==0.1.0",
     "atlanticus-job-runtime==0.5.0",
     "atlanticus-kernel==0.1.0",
     "atlanticus-key-vault==0.1.0",
@@ -30,7 +31,8 @@ command = "ada-blockgrade"
 system-profile = "sqlserver"
 
 [tool.uv.sources]
-atlanticus-data-producers = { path = "../../../data-producers", editable = true }
+atlanticus-data-producers-core = { path = "../../../data-producers/core", editable = true }
+atlanticus-data-producers-sql = { path = "../../../data-producers/sql", editable = true }
 ada-operational-calendar = { path = "../../operational-calendar", editable = true }
 atlanticus-configuration = { path = "../../../../backend/configuration", editable = true }
 atlanticus-job-runtime = { path = "../../../../backend/runtime", editable = true }

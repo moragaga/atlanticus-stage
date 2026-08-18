@@ -1,43 +1,42 @@
-# Expone la API pública de Data Producers sin introducir conocimiento de scopes consumidores.
-from atlanticus.data_producers.core import SourceScope, SourceScopeItem, SourceScopeProvider
-from atlanticus.data_producers.sql import (
-    DataValueKind,
-    SqlColumnDefinition,
+from atlanticus.data_producers.sql.composition import (
     SqlDataProducerComponents,
+    build_sql_data_producer,
+)
+from atlanticus.data_producers.sql.contracts import SqlSourceExecutor
+from atlanticus.data_producers.sql.curation import curate_table, source_last_update_utc
+from atlanticus.data_producers.sql.errors import (
     SqlDataProducerError,
-    SqlDataProducerJob,
     SqlDataProducerMaterializationError,
-    SqlDataProducerMaterializer,
-    SqlDataProducerPlanner,
-    SqlDataProducerProcessor,
-    SqlDataProducerReader,
     SqlDataProducerReadError,
     SqlDataProducerSchemaError,
+)
+from atlanticus.data_producers.sql.extraction import SqlDataProducerReader, build_select
+from atlanticus.data_producers.sql.job import SqlDataProducerJob
+from atlanticus.data_producers.sql.materialization import SqlDataProducerMaterializer
+from atlanticus.data_producers.sql.models import (
+    DataValueKind,
+    SqlColumnDefinition,
     SqlExecutionPlan,
     SqlLoadStrategy,
-    SqlProducerState,
     SqlPublicationResult,
-    SqlRetryPolicy,
     SqlSourceDefinition,
     SqlSourceExecutionResult,
-    SqlSourceExecutor,
     SqlSourcePlan,
-    SqlSourceState,
     SqlStorageMode,
-    build_select,
-    build_sql_data_producer,
-    curate_table,
-    marker_changed,
-    source_last_update_utc,
 )
+from atlanticus.data_producers.sql.planning import SqlDataProducerPlanner
+from atlanticus.data_producers.sql.processor import SqlDataProducerProcessor
+from atlanticus.data_producers.sql.producer_state import (
+    SqlProducerState,
+    SqlSourceState,
+    marker_changed,
+)
+from atlanticus.data_producers.sql.settings import SqlRetryPolicy
 
 __version__ = '0.1.0'
 
 __all__ = [
     'DataValueKind',
-    'SourceScope',
-    'SourceScopeItem',
-    'SourceScopeProvider',
     'SqlColumnDefinition',
     'SqlDataProducerComponents',
     'SqlDataProducerError',

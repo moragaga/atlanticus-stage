@@ -4,8 +4,8 @@ from pathlib import Path
 
 def test_commented_tree_is_behaviorally_equivalent() -> None:
     project_root = Path(__file__).resolve().parents[1]
-    source_root = project_root / 'src' / 'atlanticus' / 'data_producers'
-    commented_root = project_root / 'commented' / 'atlanticus' / 'data_producers'
+    source_root = project_root / 'src' / 'atlanticus' / 'data_producers' / 'core'
+    commented_root = project_root / 'commented' / 'atlanticus' / 'data_producers' / 'core'
     source_files = sorted(path.relative_to(source_root) for path in source_root.rglob('*.py'))
     commented_files = sorted(
         path.relative_to(commented_root) for path in commented_root.rglob('*.py')

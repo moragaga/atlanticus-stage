@@ -2,8 +2,10 @@ import ast
 from pathlib import Path
 
 
-def test_data_producers_do_not_depend_on_ada() -> None:
-    source_root = Path(__file__).resolve().parents[1] / 'src' / 'atlanticus' / 'data_producers'
+def test_sql_producer_does_not_depend_on_ada() -> None:
+    source_root = (
+        Path(__file__).resolve().parents[1] / 'src' / 'atlanticus' / 'data_producers' / 'sql'
+    )
 
     for path in source_root.rglob('*.py'):
         tree = ast.parse(path.read_text())

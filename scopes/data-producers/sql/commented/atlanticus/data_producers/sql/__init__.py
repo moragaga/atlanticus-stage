@@ -1,3 +1,4 @@
+# Expone la implementación SQL actual del Data Producer.
 from atlanticus.data_producers.sql.composition import (
     SqlDataProducerComponents,
     build_sql_data_producer,
@@ -33,6 +34,8 @@ from atlanticus.data_producers.sql.producer_state import (
 )
 from atlanticus.data_producers.sql.settings import SqlRetryPolicy
 
+__version__ = '0.1.0'
+
 __all__ = [
     'DataValueKind',
     'SqlColumnDefinition',
@@ -57,6 +60,7 @@ __all__ = [
     'SqlSourcePlan',
     'SqlSourceState',
     'SqlStorageMode',
+    '__version__',
     'build_select',
     'build_sql_data_producer',
     'curate_table',
