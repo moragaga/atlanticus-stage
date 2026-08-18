@@ -90,6 +90,11 @@ def test_build_process_bundle_publishes_runtime_only_transport_bundle(
         command='ada-sample',
         system_profile='base',
     )
+    with (process_root / 'pyproject.toml').open('a', encoding='utf-8') as handle:
+        handle.write(
+            '\n[tool.uv.sources]\n'
+            'atlanticus-dependency = { path = "../../../../backend/dependency", editable = true }\n'
+        )
     _write_project(dependency, name='atlanticus-dependency')
     (process_root / '.python-version').write_text('3.14.2\n', encoding='utf-8')
     (process_root / '.env').write_text('SECRET=must-not-travel\n', encoding='utf-8')
@@ -164,6 +169,23 @@ def test_build_process_bundle_publishes_runtime_only_transport_bundle(
     exported = tomllib.loads((result / 'pyproject.toml').read_text(encoding='utf-8'))
     assert exported['tool']['uv']['default-groups'] == []
     assert exported['tool']['uv']['sources']['atlanticus-dependency']['path'].startswith('wheels/')
+
+
+def test_remove_uv_sources_section_keeps_other_tool_uv_configuration() -> None:
+    source = (
+        '[project]\nname = "sample"\n\n'
+        '[tool.uv]\nmanaged = true\n\n'
+        '[tool.uv.sources]\n'
+        'atlanticus-local = { path = "../../backend/local", editable = true }\n\n'
+        '[tool.pytest.ini_options]\naddopts = "-q"\n'
+    )
+
+    exported = process_bundle._remove_uv_sources_section(source)
+    parsed = tomllib.loads(exported)
+
+    assert parsed['tool']['uv']['managed'] is True
+    assert 'sources' not in parsed['tool']['uv']
+    assert parsed['tool']['pytest']['ini_options']['addopts'] == '-q'
 
 
 def test_insert_export_uv_defaults_reuses_existing_tool_uv_section() -> None:

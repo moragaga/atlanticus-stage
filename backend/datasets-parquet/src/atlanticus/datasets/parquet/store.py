@@ -16,15 +16,12 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from atlanticus.datasets import (
-    DatasetDefinition,
-    DatasetPartKey,
+from atlanticus.datasets.layouts import FileSetLayout, SingleArtifactLayout
+from atlanticus.datasets.models import DatasetDefinition, DatasetPartKey, DatasetTarget
+from atlanticus.datasets.results import (
     DatasetPublicationResult,
-    DatasetTarget,
-    FileSetLayout,
     PublicationQuality,
     PublicationStatus,
-    SingleArtifactLayout,
 )
 from atlanticus.datasets.parquet.errors import (
     ParquetCorruptionError,

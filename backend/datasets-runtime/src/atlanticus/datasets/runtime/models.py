@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import pandas as pd
 import pyarrow as pa
 
-from atlanticus.datasets import DatasetPartKey, DatasetTarget
+from atlanticus.datasets.models import DatasetPartKey, DatasetTarget
 from atlanticus.datasets.runtime.conversion import TabularData
 from atlanticus.datasets.runtime.errors import DatasetRuntimeValidationError
 

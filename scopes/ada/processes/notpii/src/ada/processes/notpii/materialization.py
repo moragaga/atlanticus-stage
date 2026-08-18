@@ -7,14 +7,14 @@ import pyarrow as pa
 
 from ada.connectors.notpii import NotPiiBatch
 from ada.processes.notpii.errors import NotPiiMaterializationError, NotPiiProcessConfigurationError
-from atlanticus.datasets import (
+from atlanticus.datasets.layouts import SingleArtifactLayout
+from atlanticus.datasets.models import (
     DatasetDefinition,
     DatasetKey,
-    DatasetPublicationResult,
     DatasetTarget,
     MaterializationDefinition,
-    SingleArtifactLayout,
 )
+from atlanticus.datasets.results import DatasetPublicationResult
 from atlanticus.datasets.runtime import DatasetRuntime, DatasetRuntimeNotFoundError
 from atlanticus.integrations.pi.contracts import (
     NotPiiSource,

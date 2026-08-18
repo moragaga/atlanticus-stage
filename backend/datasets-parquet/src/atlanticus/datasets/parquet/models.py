@@ -10,7 +10,7 @@ from typing import Any
 
 import pyarrow as pa
 
-from atlanticus.datasets import DatasetPartKey, DatasetTarget
+from atlanticus.datasets.models import DatasetPartKey, DatasetTarget
 from atlanticus.datasets.parquet.errors import ParquetValidationError
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from atlanticus.datasets import DatasetPublicationResult
+from atlanticus.datasets.results import DatasetPublicationResult
 
 
 @dataclass(frozen=True, slots=True)

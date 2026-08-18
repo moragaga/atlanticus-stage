@@ -437,7 +437,7 @@ usage_stats AS (
 SELECT
     requested.schema_name + '.' + requested.table_name AS source_table,
     CONCAT(
-        CONVERT(varchar(33), server_generation.create_date, 126),
+        CONVERT(varchar(33), server_generation.sqlserver_start_time, 126),
         '|', database_info.database_id,
         '|', CONVERT(varchar(33), database_info.create_date, 126)
     ) AS generation_token,
@@ -452,11 +452,7 @@ JOIN sys.tables AS tables
     AND tables.name = requested.table_name
 JOIN sys.databases AS database_info
     ON database_info.database_id = DB_ID()
-CROSS JOIN (
-    SELECT create_date
-    FROM sys.databases
-    WHERE name = 'tempdb'
-) AS server_generation
+CROSS JOIN sys.dm_os_sys_info AS server_generation
 LEFT JOIN usage_stats
     ON usage_stats.object_id = tables.object_id
 ORDER BY requested.schema_name, requested.table_name"""

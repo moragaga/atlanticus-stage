@@ -9,15 +9,10 @@ from time import monotonic
 
 import pyarrow as pa
 
-from atlanticus.datasets import (
-    DatasetDefinition,
-    DatasetPartKey,
-    DatasetPublicationResult,
-    DatasetTarget,
-    DatasetValidationError,
-    FileSetLayout,
-    SingleArtifactLayout,
-)
+from atlanticus.datasets.errors import DatasetValidationError
+from atlanticus.datasets.layouts import FileSetLayout, SingleArtifactLayout
+from atlanticus.datasets.models import DatasetDefinition, DatasetPartKey, DatasetTarget
+from atlanticus.datasets.results import DatasetPublicationResult
 from atlanticus.datasets.parquet import (
     ColumnFilter,
     ParquetDatasetStore,

@@ -503,13 +503,7 @@ def _write_export_pyproject(
         raise ProcessBundleError(
             f'process project already declares {BUNDLE_DEPENDENCY_GROUP}: {source_path}'
         )
-    tool = source.get('tool', {})
-    if isinstance(tool, dict):
-        uv = tool.get('uv', {})
-        if isinstance(uv, dict) and 'sources' in uv:
-            raise ProcessBundleError(
-                f'process project already declares tool.uv.sources: {source_path}'
-            )
+    source_text = _remove_uv_sources_section(source_text)
     source_text = _insert_bundle_dependency_group(
         source_text=source_text,
         dependencies=dependencies,
@@ -523,6 +517,14 @@ def _write_export_pyproject(
 
 
 # Fija el bundle como runtime-first: dev sigue en el lock para certificación, pero no se sincroniza por defecto.
+# Las fuentes editables pertenecen al workspace de desarrollo; el bundle las sustituye por wheels.
+def _remove_uv_sources_section(source_text: str) -> str:
+    pattern = re.compile(
+        r'(?ms)^\[tool\.uv\.sources\]\s*\n.*?(?=^\[|\Z)'
+    )
+    return pattern.sub('', source_text).rstrip()
+
+
 def _insert_export_uv_defaults(source_text: str) -> str:
     section = re.search(r'(?m)^\[tool\.uv\]\s*$', source_text)
     if section is None:

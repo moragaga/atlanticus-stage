@@ -14,14 +14,14 @@ from ada.processes.pi_web_api.models import (
     PiMaterializationResult,
     PiSample,
 )
-from atlanticus.datasets import (
+from atlanticus.datasets.layouts import SingleArtifactLayout
+from atlanticus.datasets.models import (
     DatasetDefinition,
     DatasetKey,
-    DatasetPublicationResult,
     DatasetTarget,
     MaterializationDefinition,
-    SingleArtifactLayout,
 )
+from atlanticus.datasets.results import DatasetPublicationResult
 from atlanticus.datasets.runtime import DatasetRuntime, DatasetRuntimeNotFoundError
 from atlanticus.integrations.pi.contracts import (
     PiCatalog,

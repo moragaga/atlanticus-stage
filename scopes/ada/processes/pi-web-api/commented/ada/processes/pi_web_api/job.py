@@ -15,7 +15,7 @@ from ada.processes.pi_web_api.models import (
 from ada.processes.pi_web_api.planning import PiSlotPlanner
 from ada.processes.pi_web_api.preparation import PiExecutionPlanPreparer
 from ada.processes.pi_web_api.watermarks import PiProducerState, PiWatermarkCoordinator
-from atlanticus.datasets import PublicationStatus
+from atlanticus.datasets.results import PublicationStatus
 from atlanticus.integrations.pi.contracts import PiCatalog
 from atlanticus.runtime import JobRuntimeContext
 

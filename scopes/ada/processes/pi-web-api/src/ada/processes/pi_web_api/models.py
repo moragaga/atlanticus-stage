@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Any
 
-from atlanticus.datasets import DatasetPublicationResult
+from atlanticus.datasets.results import DatasetPublicationResult
 from atlanticus.integrations.pi.contracts import PiExtractionMode, PiTagDefinition
 
 

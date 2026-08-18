@@ -10,7 +10,7 @@ from ada.processes.notpii.models import NotPiiProcessingResult
 from ada.processes.notpii.processor import NotPiiProcessor
 from ada.processes.notpii.producer_state import NotPiiProducerState, NotPiiStreamObservation
 from atlanticus.connectivity.service_bus import ServiceBusDelivery, ServiceBusTopicReceiver
-from atlanticus.datasets import PublicationStatus
+from atlanticus.datasets.results import PublicationStatus
 from atlanticus.integrations.pi.contracts import PiExtractionMode
 from atlanticus.runtime import JobRuntimeContext
 

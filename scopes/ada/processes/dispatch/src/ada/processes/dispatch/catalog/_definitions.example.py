@@ -1,0 +1,58 @@
+from ada.processes.dispatch.models import (
+    DispatchColumnDefinition,
+    DispatchLoadStrategy,
+    DispatchSourceDefinition,
+    DispatchStorageMode,
+    DispatchValueKind,
+)
+
+EXAMPLE_DEFINITIONS = (
+    DispatchSourceDefinition(
+        source_key='shift_source',
+        source_table='dbo.shift_source',
+        enabled=True,
+        storage_mode=DispatchStorageMode.SHIFT,
+        load_strategy=DispatchLoadStrategy.SHIFT_WINDOW,
+        shift_id_column='ShiftId',
+        source_last_update_output_column='event_time',
+        columns=(
+            DispatchColumnDefinition(
+                source_name='ShiftId',
+                output_name='shift_id',
+                value_kind=DispatchValueKind.INTEGER,
+                required=True,
+            ),
+            DispatchColumnDefinition(
+                source_name='EventTime',
+                output_name='event_time',
+                value_kind=DispatchValueKind.DATETIME,
+                source_timezone='America/Santiago',
+            ),
+            DispatchColumnDefinition(
+                source_name='Value',
+                output_name='value',
+                value_kind=DispatchValueKind.FLOAT,
+            ),
+        ),
+    ),
+    DispatchSourceDefinition(
+        source_key='snapshot_source',
+        source_table='dbo.snapshot_source',
+        enabled=False,
+        storage_mode=DispatchStorageMode.LATEST,
+        load_strategy=DispatchLoadStrategy.FULL_SNAPSHOT,
+        columns=(
+            DispatchColumnDefinition(
+                source_name='Id',
+                output_name='id',
+                value_kind=DispatchValueKind.INTEGER,
+                required=True,
+            ),
+            DispatchColumnDefinition(
+                source_name='Name',
+                output_name='name',
+                value_kind=DispatchValueKind.TEXT,
+            ),
+        ),
+    ),
+)

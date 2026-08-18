@@ -473,13 +473,7 @@ def _write_export_pyproject(
         raise ProcessBundleError(
             f'process project already declares {BUNDLE_DEPENDENCY_GROUP}: {source_path}'
         )
-    tool = source.get('tool', {})
-    if isinstance(tool, dict):
-        uv = tool.get('uv', {})
-        if isinstance(uv, dict) and 'sources' in uv:
-            raise ProcessBundleError(
-                f'process project already declares tool.uv.sources: {source_path}'
-            )
+    source_text = _remove_uv_sources_section(source_text)
     source_text = _insert_bundle_dependency_group(
         source_text=source_text,
         dependencies=dependencies,
@@ -489,6 +483,13 @@ def _write_export_pyproject(
     for package_name, wheel_path in sorted(wheel_sources.items()):
         lines.append(f'{package_name} = {{ path = "{wheel_path}" }}')
     target_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+
+def _remove_uv_sources_section(source_text: str) -> str:
+    pattern = re.compile(
+        r'(?ms)^\[tool\.uv\.sources\]\s*\n.*?(?=^\[|\Z)'
+    )
+    return pattern.sub('', source_text).rstrip()
 
 
 def _insert_export_uv_defaults(source_text: str) -> str:

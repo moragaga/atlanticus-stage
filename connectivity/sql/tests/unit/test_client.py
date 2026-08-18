@@ -485,7 +485,8 @@ def test_table_change_markers_use_one_system_query_for_all_sources(
     assert markers[1].user_updates == 84
     assert len(cursor.executions) == 1
     assert 'sys.dm_db_index_usage_stats' in cursor.executions[0][0]
-    assert 'sys.databases' in cursor.executions[0][0]
+    assert 'sys.dm_os_sys_info' in cursor.executions[0][0]
+    assert "WHERE name = 'tempdb'" not in cursor.executions[0][0]
     assert cursor.executions[0][1:] == ('dbo', 'tiempos_mlp', 'std', 'StdShiftDumps')
     assert cursor.fetch_sizes == [3]
 

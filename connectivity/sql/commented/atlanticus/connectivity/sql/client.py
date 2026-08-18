@@ -431,6 +431,8 @@ def _build_table_change_statement(
 ) -> tuple[str, tuple[str, ...]]:
     requested_rows = ', '.join('(?, ?)' for _ in source_tables)
     parameters = tuple(part for table in source_tables for part in table.split('.', 1))
+    # La generación identifica el ciclo de vida del motor sin depender de tempdb.
+    # sqlserver_start_time cambia cuando el motor se reinicia y la DMV de uso se reinicia con él.
     statement = f"""WITH requested(schema_name, table_name) AS (
     SELECT schema_name, table_name
     FROM (VALUES {requested_rows}) AS requested_values(schema_name, table_name)
@@ -447,7 +449,7 @@ usage_stats AS (
 SELECT
     requested.schema_name + '.' + requested.table_name AS source_table,
     CONCAT(
-        CONVERT(varchar(33), server_generation.create_date, 126),
+        CONVERT(varchar(33), server_generation.sqlserver_start_time, 126),
         '|', database_info.database_id,
         '|', CONVERT(varchar(33), database_info.create_date, 126)
     ) AS generation_token,
@@ -462,11 +464,7 @@ JOIN sys.tables AS tables
     AND tables.name = requested.table_name
 JOIN sys.databases AS database_info
     ON database_info.database_id = DB_ID()
-CROSS JOIN (
-    SELECT create_date
-    FROM sys.databases
-    WHERE name = 'tempdb'
-) AS server_generation
+CROSS JOIN sys.dm_os_sys_info AS server_generation
 LEFT JOIN usage_stats
     ON usage_stats.object_id = tables.object_id
 ORDER BY requested.schema_name, requested.table_name"""
