@@ -32,6 +32,10 @@ export -f remove_file
 
 echo "Atlanticus clean started in: $ROOT"
 
+if [[ -e "$ROOT/distribution" || -L "$ROOT/distribution" ]]; then
+    remove_directory "$ROOT/distribution"
+fi
+
 find "$ROOT" \
     -path "$ROOT/.git" -prune \
     -o -type d \( \

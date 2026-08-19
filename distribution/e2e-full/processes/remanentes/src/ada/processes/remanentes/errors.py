@@ -1,2 +1,0 @@
-class RemanentesProcessConfigurationError(ValueError):
-    pass

@@ -150,3 +150,6 @@ local_sonarqube_scan.sh
 artifacts
 .local-volume
 .runtime
+
+# Generated consumer distributions
+/distribution/
