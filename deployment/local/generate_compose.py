@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CPUS = 2.0
-DEFAULT_MEMORY = '2g'
+DEFAULT_CPUS = 0.5
+DEFAULT_MEMORY = '1g'
 DEFAULT_VOLUME_PATH = '/app/volume'
 DEFAULT_WORKSPACE = Path('.runtime/local-deployment')
 PROJECT_NAME = 'atlanticus-local'

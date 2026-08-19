@@ -84,8 +84,8 @@ def test_named_volume_workspace_uses_customized_artifacts_and_does_not_copy_env(
     assert 'command: ["--run-once"]' in compose
     assert 'runtime:/app/volume' in compose
     assert 'volumes:\n  runtime:\n' in compose
-    assert 'cpus: 2' in compose
-    assert 'mem_limit: 2g' in compose
+    assert 'cpus: 0.5' in compose
+    assert 'mem_limit: 1g' in compose
     assert 'restart:' not in compose
     assert (workspace / 'processes' / 'dispatch' / 'uv.lock').is_file()
     assert (workspace / 'compose' / 'dispatch.yaml').is_file()
