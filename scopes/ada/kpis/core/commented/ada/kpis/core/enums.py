@@ -1,5 +1,5 @@
-# Declara vocabularios cerrados del dominio KPI.
-# Las fuentes son tipadas y se amplían por código cuando Atlanticus incorpora una fuente nueva.
+# Enumera el vocabulario estable que las reglas KPI pueden declarar sin usar strings libres.
+# NOTPII se diferencia de PI Web API aunque ambos publiquen datasets con semántica PI.
 from __future__ import annotations
 
 from enum import StrEnum
