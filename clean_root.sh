@@ -57,6 +57,7 @@ find "$ROOT" \
         -o -name '.local-assets' \
         -o -name '.local-data' \
         -o -name '.local-volume' \
+        -o -name '.runtime' \
     \) -prune \
     -o -type f \( \
         -name '*:Zone.Identifier' \
@@ -99,6 +100,7 @@ find "$ROOT" \
         -o -name '.local-assets' \
         -o -name '.local-data' \
         -o -name '.local-volume' \
+        -o -name '.runtime' \
     \) -prune -exec bash -c 'remove_directory "$1"' _ {} \;
 
 echo "Atlanticus clean completed successfully."
