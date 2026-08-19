@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# Recomendaciones locales comunes; cada proceso puede sobrescribirlas en tool.atlanticus.container.resources.
 DEFAULT_CPUS = 2.0
 DEFAULT_MEMORY = '2g'
 DEFAULT_VOLUME_PATH = '/app/volume'
@@ -21,16 +20,15 @@ MEMORY_PATTERN = re.compile(r'^[1-9][0-9]*(?:\.[0-9]+)?[bkmg]?$', re.IGNORECASE)
 ALLOWED_SYSTEM_PROFILES = frozenset({'base', 'sqlserver'})
 
 
-# Error de contrato local para fallar con mensajes claros antes de invocar Docker.
+# Error de contrato local: se usa para fallar con mensajes claros sin ocultar el origen del problema.
 class LocalDeploymentError(RuntimeError):
     pass
 
 
-# Describe solo lo necesario para convertir un artifact distribuido en un servicio Compose local.
+# Cada definición representa un artifact ya distribuido; local no vuelve al source para construir Docker.
 @dataclass(frozen=True, slots=True)
 class ProcessDefinition:
     name: str
-    source_root: Path
     env_file: Path
     artifact_root: Path
     command: str
@@ -39,27 +37,29 @@ class ProcessDefinition:
     memory: str
 
 
-# Los procesos se descubren desde el source para localizar su .env convencional y sus requisitos declarados.
+# Descubrimos exclusivamente artifacts/processes para que los catálogos ajustados después de prepare sean la fuente de verdad.
 def discover_processes(repository_root: Path) -> tuple[ProcessDefinition, ...]:
-    processes_root = repository_root / 'scopes' / 'ada' / 'processes'
-    if not processes_root.is_dir():
-        raise LocalDeploymentError(f'processes directory not found: {processes_root}')
+    artifacts_root = repository_root / 'artifacts' / 'processes'
+    if not artifacts_root.is_dir():
+        raise LocalDeploymentError(
+            f'process artifacts directory not found: {artifacts_root}. '
+            'Run: scripts/local-process.sh prepare'
+        )
     definitions: list[ProcessDefinition] = []
-    for pyproject_path in sorted(processes_root.glob('*/pyproject.toml')):
+    for pyproject_path in sorted(artifacts_root.glob('*/pyproject.toml')):
         name = pyproject_path.parent.name
+        if not PROCESS_NAME_PATTERN.fullmatch(name):
+            raise LocalDeploymentError(f'invalid process artifact directory name: {name}')
         metadata = _read_toml(pyproject_path)
         container = _container_metadata(metadata, pyproject_path)
         if container is None:
             continue
-        if not PROCESS_NAME_PATTERN.fullmatch(name):
-            raise LocalDeploymentError(f'invalid process directory name: {name}')
         command, system_profile, cpus, memory = container
         definitions.append(
             ProcessDefinition(
                 name=name,
-                source_root=pyproject_path.parent,
                 env_file=pyproject_path.parent / '.env',
-                artifact_root=repository_root / 'artifacts' / 'processes' / name,
+                artifact_root=pyproject_path.parent,
                 command=command,
                 system_profile=system_profile,
                 cpus=cpus,
@@ -67,21 +67,25 @@ def discover_processes(repository_root: Path) -> tuple[ProcessDefinition, ...]:
             )
         )
     if not definitions:
-        raise LocalDeploymentError(f'no local processes found: {processes_root}')
+        raise LocalDeploymentError(f'no process artifacts found: {artifacts_root}')
     return tuple(definitions)
 
 
-# Los secretos no viajan al artifact: en local se exige scopes/ada/processes/<proceso>/.env.
+# El .env de testing vive junto al artifact, pero se usa solo como env_file y nunca se copia al contexto Docker.
 def validate_environment_files(definitions: tuple[ProcessDefinition, ...]) -> None:
     missing = tuple(
         definition.env_file for definition in definitions if not definition.env_file.is_file()
     )
     if missing:
         rendered = '\n'.join(f'  - {path}' for path in missing)
-        raise LocalDeploymentError(f'local process .env file not found:\n{rendered}')
+        raise LocalDeploymentError(
+            'local artifact .env file not found:\n'
+            f'{rendered}\n'
+            'Configure each artifact before running local deployment.'
+        )
 
 
-# Compose se construye desde artifacts finales y verifica que su contrato coincida con el source recién bundleado.
+# El artifact debe conservar el contrato mínimo de transporte antes de convertirse en imagen.
 def validate_artifacts(definitions: tuple[ProcessDefinition, ...]) -> None:
     for definition in definitions:
         artifact_root = definition.artifact_root
@@ -91,27 +95,9 @@ def validate_artifacts(definitions: tuple[ProcessDefinition, ...]) -> None:
                 raise LocalDeploymentError(
                     f'process transport artifact is incomplete ({relative}): {artifact_root}'
                 )
-        artifact_metadata = _read_toml(artifact_root / 'pyproject.toml')
-        artifact_container = _container_metadata(
-            artifact_metadata,
-            artifact_root / 'pyproject.toml',
-        )
-        if artifact_container is None:
-            raise LocalDeploymentError(f'container contract not found in artifact: {artifact_root}')
-        actual = artifact_container[:4]
-        expected = (
-            definition.command,
-            definition.system_profile,
-            definition.cpus,
-            definition.memory,
-        )
-        if actual != expected:
-            raise LocalDeploymentError(
-                f'container contract differs between source and artifact: {definition.name}'
-            )
 
 
-# El workspace es descartable, salvo runtime/ cuando se usa bind para preservar state y datasets entre rebuilds.
+# El workspace es descartable; runtime se conserva solo cuando el desarrollador selecciona bind.
 def prepare_workspace(
     *,
     repository_root: Path,
@@ -121,8 +107,8 @@ def prepare_workspace(
 ) -> Path:
     if volume_mode not in {'named', 'bind'}:
         raise LocalDeploymentError(f'unsupported local volume mode: {volume_mode}')
-    validate_environment_files(definitions)
     validate_artifacts(definitions)
+    validate_environment_files(definitions)
     workspace_root.mkdir(parents=True, exist_ok=True)
     for generated in (
         workspace_root / 'Dockerfile',
@@ -143,7 +129,11 @@ def prepare_workspace(
     processes_root = workspace_root / 'processes'
     processes_root.mkdir()
     for definition in definitions:
-        shutil.copytree(definition.artifact_root, processes_root / definition.name)
+        shutil.copytree(
+            definition.artifact_root,
+            processes_root / definition.name,
+            ignore=shutil.ignore_patterns('.env'),
+        )
     compose_root = workspace_root / 'compose'
     compose_root.mkdir()
     for definition in definitions:
@@ -159,7 +149,7 @@ def prepare_workspace(
     return compose_path
 
 
-# CPU y memoria son recomendaciones con defaults centrales y override opcional por proceso.
+# CPU y memoria son recomendaciones con defaults centrales y override opcional declarado por el proceso.
 def _container_metadata(
     metadata: dict[str, Any],
     pyproject_path: Path,
@@ -198,7 +188,7 @@ def _read_toml(path: Path) -> dict[str, Any]:
         raise LocalDeploymentError(f'could not read TOML file: {path}') from error
 
 
-# Todos los contenedores ven /app/volume; solo cambia si detrás hay named volume o bind mount.
+# Todos los servicios ejecutan una única iteración E2E y comparten /app/volume sin conocer el tipo de mount.
 def _render_service(
     definition: ProcessDefinition,
     *,
@@ -217,6 +207,7 @@ def _render_service(
             f'{indent}    dockerfile: Dockerfile',
             f'{indent}    args:',
             f'{indent}      FILENAME: {definition.name}',
+            f'{indent}  command: ["--run-once"]',
             f'{indent}  env_file:',
             f'{indent}    - {env_path}',
             f'{indent}  environment:',
@@ -229,7 +220,7 @@ def _render_service(
     )
 
 
-# Cada proceso obtiene además un fragmento generado para inspección sin mantener YAML manual duplicado.
+# El fragmento por proceso permite inspeccionar su contrato sin mantener YAML manual.
 def _render_fragment(
     definition: ProcessDefinition,
     *,
@@ -244,7 +235,7 @@ def _render_fragment(
     ) + '\n'
 
 
-# El compose raíz se genera completo para no depender de mecanismos de include ni de versiones específicas de Compose.
+# El compose raíz se genera completo desde los artifacts configurados.
 def _render_compose(
     definitions: tuple[ProcessDefinition, ...],
     *,
@@ -270,7 +261,7 @@ def _repository_root_from_script() -> Path:
 
 def _parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Prepare the Atlanticus local Compose workspace.')
-    parser.add_argument('action', choices=('validate', 'prepare'))
+    parser.add_argument('action', choices=('validate', 'generate'))
     parser.add_argument(
         '--repository-root',
         type=Path,
@@ -281,11 +272,12 @@ def _parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-# validate permite fallar temprano por .env faltantes; prepare materializa el workspace luego del bundling.
+# validate falla antes de bajar un entorno existente; generate materializa el workspace solo después de validar.
 def main() -> None:
     arguments = _parse_arguments()
     repository_root = arguments.repository_root.resolve()
     definitions = discover_processes(repository_root)
+    validate_artifacts(definitions)
     validate_environment_files(definitions)
     if arguments.action == 'validate':
         return

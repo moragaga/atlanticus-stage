@@ -27,7 +27,6 @@ class LocalDeploymentError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class ProcessDefinition:
     name: str
-    source_root: Path
     env_file: Path
     artifact_root: Path
     command: str
@@ -37,25 +36,27 @@ class ProcessDefinition:
 
 
 def discover_processes(repository_root: Path) -> tuple[ProcessDefinition, ...]:
-    processes_root = repository_root / 'scopes' / 'ada' / 'processes'
-    if not processes_root.is_dir():
-        raise LocalDeploymentError(f'processes directory not found: {processes_root}')
+    artifacts_root = repository_root / 'artifacts' / 'processes'
+    if not artifacts_root.is_dir():
+        raise LocalDeploymentError(
+            f'process artifacts directory not found: {artifacts_root}. '
+            'Run: scripts/local-process.sh prepare'
+        )
     definitions: list[ProcessDefinition] = []
-    for pyproject_path in sorted(processes_root.glob('*/pyproject.toml')):
+    for pyproject_path in sorted(artifacts_root.glob('*/pyproject.toml')):
         name = pyproject_path.parent.name
+        if not PROCESS_NAME_PATTERN.fullmatch(name):
+            raise LocalDeploymentError(f'invalid process artifact directory name: {name}')
         metadata = _read_toml(pyproject_path)
         container = _container_metadata(metadata, pyproject_path)
         if container is None:
             continue
-        if not PROCESS_NAME_PATTERN.fullmatch(name):
-            raise LocalDeploymentError(f'invalid process directory name: {name}')
         command, system_profile, cpus, memory = container
         definitions.append(
             ProcessDefinition(
                 name=name,
-                source_root=pyproject_path.parent,
                 env_file=pyproject_path.parent / '.env',
-                artifact_root=repository_root / 'artifacts' / 'processes' / name,
+                artifact_root=pyproject_path.parent,
                 command=command,
                 system_profile=system_profile,
                 cpus=cpus,
@@ -63,7 +64,7 @@ def discover_processes(repository_root: Path) -> tuple[ProcessDefinition, ...]:
             )
         )
     if not definitions:
-        raise LocalDeploymentError(f'no local processes found: {processes_root}')
+        raise LocalDeploymentError(f'no process artifacts found: {artifacts_root}')
     return tuple(definitions)
 
 
@@ -73,7 +74,11 @@ def validate_environment_files(definitions: tuple[ProcessDefinition, ...]) -> No
     )
     if missing:
         rendered = '\n'.join(f'  - {path}' for path in missing)
-        raise LocalDeploymentError(f'local process .env file not found:\n{rendered}')
+        raise LocalDeploymentError(
+            'local artifact .env file not found:\n'
+            f'{rendered}\n'
+            'Configure each artifact before running local deployment.'
+        )
 
 
 def validate_artifacts(definitions: tuple[ProcessDefinition, ...]) -> None:
@@ -85,24 +90,6 @@ def validate_artifacts(definitions: tuple[ProcessDefinition, ...]) -> None:
                 raise LocalDeploymentError(
                     f'process transport artifact is incomplete ({relative}): {artifact_root}'
                 )
-        artifact_metadata = _read_toml(artifact_root / 'pyproject.toml')
-        artifact_container = _container_metadata(
-            artifact_metadata,
-            artifact_root / 'pyproject.toml',
-        )
-        if artifact_container is None:
-            raise LocalDeploymentError(f'container contract not found in artifact: {artifact_root}')
-        actual = artifact_container[:4]
-        expected = (
-            definition.command,
-            definition.system_profile,
-            definition.cpus,
-            definition.memory,
-        )
-        if actual != expected:
-            raise LocalDeploymentError(
-                f'container contract differs between source and artifact: {definition.name}'
-            )
 
 
 def prepare_workspace(
@@ -114,8 +101,8 @@ def prepare_workspace(
 ) -> Path:
     if volume_mode not in {'named', 'bind'}:
         raise LocalDeploymentError(f'unsupported local volume mode: {volume_mode}')
-    validate_environment_files(definitions)
     validate_artifacts(definitions)
+    validate_environment_files(definitions)
     workspace_root.mkdir(parents=True, exist_ok=True)
     for generated in (
         workspace_root / 'Dockerfile',
@@ -136,7 +123,11 @@ def prepare_workspace(
     processes_root = workspace_root / 'processes'
     processes_root.mkdir()
     for definition in definitions:
-        shutil.copytree(definition.artifact_root, processes_root / definition.name)
+        shutil.copytree(
+            definition.artifact_root,
+            processes_root / definition.name,
+            ignore=shutil.ignore_patterns('.env'),
+        )
     compose_root = workspace_root / 'compose'
     compose_root.mkdir()
     for definition in definitions:
@@ -208,6 +199,7 @@ def _render_service(
             f'{indent}    dockerfile: Dockerfile',
             f'{indent}    args:',
             f'{indent}      FILENAME: {definition.name}',
+            f'{indent}  command: ["--run-once"]',
             f'{indent}  env_file:',
             f'{indent}    - {env_path}',
             f'{indent}  environment:',
@@ -259,7 +251,7 @@ def _repository_root_from_script() -> Path:
 
 def _parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Prepare the Atlanticus local Compose workspace.')
-    parser.add_argument('action', choices=('validate', 'prepare'))
+    parser.add_argument('action', choices=('validate', 'generate'))
     parser.add_argument(
         '--repository-root',
         type=Path,
@@ -274,6 +266,7 @@ def main() -> None:
     arguments = _parse_arguments()
     repository_root = arguments.repository_root.resolve()
     definitions = discover_processes(repository_root)
+    validate_artifacts(definitions)
     validate_environment_files(definitions)
     if arguments.action == 'validate':
         return

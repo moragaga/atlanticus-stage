@@ -25,31 +25,40 @@ require_compose_file() {
     [[ -f "${COMPOSE_FILE}" ]] || fail "Local Compose workspace not found. Run: scripts/local-process.sh up"
 }
 
-validate_tools() {
-    require_command docker
+validate_uv() {
     require_command uv
+}
+
+validate_docker() {
+    require_command docker
     docker compose version >/dev/null 2>&1 || fail "Docker Compose is not available"
 }
 
-validate_environment() {
+validate_artifacts() {
     uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
         "${GENERATOR}" validate \
         --repository-root "${ROOT}"
 }
 
-prepare_environment() {
+generate_workspace() {
     local volume_mode="$1"
 
+    uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
+        "${GENERATOR}" generate \
+        --repository-root "${ROOT}" \
+        --workspace-root "${WORKSPACE}" \
+        --volume-mode "${volume_mode}"
+}
+
+command_prepare() {
+    [[ "$#" -eq 0 ]] || fail "Usage: scripts/local-process.sh prepare"
+    validate_uv
     uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
         "${BUNDLER}" \
         --repository-root "${ROOT}" \
         --output-root "${ROOT}/artifacts/processes"
-
-    uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
-        "${GENERATOR}" prepare \
-        --repository-root "${ROOT}" \
-        --workspace-root "${WORKSPACE}" \
-        --volume-mode "${volume_mode}"
+    printf '%s\n' "Process artifacts prepared in: ${ROOT}/artifacts/processes"
+    printf '%s\n' "Configure each artifact .env and any local catalog changes before running: scripts/local-process.sh up"
 }
 
 command_up() {
@@ -59,34 +68,35 @@ command_up() {
         shift
     fi
     [[ "$#" -eq 0 ]] || fail "Usage: scripts/local-process.sh up [--bind]"
-    validate_tools
-    validate_environment
+    validate_uv
+    validate_docker
+    validate_artifacts
     if [[ -f "${COMPOSE_FILE}" ]]; then
         compose down --remove-orphans
     fi
-    prepare_environment "${volume_mode}"
+    generate_workspace "${volume_mode}"
     compose build --no-cache
     compose up -d
-    compose ps
+    compose ps -a
 }
 
 command_down() {
     [[ "$#" -eq 0 ]] || fail "Usage: scripts/local-process.sh down"
-    validate_tools
+    validate_docker
     require_compose_file
     compose down --remove-orphans
 }
 
 command_ps() {
     [[ "$#" -eq 0 ]] || fail "Usage: scripts/local-process.sh ps"
-    validate_tools
+    validate_docker
     require_compose_file
-    compose ps
+    compose ps -a
 }
 
 command_logs() {
     [[ "$#" -le 1 ]] || fail "Usage: scripts/local-process.sh logs [process]"
-    validate_tools
+    validate_docker
     require_compose_file
     if [[ "$#" -eq 1 ]]; then
         compose logs -f "$1"
@@ -97,7 +107,7 @@ command_logs() {
 
 command_run() {
     [[ "$#" -eq 1 ]] || fail "Usage: scripts/local-process.sh run <process>"
-    validate_tools
+    validate_docker
     require_compose_file
     local process="$1"
     compose config --services | grep -Fx -- "${process}" >/dev/null \
@@ -106,6 +116,10 @@ command_run() {
 }
 
 case "${1:-}" in
+    prepare)
+        shift
+        command_prepare "$@"
+        ;;
     up)
         shift
         command_up "$@"
@@ -127,6 +141,6 @@ case "${1:-}" in
         command_run "$@"
         ;;
     *)
-        fail "Usage: scripts/local-process.sh {up [--bind]|down|ps|logs [process]|run <process>}"
+        fail "Usage: scripts/local-process.sh {prepare|up [--bind]|down|ps|logs [process]|run <process>}"
         ;;
 esac

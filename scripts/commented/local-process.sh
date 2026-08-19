@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Todo el detalle de bundling, workspace y Compose queda oculto detrás de una interfaz mínima para desarrollo.
+# La interfaz pública es mínima; toda la mecánica de artifacts, Compose y workspace queda encapsulada aquí.
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="${ROOT}/.runtime/local-deployment"
 COMPOSE_FILE="${WORKSPACE}/compose.yaml"
@@ -26,74 +26,84 @@ require_compose_file() {
     [[ -f "${COMPOSE_FILE}" ]] || fail "Local Compose workspace not found. Run: scripts/local-process.sh up"
 }
 
-validate_tools() {
-    require_command docker
+# prepare solo necesita UV; Docker se exige únicamente cuando realmente vamos a construir o ejecutar imágenes.
+validate_uv() {
     require_command uv
+}
+
+validate_docker() {
+    require_command docker
     docker compose version >/dev/null 2>&1 || fail "Docker Compose is not available"
 }
 
-# El .env se obtiene siempre desde scopes/ada/processes/<proceso>/.env y nunca se copia al artifact ni a la imagen.
-validate_environment() {
+# up valida artifacts y sus .env locales sin volver a scopes, preservando cualquier catálogo personalizado.
+validate_artifacts() {
     uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
         "${GENERATOR}" validate \
         --repository-root "${ROOT}"
 }
 
-# Bundling genera artifacts reales y el generador los copia al workspace descartable usado como contexto Docker.
-prepare_environment() {
+# El workspace Docker se genera desde artifacts y omite el .env al copiar el proceso al contexto de build.
+generate_workspace() {
     local volume_mode="$1"
 
     uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
-        "${BUNDLER}" \
-        --repository-root "${ROOT}" \
-        --output-root "${ROOT}/artifacts/processes"
-
-    uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
-        "${GENERATOR}" prepare \
+        "${GENERATOR}" generate \
         --repository-root "${ROOT}" \
         --workspace-root "${WORKSPACE}" \
         --volume-mode "${volume_mode}"
 }
 
+# prepare reconstruye los transport artifacts y se detiene para dar una ventana explícita de personalización.
+command_prepare() {
+    [[ "$#" -eq 0 ]] || fail "Usage: scripts/local-process.sh prepare"
+    validate_uv
+    uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
+        "${BUNDLER}" \
+        --repository-root "${ROOT}" \
+        --output-root "${ROOT}/artifacts/processes"
+    printf '%s\n' "Process artifacts prepared in: ${ROOT}/artifacts/processes"
+    printf '%s\n' "Configure each artifact .env and any local catalog changes before running: scripts/local-process.sh up"
+}
+
+# up no bundlea: consume los artifacts configurados, reconstruye sin cache y deja todos los E2E en background.
 command_up() {
     local volume_mode="named"
-    # Named volume es el default aislado de las ejecuciones source; --bind deja runtime visible en el filesystem.
     if [[ "${1:-}" == "--bind" ]]; then
         volume_mode="bind"
         shift
     fi
     [[ "$#" -eq 0 ]] || fail "Usage: scripts/local-process.sh up [--bind]"
-    validate_tools
-    validate_environment
-    # Se baja el ambiente anterior sin -v para conservar el named volume y su state.
+    validate_uv
+    validate_docker
+    validate_artifacts
     if [[ -f "${COMPOSE_FILE}" ]]; then
         compose down --remove-orphans
     fi
-    prepare_environment "${volume_mode}"
-    # El deployment local prioriza reproducibilidad sobre velocidad de cache.
+    generate_workspace "${volume_mode}"
     compose build --no-cache
-    # -d devuelve la consola inmediatamente después de levantar el ambiente integrado.
     compose up -d
-    compose ps
+    compose ps -a
 }
 
 command_down() {
     [[ "$#" -eq 0 ]] || fail "Usage: scripts/local-process.sh down"
-    validate_tools
+    validate_docker
     require_compose_file
     compose down --remove-orphans
 }
 
+# Como los servicios usan --run-once, ps incluye contenedores finalizados para que Exited (0) sea visible como éxito.
 command_ps() {
     [[ "$#" -eq 0 ]] || fail "Usage: scripts/local-process.sh ps"
-    validate_tools
+    validate_docker
     require_compose_file
-    compose ps
+    compose ps -a
 }
 
 command_logs() {
     [[ "$#" -le 1 ]] || fail "Usage: scripts/local-process.sh logs [process]"
-    validate_tools
+    validate_docker
     require_compose_file
     if [[ "$#" -eq 1 ]]; then
         compose logs -f "$1"
@@ -102,10 +112,10 @@ command_logs() {
     fi
 }
 
-# run reutiliza exactamente el servicio Compose ya preparado, pero fuerza una sola iteración para diagnóstico.
+# run permite repetir una sola prueba puntual usando el mismo servicio y configuración ya generados.
 command_run() {
     [[ "$#" -eq 1 ]] || fail "Usage: scripts/local-process.sh run <process>"
-    validate_tools
+    validate_docker
     require_compose_file
     local process="$1"
     compose config --services | grep -Fx -- "${process}" >/dev/null \
@@ -114,6 +124,10 @@ command_run() {
 }
 
 case "${1:-}" in
+    prepare)
+        shift
+        command_prepare "$@"
+        ;;
     up)
         shift
         command_up "$@"
@@ -135,6 +149,6 @@ case "${1:-}" in
         command_run "$@"
         ;;
     *)
-        fail "Usage: scripts/local-process.sh {up [--bind]|down|ps|logs [process]|run <process>}"
+        fail "Usage: scripts/local-process.sh {prepare|up [--bind]|down|ps|logs [process]|run <process>}"
         ;;
 esac
