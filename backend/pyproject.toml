@@ -17,6 +17,7 @@ dev = [
 package = false
 
 [tool.uv.sources]
+atlanticus-json = { workspace = true }
 atlanticus-datasets = { workspace = true }
 atlanticus-datasets-parquet = { workspace = true }
 atlanticus-datasets-runtime = { workspace = true }
@@ -29,6 +30,7 @@ atlanticus-state = { workspace = true }
 
 [tool.uv.workspace]
 members = [
+    "json",
     "datasets",
     "datasets-parquet",
     "datasets-runtime",
@@ -65,6 +67,7 @@ combine-as-imports = true
 
 [tool.pytest.ini_options]
 testpaths = [
+    "json/tests",
     "datasets/tests",
     "datasets-parquet/tests",
     "datasets-runtime/tests",

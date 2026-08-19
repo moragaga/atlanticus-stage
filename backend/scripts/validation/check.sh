@@ -4,7 +4,7 @@ set -eo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$ROOT"
 
-PACKAGES="kernel configuration datasets datasets-parquet datasets-runtime observability observability-azure state runtime"
+PACKAGES="kernel json configuration datasets datasets-parquet datasets-runtime observability observability-azure state runtime"
 SELECTED=""
 ORDERED_SELECTED=""
 CLEAN=0
@@ -16,6 +16,7 @@ Usage: $0 [module ...] [--clean]
 
 Modules:
   kernel
+  json
   configuration
   datasets
   datasets-parquet
@@ -39,6 +40,7 @@ contains_module() {
 distribution_name() {
   case "$1" in
     kernel) echo "atlanticus-kernel" ;;
+    json) echo "atlanticus-json" ;;
     configuration) echo "atlanticus-configuration" ;;
     datasets) echo "atlanticus-datasets" ;;
     datasets-parquet) echo "atlanticus-datasets-parquet" ;;
@@ -53,6 +55,7 @@ distribution_name() {
 import_name() {
   case "$1" in
     kernel) echo "atlanticus.kernel" ;;
+    json) echo "atlanticus.json" ;;
     configuration) echo "atlanticus.configuration" ;;
     datasets) echo "atlanticus.datasets" ;;
     datasets-parquet) echo "atlanticus.datasets.parquet" ;;
@@ -69,7 +72,7 @@ for arg in "$@"; do
     --clean)
       CLEAN=1
       ;;
-    kernel|configuration|datasets|datasets-parquet|datasets-runtime|observability|observability-azure|state|runtime)
+    kernel|json|configuration|datasets|datasets-parquet|datasets-runtime|observability|observability-azure|state|runtime)
       if ! contains_module "$SELECTED" "$arg"; then
         SELECTED="$SELECTED $arg"
       fi
@@ -227,7 +230,7 @@ if [[ "$wheel_count" != "$selected_count" ]]; then
 fi
 
 if [[ "$ALL" -eq 1 ]]; then
-  echo "Backend validation passed: 9 packages, 9 wheels."
+  echo "Backend validation passed: 10 packages, 10 wheels."
 elif [[ "$selected_count" -eq 1 ]]; then
   echo "Backend validation passed: 1 selected package, 1 wheel."
 else

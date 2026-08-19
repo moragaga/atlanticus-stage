@@ -15,6 +15,7 @@ members = [
     "atlanticus-datasets-parquet",
     "atlanticus-datasets-runtime",
     "atlanticus-job-runtime",
+    "atlanticus-json",
     "atlanticus-kernel",
     "atlanticus-observability",
     "atlanticus-observability-azure",
@@ -117,6 +118,11 @@ requires-dist = [
     { name = "psutil", specifier = "==7.2.2" },
 ]
 provides-extras = ["azure"]
+
+[[package]]
+name = "atlanticus-json"
+version = "0.1.0"
+source = { editable = "json" }
 
 [[package]]
 name = "atlanticus-kernel"
