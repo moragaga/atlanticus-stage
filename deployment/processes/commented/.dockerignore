@@ -1,0 +1,5 @@
+# El contexto Docker solo transporta el Dockerfile universal y artifacts de procesos.
+*
+!Dockerfile
+!processes/
+!processes/**
