@@ -1,0 +1,128 @@
+KPIS - PRIMEROS PASOS
+=====================
+
+Este proceso compone el runtime real de evaluación KPI. No uses pip.
+
+1. ENTRAR AL PROCESO
+--------------------
+Desde la raíz del repositorio:
+
+    cd scopes/ada/processes/kpis
+
+2. CREAR LA CONFIGURACIÓN LOCAL
+-------------------------------
+
+    cp .env.detail .env
+
+APPLICATION identifica exclusivamente la salida del proceso KPI: evaluations, latest, logs,
+lease y committed watermark.
+
+PI_SOURCE selecciona el proveedor PI lógico:
+
+    PI_SOURCE=PI_WEB_API
+    o
+    PI_SOURCE=NOTPII
+
+PI_APPLICATION identifica la APPLICATION física donde ese proveedor PI publicó sus datasets y
+su state. Debe cambiar junto con PI_SOURCE cuando corresponda. Por ejemplo:
+
+    PI_SOURCE=PI_WEB_API
+    PI_APPLICATION=ada-pi-web-api-local
+
+    PI_SOURCE=NOTPII
+    PI_APPLICATION=ada-notpii-local
+
+Los demás productores también pueden vivir en APPLICATION distintas. Configura únicamente los que
+realmente utilice el catálogo:
+
+    DISPATCH_APPLICATION=
+    BLOCKGRADE_APPLICATION=
+    REMANENTES_APPLICATION=
+    FABRICA_APPLICATION=
+
+No se autodetectan APPLICATION ni se hardcodean nombres de procesos. Esto permite que cada solución
+decida su composición física sin modificar KpiSpec.
+
+3. CONFIGURAR EL CATÁLOGO
+-------------------------
+La base inicial es deliberadamente mínima:
+
+    src/ada/processes/kpis/catalog/
+    ├── registry.py
+    ├── shared/
+    │   └── logics/
+    └── general/
+        ├── specs.py
+        ├── resolvers.py
+        ├── logics/
+        └── over/
+            ├── specs.py
+            ├── resolvers.py
+            └── logics/
+
+specs.py agrupa los KpiSpec del componente.
+resolvers.py agrupa sus custom resolvers.
+logics/ se desagrega únicamente cuando una lógica justifica archivos adicionales.
+over/ mantiene la misma estructura para OverKpiSpec porque se ejecutan después de todos los KPI base.
+shared/logics/ contiene únicamente lógica transversal reutilizable entre componentes.
+
+Agrega mina/<componente>/ o planta/<componente>/ solo si la solución realmente lo necesita. Cada
+componente nuevo debe repetir exactamente:
+
+    specs.py
+    resolvers.py
+    logics/
+    over/specs.py
+    over/resolvers.py
+    over/logics/
+
+Actualiza catalog/registry.py por componente. No agregues autodiscovery del filesystem.
+
+El catálogo inicial no contiene KPI de prueba. Hasta registrar al menos un KPI real, el proceso
+rechaza la ejecución productiva deliberadamente.
+
+4. CREAR Y VALIDAR EL ENTORNO DE DESARROLLO
+-------------------------------------------
+La primera vez, mientras el source aún no tenga uv.lock generado en tu copia:
+
+    uv sync --python 3.14.2
+
+Después del lock, valida con:
+
+    uv run --python 3.14.2 ruff check --fix src tests commented
+    uv run --python 3.14.2 ruff format src tests commented
+    uv run --python 3.14.2 pytest
+    uv run --python 3.14.2 ruff check src tests commented
+    uv run --python 3.14.2 ruff format --check src tests commented
+
+5. VALIDAR EL BUNDLE
+--------------------
+Desde la raíz del proceso:
+
+    scripts/check.sh --clean
+
+El bundler ejecuta Ruff, pytest, build de wheels internos, lock del artifact e instalación frozen.
+
+WATERMARK
+---------
+- PI watermark inexistente: SKIP.
+- PI watermark existente y KPI committed watermark inexistente: evaluar exactamente ese PI watermark.
+- PI watermark igual al KPI committed watermark: SKIP.
+- PI watermark mayor: evaluar únicamente el PI watermark actual; no existe replay.
+- PI watermark menor: error de inconsistencia; nunca se retrocede.
+- No existen tolerancias, expected cadence ni minimum delta.
+- KPI_POLL_INTERVAL_SECONDS solo define cada cuánto el proceso vuelve a observar el clock.
+
+Un KPI que requiere historia la solicita mediante sus time_window/shift; el proceso no reconstruye
+evaluaciones que nunca ocurrieron.
+
+RECUPERACIÓN TRANSACCIONAL
+--------------------------
+El orden de persistencia es:
+
+    evaluation immutable -> latest replace -> KPI committed watermark
+
+Si una ejecución alcanzó a escribir una evaluation real pero falló antes de completar latest/state,
+el siguiente intento termina primero ese commit sin recalcular la evaluation desde fuentes latest
+mutables. Esto no es replay: se recupera una evaluación que sí ocurrió. Después, la siguiente
+iteración observa nuevamente el último PI watermark y continúa normalmente.
