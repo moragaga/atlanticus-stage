@@ -24,6 +24,7 @@ FABRICA_JOB_DEFINITION = JobDefinition(
     module_name='ada.processes.fabrica',
     service_name='fabrica',
     job_key='fabrica-materialization',
+    run_once=True,
     sleep_seconds=0,
     iteration_timeout_seconds=240,
     execution_timeout_seconds=600,

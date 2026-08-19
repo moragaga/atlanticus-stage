@@ -4,10 +4,11 @@ import argparse
 import os
 import re
 import shutil
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import tomllib
 
 DEFAULT_CPUS = 0.5
 DEFAULT_MEMORY = '1g'

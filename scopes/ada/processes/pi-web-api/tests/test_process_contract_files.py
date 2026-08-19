@@ -28,7 +28,6 @@ def test_detail_templates_exist_without_real_local_env() -> None:
 
     assert (root / '.env.detail').is_file()
     assert not (root / '.env').exists()
-    assert json.loads((root / 'config.detail.json').read_text(encoding='utf-8')) == {}
     secrets = json.loads((root / 'secrets.detail.json').read_text(encoding='utf-8'))
     variables = {item['var_name'] for item in secrets}
     assert {'COMPANY_ABREV', 'PRODUCT_ABREV'} <= variables

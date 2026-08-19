@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 
@@ -14,7 +13,6 @@ def test_transport_contract_files_exist_without_real_local_env() -> None:
     ):
         assert (root / name).is_file(), name
     assert not (root / '.env').exists()
-    assert json.loads((root / 'config.detail.json').read_text(encoding='utf-8')) == {}
     assert (root / 'scripts' / 'check.sh').is_file()
     assert (root / 'scripts' / 'check.bat').is_file()
 

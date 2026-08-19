@@ -7,11 +7,12 @@ import os
 import re
 import shutil
 import tempfile
-import tomllib
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import tomllib
 
 # Expresiones regulares para mantener nombres seguros y predecibles dentro de rutas y Compose.
 PROCESS_NAME_PATTERN = re.compile(r'^[a-z0-9]+(?:-[a-z0-9]+)*$')
@@ -22,7 +23,9 @@ REQUIRED_ARTIFACT_ENTRIES = (
     'uv.lock',
     'wheels',
     'src',
+    '.env.detail',
     'config.detail.json',
+    'secrets.detail.json',
 )
 LOCAL_ONLY_NAMES = frozenset(
     {
@@ -35,8 +38,8 @@ LOCAL_ONLY_NAMES = frozenset(
         'dist',
     }
 )
-DEFAULT_CPUS = 2.0
-DEFAULT_MEMORY = '2g'
+DEFAULT_CPUS = 0.5
+DEFAULT_MEMORY = '1g'
 DEFAULT_VOLUME_PATH = '/app/volume'
 RUNTIME_VOLUME_KEY = 'runtime'
 ALLOWED_SYSTEM_PROFILES = frozenset({'base', 'sqlserver'})
@@ -193,7 +196,7 @@ def _artifact_ignore(directory: str, names: list[str]) -> set[str]:
         if name == '.env' or (name.startswith('.env.') and name != '.env.detail')
     )
     if Path(directory).name in PROCESS_JOBS_BY_NAME:
-        ignored.add('config.json')
+        ignored.update({'config.json', 'secrets.json'})
     ignored.update(name for name in names if name.endswith('.egg-info'))
     return ignored
 
@@ -205,7 +208,7 @@ def _preserve_consumer_files(
     job: ProcessJob,
 ) -> None:
     current_process = target_root / 'processes' / job.name
-    for name in ('config.json', '.env'):
+    for name in ('config.json', 'secrets.json', '.env'):
         current = current_process / name
         if current.is_file():
             shutil.copy2(current, staged_process / name)
@@ -242,7 +245,7 @@ def _service(job: ProcessJob) -> dict[str, object]:
 
 
 def _render_services(jobs: tuple[ProcessJob, ...]) -> str:
-    return json.dumps([_service(job) for job in jobs], indent=4, ensure_ascii=False) + '\n'
+    return json.dumps([_service(job) for job in jobs], indent=2, ensure_ascii=False) + '\n'
 
 
 def _validate_services(path: Path, jobs: tuple[ProcessJob, ...]) -> None:
@@ -448,6 +451,15 @@ def main() -> None:
     if missing_configs:
         print('Consumer configuration required:')
         for path in missing_configs:
+            print(f'  - {path}')
+    missing_secrets = tuple(
+        f'processes/{job.name}/secrets.json'
+        for job in jobs
+        if not (target_root / 'processes' / job.name / 'secrets.json').is_file()
+    )
+    if missing_secrets:
+        print('Consumer secrets manifest required:')
+        for path in missing_secrets:
             print(f'  - {path}')
     missing_envs = tuple(
         f'processes/{job.name}/.env'

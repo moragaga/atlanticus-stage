@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from ada.processes.fabrica.composition import build_composition
+from ada.processes.fabrica.composition import FABRICA_JOB_DEFINITION, build_composition
 from atlanticus.configuration import ConfigurationSource, ResolvedConfiguration
 from atlanticus.kernel import Environment
 
@@ -42,3 +42,7 @@ def test_composition_passes_named_storage_connections_and_process_identity(monke
     assert set(captured['connections']) == {'planes', 'kpis'}
     assert captured['connections']['planes'].container_name == 'plans'
     assert captured['connections']['kpis'].container_name == 'kpis'
+
+
+def test_job_is_run_once_for_platform_schedule() -> None:
+    assert FABRICA_JOB_DEFINITION.run_once is True
