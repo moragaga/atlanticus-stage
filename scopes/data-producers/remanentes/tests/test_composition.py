@@ -4,6 +4,7 @@ import pytest
 
 from atlanticus.connectivity.storage import StorageConnectionStringCredential, StorageSettings
 from atlanticus.data_producers.remanentes import (
+    RemanentesLatestMaterializer,
     RemanentesStorageConnection,
     build_remanentes_data_producer,
 )
@@ -39,6 +40,7 @@ def test_composition_uses_one_storage_client_for_all_streams(tmp_path) -> None:
     )
 
     assert len(components.materializers) == 2
+    assert all(isinstance(item, RemanentesLatestMaterializer) for item in components.materializers)
     assert all(item._source._client is components.storage for item in components.materializers)
     assert tuple(item.definition.stream_key for item in components.materializers) == (
         'stocks',

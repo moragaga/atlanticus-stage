@@ -25,6 +25,7 @@ IGNORED_DIRECTORY_NAMES = frozenset(
         '.mypy_cache',
         '.pytest_cache',
         '.ruff_cache',
+        '.runtime',
         '.venv',
         '__pycache__',
         'artifacts',

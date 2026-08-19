@@ -1,5 +1,4 @@
-# Este archivo define la superficie pública del producer Remanentes.
-# Solo reexporta contratos y componentes estables para que ADA no dependa de detalles internos.
+# API pública: expone tanto la estrategia histórica como la variante latest.
 
 from atlanticus.data_producers.remanentes.composition import (
     RemanentesDataProducerComponents,
@@ -16,6 +15,7 @@ from atlanticus.data_producers.remanentes.errors import (
 )
 from atlanticus.data_producers.remanentes.job import RemanentesJob
 from atlanticus.data_producers.remanentes.materialization import (
+    RemanentesLatestMaterializer,
     RemanentesMaterializationResult,
     RemanentesMaterializer,
 )
@@ -44,6 +44,7 @@ __all__ = [
     'RemanentesContractError',
     'RemanentesDataProducerComponents',
     'RemanentesJob',
+    'RemanentesLatestMaterializer',
     'RemanentesMaterializationResult',
     'RemanentesMaterializer',
     'RemanentesProducerManifest',

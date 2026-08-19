@@ -11,6 +11,7 @@ def test_public_api_exposes_explicit_remanentes_contracts() -> None:
     assert 'RemanentesStorageConnection' in exported
     assert 'RemanentesStorageSource' in exported
     assert 'RemanentesMaterializer' in exported
+    assert 'RemanentesLatestMaterializer' in exported
     assert 'RemanentesProducerState' in exported
     assert 'build_remanentes_data_producer' in exported
     assert 'RemanentesTransformKind' not in exported

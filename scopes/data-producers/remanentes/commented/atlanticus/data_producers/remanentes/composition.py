@@ -1,5 +1,6 @@
-# La composición crea un único StorageClient compartido por los tres streams.
-# La conexión y el container llegan ya resueltos desde el proceso consumidor; el producer no conoce variables de entorno.
+# La composición estándar de Remanentes usa la estrategia latest.
+# La estrategia histórica continúa disponible como contrato reutilizable, pero no se selecciona aquí.
+# Un único StorageClient sigue compartido por todos los streams.
 
 from __future__ import annotations
 
@@ -7,7 +8,10 @@ from dataclasses import dataclass
 
 from atlanticus.connectivity.storage import StorageClient, StorageSettings
 from atlanticus.data_producers.remanentes.job import RemanentesJob
-from atlanticus.data_producers.remanentes.materialization import RemanentesMaterializer
+from atlanticus.data_producers.remanentes.materialization import (
+    RemanentesLatestMaterializer,
+    RemanentesMaterializer,
+)
 from atlanticus.data_producers.remanentes.models import (
     RemanentesRowsStreamDefinition,
     RemanentesStocksStreamDefinition,
@@ -73,7 +77,7 @@ def build_remanentes_data_producer(
         store=ParquetDatasetStore(root=runtime_configuration.application_root / 'datasets')
     )
     materializers = tuple(
-        RemanentesMaterializer(
+        RemanentesLatestMaterializer(
             source=RemanentesStorageSource(
                 client=storage,
                 container_name=connection.container_name,

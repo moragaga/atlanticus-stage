@@ -4,7 +4,10 @@ from dataclasses import dataclass
 
 from atlanticus.connectivity.storage import StorageClient, StorageSettings
 from atlanticus.data_producers.remanentes.job import RemanentesJob
-from atlanticus.data_producers.remanentes.materialization import RemanentesMaterializer
+from atlanticus.data_producers.remanentes.materialization import (
+    RemanentesLatestMaterializer,
+    RemanentesMaterializer,
+)
 from atlanticus.data_producers.remanentes.models import (
     RemanentesRowsStreamDefinition,
     RemanentesStocksStreamDefinition,
@@ -70,7 +73,7 @@ def build_remanentes_data_producer(
         store=ParquetDatasetStore(root=runtime_configuration.application_root / 'datasets')
     )
     materializers = tuple(
-        RemanentesMaterializer(
+        RemanentesLatestMaterializer(
             source=RemanentesStorageSource(
                 client=storage,
                 container_name=connection.container_name,

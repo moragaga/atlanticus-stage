@@ -13,6 +13,7 @@ from atlanticus.data_producers.remanentes.errors import (
 )
 from atlanticus.data_producers.remanentes.job import RemanentesJob
 from atlanticus.data_producers.remanentes.materialization import (
+    RemanentesLatestMaterializer,
     RemanentesMaterializationResult,
     RemanentesMaterializer,
 )
@@ -41,6 +42,7 @@ __all__ = [
     'RemanentesContractError',
     'RemanentesDataProducerComponents',
     'RemanentesJob',
+    'RemanentesLatestMaterializer',
     'RemanentesMaterializationResult',
     'RemanentesMaterializer',
     'RemanentesProducerManifest',

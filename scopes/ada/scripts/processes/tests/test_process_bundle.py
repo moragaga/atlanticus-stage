@@ -24,6 +24,19 @@ def test_repository_root_matches_new_process_tooling_location() -> None:
     ).resolve() == Path(process_bundle.__file__).resolve()
 
 
+
+def test_discover_projects_ignores_runtime_workspace(tmp_path: Path) -> None:
+    repository_root = tmp_path / 'repository'
+    source_project = repository_root / 'scopes' / 'ada' / 'processes' / 'dispatch'
+    runtime_copy = repository_root / '.runtime' / 'deployment-test' / 'processes' / 'dispatch'
+    _write_project(source_project, name='ada-dispatch-process')
+    _write_project(runtime_copy, name='ada-dispatch-process')
+
+    projects = discover_projects(repository_root)
+
+    assert projects['ada-dispatch-process'].root == source_project
+
+
 def test_resolve_internal_dependencies_is_transitive_and_ordered(tmp_path: Path) -> None:
     repository_root = tmp_path / 'repository'
     process_root = repository_root / 'scopes' / 'ada' / 'processes' / 'sample'
