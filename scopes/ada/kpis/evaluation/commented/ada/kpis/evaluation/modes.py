@@ -1,0 +1,63 @@
+# Semántica central de los modos base de KpiSpec.
+# Aquí se resuelve el valor nativo; la presentación se aplica después.
+from __future__ import annotations
+
+from numbers import Integral, Real
+
+from ada.kpis.core import DataRuntimeContext, KpiMode, KpiNativeValue, KpiSpec
+from ada.kpis.evaluation.errors import KpiInvalidValueError
+
+
+# Ejecuta un KpiSpec sin formatear ni construir KpiResult.
+def resolve_base_value(*, spec: KpiSpec, data_context: DataRuntimeContext) -> KpiNativeValue:
+    if not isinstance(spec, KpiSpec):
+        raise TypeError('spec must be KpiSpec')
+    if not isinstance(data_context, DataRuntimeContext):
+        raise TypeError('data_context must be DataRuntimeContext')
+    if spec.mode is KpiMode.CONSTANT:
+        return spec.constant_value
+    if spec.mode is KpiMode.CUSTOM:
+        assert spec.custom_resolver is not None
+        return spec.custom_resolver(data_context)
+    assert spec.source is not None
+    source_context = data_context.get(spec.source)
+    if spec.mode is KpiMode.LATEST:
+        return source_context.last_value(spec.columns[0])
+    if spec.mode is KpiMode.LATEST_NUMBER:
+        return source_context.last_value_number(spec.columns[0])
+    if spec.mode is KpiMode.STATUS:
+        value = source_context.last_value(spec.columns[0])
+        if value is None:
+            return None
+        return _resolve_status(value)
+    if spec.mode is KpiMode.SUM_LATESTS_NUMBERS:
+        return sum(
+            source_context.last_value_number(column, default=0.0) or 0.0 for column in spec.columns
+        )
+    if spec.mode is KpiMode.MAX_LATESTS_NUMBERS:
+        values = tuple(
+            value
+            for column in spec.columns
+            if (value := source_context.last_value_number(column, default=None)) is not None
+        )
+        return max(values) if values else None
+    raise ValueError(f'{spec.key}: unsupported KPI mode: {spec.mode.value}')
+
+
+# STATUS conserva un mapping pequeño y explícito; casos especiales usan CUSTOM.
+def _resolve_status(value: object) -> str:
+    if isinstance(value, bool):
+        raise KpiInvalidValueError('status value is invalid')
+    if isinstance(value, Integral | Real):
+        if value == 0:
+            return 'detenido'
+        if value == 1:
+            return 'operando'
+        raise KpiInvalidValueError('status value is invalid')
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {'0', '0.0', 'detenido'}:
+            return 'detenido'
+        if normalized in {'1', '1.0', 'funcionando'}:
+            return 'operando'
+    raise KpiInvalidValueError('status value is invalid')
