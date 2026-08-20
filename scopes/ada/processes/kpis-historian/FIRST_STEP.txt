@@ -1,0 +1,72 @@
+KPIS HISTORIAN - PRIMEROS PASOS
+==============================
+
+Este proceso consume las evaluations KPI ya confirmadas y materializa el histórico durable en
+Parquet. No calcula KPI y no usa pip.
+
+1. ENTRAR AL PROCESO
+--------------------
+Desde la raíz del repositorio:
+
+    cd scopes/ada/processes/kpis-historian
+
+2. CREAR LA CONFIGURACIÓN LOCAL
+-------------------------------
+
+    cp .env.detail .env
+
+APPLICATION identifica el scope compartido del ecosistema, no un namespace privado del Historian.
+KPI, Historian y Delivery deben usar exactamente el mismo APPLICATION cuando pertenecen a la misma
+solución. Ejemplo:
+
+    APPLICATION=ada-operaciones-integradas-local
+
+El proceso lee y escribe dentro de ese mismo root:
+
+    datasets/kpis/evaluations/               lectura
+    datasets/kpis/history/                   escritura
+    .runtime/state/kpis/                     lectura
+    .runtime/state/kpis-historian/           escritura
+
+No usa KPI_APPLICATION ni deriva otro APPLICATION.
+
+3. CONTRATO DE HISTORIZACIÓN
+----------------------------
+- Lee únicamente evaluations inmutables confirmadas por el proceso kpis.
+- El techo de consumo es .runtime/state/kpis/committed-watermark.json.
+- Mantiene su propio committed watermark en .runtime/state/kpis-historian/.
+- Hace catch-up de evaluations reales existentes y conserva sus gaps reales.
+- Si existen T1, T2 y T5, procesa T1, T2 y T5; nunca inventa T3 ni T4.
+- Solo materializa resultados con persist_history=true.
+- Los estados missing/invalid/error también se historizan cuando persist_history=true, con valor nulo.
+- Si una evaluation no contiene filas historizables, igualmente se considera consumida y el watermark
+  puede avanzar.
+- La escritura Parquet es idempotente por (timestamp_utc, key).
+- El watermark del Historian avanza solo después de completar todas las publicaciones necesarias.
+- No modifica datasets/kpis/latest ni el committed watermark de kpis.
+
+4. LAYOUT
+---------
+
+    datasets/kpis/history/
+        year=YYYY/
+            month=MM/
+                day=DD/
+                    data.parquet
+
+El histórico es vertical. Cada fila identifica un KPI en un watermark real de evaluación.
+El valor se conserva como JSON canónico en value_json para preservar exactamente números, strings,
+objetos y arreglos sin imponer un tipo físico común a todos los KPI.
+
+5. VALIDACIÓN
+-------------
+La primera vez puedes crear el lock local con:
+
+    uv sync --python 3.14.2
+
+Después:
+
+    scripts/check.sh --clean
+
+El check genera el artifact autónomo en artifacts/processes/kpis-historian y valida Ruff, formato,
+tests, wheels internos, lock frozen e import del runtime final.

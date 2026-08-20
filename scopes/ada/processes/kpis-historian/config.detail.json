@@ -1,0 +1,20 @@
+{
+  "configuration": {
+    "replicaTimeout": 610,
+    "replicaRetryLimit": 0,
+    "triggerType": "Schedule",
+    "scheduleTriggerConfig": {
+      "cronExpression": "*/10 * * * *",
+      "parallelism": 1
+    }
+  },
+  "template": {
+    "container": {
+      "name": "kpis-historian-service",
+      "resources": {
+        "cpu": 0.5,
+        "memory": "1Gi"
+      }
+    }
+  }
+}
