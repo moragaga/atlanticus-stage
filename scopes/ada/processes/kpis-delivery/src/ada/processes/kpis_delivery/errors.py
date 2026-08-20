@@ -1,0 +1,2 @@
+class KpiDeliveryRepositoryError(Exception):
+    pass
