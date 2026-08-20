@@ -96,7 +96,9 @@ def test_configuration_resolves_observability_file_logs_flag(tmp_path) -> None:
 
 @pytest.mark.parametrize('value', ['invalid', ' false ', 'TRUE '])
 def test_configuration_rejects_invalid_observability_file_logs_flag(tmp_path, value) -> None:
-    with pytest.raises(RuntimeConfigurationError, match='ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED'):
+    with pytest.raises(
+        RuntimeConfigurationError, match='ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED'
+    ):
         RuntimeConfiguration.from_sources(
             environ={
                 'ENVIRONMENT': 'local',

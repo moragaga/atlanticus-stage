@@ -487,9 +487,7 @@ def _write_export_pyproject(
 
 
 def _remove_uv_sources_section(source_text: str) -> str:
-    pattern = re.compile(
-        r'(?ms)^\[tool\.uv\.sources\]\s*\n.*?(?=^\[|\Z)'
-    )
+    pattern = re.compile(r'(?ms)^\[tool\.uv\.sources\]\s*\n.*?(?=^\[|\Z)')
     return pattern.sub('', source_text).rstrip()
 
 

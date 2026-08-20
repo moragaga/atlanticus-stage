@@ -24,7 +24,6 @@ def test_repository_root_matches_new_process_tooling_location() -> None:
     ).resolve() == Path(process_bundle.__file__).resolve()
 
 
-
 def test_discover_projects_ignores_runtime_workspace(tmp_path: Path) -> None:
     repository_root = tmp_path / 'repository'
     source_project = repository_root / 'scopes' / 'ada' / 'processes' / 'dispatch'
