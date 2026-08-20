@@ -29,6 +29,9 @@ Processes:
   04  blockgrade
   05  fabrica
   06  remanentes
+  21  kpis
+  22  kpis-historian
+  41  kpis-delivery
 
 Output:
   distribution/DISTRIBUTION/

@@ -6,7 +6,7 @@ from ada.processes.kpis_delivery.errors import KpiDeliveryConfigurationError
 from atlanticus.configuration import ConfigurationVariableSpec, ResolvedConfiguration
 from atlanticus.connectivity.cosmos import CosmosConfigurationError, CosmosSettings
 
-_DEFAULT_POLL_INTERVAL_SECONDS = 1
+_DEFAULT_POLL_INTERVAL_SECONDS = 10
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,12 +1,6 @@
-from ada.kpis.delivery import KpiDeliveryBinding
-from ada.processes.kpis_delivery import build_composition
+from ada.processes.kpis_delivery import KpiDeliveryBindingsRepository, build_composition
 from atlanticus.configuration import ConfigurationSource, ResolvedConfiguration
 from atlanticus.kernel import Environment
-
-
-class FakeBindingsReader:
-    def read_bindings(self):
-        return (KpiDeliveryBinding(store_key='chancado', kpi_key='tonelaje'),)
 
 
 def _configuration(tmp_path):
@@ -31,10 +25,7 @@ def _configuration(tmp_path):
 
 
 def test_composition_uses_shared_application_and_named_consumption_connection(tmp_path) -> None:
-    composition = build_composition(
-        configuration=_configuration(tmp_path),
-        bindings=FakeBindingsReader(),
-    )
+    composition = build_composition(configuration=_configuration(tmp_path))
 
     assert composition.runtime_configuration.application == 'ada-operaciones-integradas-local'
     assert composition.runtime_configuration.application_root == (
@@ -45,3 +36,6 @@ def test_composition_uses_shared_application_and_named_consumption_connection(tm
     assert composition.job_definition.service_name == 'kpis-delivery'
     assert composition.job_definition.job_key == 'kpis-delivery'
     assert composition.job_definition.sleep_seconds == 3
+    assert isinstance(composition.job._bindings, KpiDeliveryBindingsRepository)
+    assert composition.job._bindings.client is composition.cosmos_client
+    assert composition.job._snapshots.client is composition.cosmos_client

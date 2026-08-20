@@ -1,4 +1,4 @@
-# Espejo comentado: frontera Cosmos del proceso KPI Latest Delivery.
+# Espejo comentado: el código ejecutable conserva exactamente el contrato productivo.
 from __future__ import annotations
 
 from dataclasses import dataclass

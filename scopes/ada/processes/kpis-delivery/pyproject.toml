@@ -24,6 +24,13 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest==9.1.1", "ruff==0.15.22"]
 
+[project.scripts]
+ada-kpis-delivery = "ada.processes.kpis_delivery.bootstrap:main"
+
+[tool.atlanticus.container]
+command = "ada-kpis-delivery"
+system-profile = "base"
+
 [tool.uv.sources]
 ada-kpis-core = { path = "../../kpis/core", editable = true }
 ada-kpis-delivery = { path = "../../kpis/delivery", editable = true }

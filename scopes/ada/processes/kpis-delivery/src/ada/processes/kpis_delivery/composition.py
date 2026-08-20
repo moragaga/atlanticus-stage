@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ada.kpis.persistence import KpiLatestRepository, KpiPersistencePaths
-from ada.processes.kpis_delivery.contracts import KpiDeliveryBindingsReader
+from ada.processes.kpis_delivery.bindings import KpiDeliveryBindingsRepository
 from ada.processes.kpis_delivery.job import KpiLatestDeliveryJob
 from ada.processes.kpis_delivery.repository import KpiLatestSnapshotRepository
 from ada.processes.kpis_delivery.settings import KpiDeliveryProcessSettings
@@ -38,15 +38,9 @@ class KpiDeliveryComposition:
             )
 
 
-def build_composition(
-    *,
-    configuration: ResolvedConfiguration,
-    bindings: KpiDeliveryBindingsReader,
-) -> KpiDeliveryComposition:
+def build_composition(*, configuration: ResolvedConfiguration) -> KpiDeliveryComposition:
     if not isinstance(configuration, ResolvedConfiguration):
         raise TypeError('configuration must be a ResolvedConfiguration')
-    if not isinstance(bindings, KpiDeliveryBindingsReader):
-        raise TypeError('bindings must implement KpiDeliveryBindingsReader')
 
     settings = KpiDeliveryProcessSettings.from_configuration(configuration)
     runtime_configuration = RuntimeConfiguration.from_sources(environ=configuration.values)
@@ -56,6 +50,10 @@ def build_composition(
         paths=persistence_paths,
     )
     cosmos_client = CosmosClient(settings=settings.cosmos)
+    bindings = KpiDeliveryBindingsRepository(
+        client=cosmos_client,
+        container_name=settings.container_name,
+    )
     snapshots = KpiLatestSnapshotRepository(
         client=cosmos_client,
         container_name=settings.container_name,

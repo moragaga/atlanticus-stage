@@ -37,3 +37,12 @@ def test_bootstrap_requires_absolute_volume_path(tmp_path) -> None:
         match='VOLUMEN_PATH must be an absolute path',
     ):
         load_configuration(process_root=tmp_path, environ=environment)
+
+
+def test_bootstrap_exposes_executable_main_without_binding_injection() -> None:
+    import inspect
+
+    from ada.processes.kpis_delivery.bootstrap import main, run
+
+    assert callable(main)
+    assert 'bindings' not in inspect.signature(run).parameters

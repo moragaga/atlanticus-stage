@@ -1,3 +1,4 @@
+from ada.processes.kpis_delivery.bindings import KpiDeliveryBindingsRepository
 from ada.processes.kpis_delivery.bootstrap import load_configuration, run
 from ada.processes.kpis_delivery.composition import KpiDeliveryComposition, build_composition
 from ada.processes.kpis_delivery.contracts import (
@@ -24,6 +25,7 @@ __version__ = '0.1.0'
 
 __all__ = [
     'KpiDeliveryBindingsReader',
+    'KpiDeliveryBindingsRepository',
     'KpiDeliveryComposition',
     'KpiDeliveryConfigurationError',
     'KpiDeliveryProcessSettings',

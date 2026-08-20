@@ -38,6 +38,27 @@ def test_job_catalog_is_stable_and_ordered() -> None:
         ("05", "fabrica"),
         ("06", "remanentes"),
         ("21", "kpis"),
+        ("22", "kpis-historian"),
+        ("41", "kpis-delivery"),
+    )
+
+
+def test_kpi_runtime_jobs_keep_reserved_runtime_range() -> None:
+    jobs = select_jobs(("kpis-historian", "kpis"), include_all=False)
+
+    assert tuple((job.container_name, job.name) for job in jobs) == (
+        ("job21", "kpis"),
+        ("job22", "kpis-historian"),
+    )
+
+
+def test_kpi_delivery_keeps_reserved_delivery_range() -> None:
+    jobs = select_jobs(("kpis-delivery", "kpis-historian", "kpis"), include_all=False)
+
+    assert tuple((job.container_name, job.name) for job in jobs) == (
+        ("job21", "kpis"),
+        ("job22", "kpis-historian"),
+        ("job41", "kpis-delivery"),
     )
 
 
@@ -265,6 +286,21 @@ def test_generated_local_runner_validates_env_without_requiring_docker(
         text=True,
     )
     assert valid.returncode == 0
+
+
+def test_distribution_wrapper_help_lists_registered_kpi_runtime_jobs() -> None:
+    repository_root = Path(__file__).resolve().parents[3]
+    result = subprocess.run(
+        ["bash", str(repository_root / "scripts/distribute-processes.sh"), "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "21  kpis" in result.stdout
+    assert "22  kpis-historian" in result.stdout
+    assert "41  kpis-delivery" in result.stdout
 
 
 def test_commented_distributor_is_structurally_equivalent() -> None:

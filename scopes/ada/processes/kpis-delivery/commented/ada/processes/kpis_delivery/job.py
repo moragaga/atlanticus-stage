@@ -1,4 +1,4 @@
-# Orquestación de una iteración de Latest Delivery: configuración normalizada, latest, proyección y publicación idempotente.
+# Espejo comentado: el código ejecutable conserva exactamente el contrato productivo.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -18,7 +18,6 @@ from ada.processes.kpis_delivery.models import (
 from atlanticus.runtime import JobRuntimeContext
 
 
-# El resultado conserva solo información operacional útil; el contenido publicado sigue perteneciendo al snapshot de Delivery.
 @dataclass(frozen=True, slots=True)
 class KpiLatestDeliveryIterationResult:
     publication: KpiLatestPublication
@@ -56,17 +55,14 @@ class KpiLatestDeliveryJob:
         context.raise_if_cancelled()
         bindings = self._bindings.read_bindings()
         context.raise_if_cancelled()
-        # Configuración vacía no requiere leer latest: se puede publicar directamente el contrato mínimo vacío.
         latest = None if not bindings else self._latest.read()
         context.raise_if_cancelled()
-        # La ausencia completa de latest equivale a no encontrar ninguna de las keys configuradas y las proyecta como missing.
         snapshot = project_kpi_latest(
             evaluation=latest,
             bindings=bindings,
             updated_at_utc=self._now(),
         )
         context.raise_if_cancelled()
-        # El publisher decide si la revision amerita una escritura; el job no conoce Cosmos.
         publication = self._snapshots.publish(snapshot)
         result = _result(
             publication=publication,
@@ -75,7 +71,6 @@ class KpiLatestDeliveryJob:
         return _record_result(context, result)
 
 
-# Los contadores derivan del snapshot ya normalizado para no duplicar selección ni deduplicación de bindings.
 def _result(
     *,
     publication: KpiLatestPublication,
@@ -91,7 +86,6 @@ def _result(
     )
 
 
-# Solo una publicación nueva cuenta como trabajo; una revision idéntica queda registrada como iteración omitida.
 def _record_result(
     context: JobRuntimeContext,
     result: KpiLatestDeliveryIterationResult,
@@ -110,6 +104,5 @@ def _record_result(
     return result
 
 
-# El reloj se inyecta en tests; producción usa UTC real.
 def _utc_now() -> datetime:
     return datetime.now(UTC)

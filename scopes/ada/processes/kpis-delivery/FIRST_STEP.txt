@@ -1,0 +1,46 @@
+KPIS DELIVERY - PRIMEROS PASOS
+==============================
+
+Este proceso consume el latest KPI y una proyección de configuración desde Cosmos, y publica el
+snapshot agregado de consumo en el mismo contenedor. No calcula KPI, no historiza y no usa pip.
+
+1. CONFIGURACIÓN LOCAL
+----------------------
+
+    cp .env.detail .env
+
+APPLICATION debe ser el mismo scope compartido usado por KPI Evaluation e Historian.
+COSMOS_CONSUMPTION_* identifica una conexión Cosmos nombrada de consumo.
+
+El contenedor debe usar /partition_id como partition key y contener el snapshot de configuración:
+
+    id = snapshot
+    partition_id = configuration
+
+Su payload runtime mínimo es:
+
+    stores -> store_key -> [{"key": "...", "kind": "kpi"}, ...]
+
+El store_key exterior define el destino. Latest Delivery solo consume entradas kind=kpi; otros kinds
+se ignoran. stores={} es una configuración válida y publica el contrato mínimo vacío. Un snapshot
+inexistente o inválido falla y no reemplaza el último snapshot KPI válido.
+
+2. SALIDA
+---------
+
+El proceso publica mediante point read/upsert:
+
+    id = snapshot
+    partition_id = kpis
+
+Si manifest.revision no cambia, no escribe nuevamente en Cosmos.
+
+3. VALIDACIÓN
+-------------
+
+Desde la raíz del proceso:
+
+    scripts/check.sh --clean
+
+El check valida source, genera artifacts/processes/kpis-delivery, instala el lock frozen del artifact
+y verifica el comando ada-kpis-delivery.

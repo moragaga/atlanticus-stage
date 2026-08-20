@@ -5,7 +5,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from ada.processes.kpis_delivery.composition import build_composition
-from ada.processes.kpis_delivery.contracts import KpiDeliveryBindingsReader
 from ada.processes.kpis_delivery.errors import KpiDeliveryConfigurationError
 from ada.processes.kpis_delivery.settings import configuration_specs
 from atlanticus.configuration import ConfigurationBootstrap, ResolvedConfiguration, SecretsManifest
@@ -72,21 +71,6 @@ def load_configuration(
     return _require_absolute_volume_path(configuration)
 
 
-def run(
-    *,
-    bindings: KpiDeliveryBindingsReader,
-    argv: Sequence[str] | None = None,
-    environ: Mapping[str, str] | None = None,
-    process_root: str | Path | None = None,
-) -> RuntimeExecutionResult:
-    if not isinstance(bindings, KpiDeliveryBindingsReader):
-        raise TypeError('bindings must implement KpiDeliveryBindingsReader')
-    root = Path.cwd() if process_root is None else Path(process_root)
-    source_values = os.environ if environ is None else environ
-    configuration = load_configuration(process_root=root, environ=source_values)
-    return build_composition(configuration=configuration, bindings=bindings).execute(argv=argv)
-
-
 def _key_vault_settings(
     *,
     environment: Environment,
@@ -115,3 +99,19 @@ def _require_absolute_volume_path(configuration: ResolvedConfiguration) -> Resol
     if not configured_path.is_absolute():
         raise KpiDeliveryConfigurationError('VOLUMEN_PATH must be an absolute path')
     return configuration
+
+
+def run(
+    *,
+    argv: Sequence[str] | None = None,
+    environ: Mapping[str, str] | None = None,
+    process_root: str | Path | None = None,
+) -> RuntimeExecutionResult:
+    root = Path.cwd() if process_root is None else Path(process_root)
+    source_values = os.environ if environ is None else environ
+    configuration = load_configuration(process_root=root, environ=source_values)
+    return build_composition(configuration=configuration).execute(argv=argv)
+
+
+def main() -> None:
+    run()

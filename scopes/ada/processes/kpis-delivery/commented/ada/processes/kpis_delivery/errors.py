@@ -1,4 +1,4 @@
-# Errores propios de configuración y persistencia del proceso; mantienen mensajes operacionales en inglés.
+# Espejo comentado: el código ejecutable conserva exactamente el contrato productivo.
 class KpiDeliveryConfigurationError(Exception):
     pass
 
