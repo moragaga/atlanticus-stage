@@ -19,6 +19,7 @@ from atlanticus.observability.guard import runtime_guard
 from atlanticus.observability.lifecycle import trace_execution, trace_iteration
 from atlanticus.observability.logger import ObservabilityLogger, get_observability_logger
 from atlanticus.observability.models import (
+    ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED_VARIABLE,
     ErrorInfo,
     EventAudience,
     EventCategory,
@@ -83,6 +84,7 @@ __all__ = [
     'MemoryEventSink',
     'NoopEventSink',
     'NoopTraceBridge',
+    'ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED_VARIABLE',
     'Observability',
     'ObservabilityEvent',
     'ObservabilityLogger',

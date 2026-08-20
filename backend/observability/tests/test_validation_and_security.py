@@ -237,3 +237,13 @@ def test_unknown_attribute_object_is_not_deep_copied() -> None:
         'type': '_Opaque',
         'summary': 'unsupported_object',
     }
+
+
+def test_observability_settings_rejects_invalid_file_logs_flag() -> None:
+    with pytest.raises(TypeError, match='file_logs_enabled'):
+        ObservabilitySettings.build(
+            application='ada',
+            service='web',
+            environment='local',
+            file_logs_enabled='false',
+        )

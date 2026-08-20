@@ -8,7 +8,12 @@ from atlanticus.kernel import DataSanitizer
 from atlanticus.observability.models import ObservabilitySettings
 from atlanticus.observability.operational import OperationalEventProjection
 from atlanticus.observability.persistence import DailyTraceSink
-from atlanticus.observability.sinks import CompositeEventSink, ConsoleTextSink, EventSink
+from atlanticus.observability.sinks import (
+    CompositeEventSink,
+    ConsoleTextSink,
+    EventSink,
+    NoopEventSink,
+)
 from atlanticus.observability.state import Observability, configure_observability
 from atlanticus.observability.tracing import TraceBridge
 
@@ -35,16 +40,21 @@ def configure_volume_observability(
     if any(not isinstance(sink, EventSink) for sink in additional_sinks):
         raise TypeError('additional_sinks must contain only EventSink instances')
     resolved_volume = Path(volume_path) if volume_path is not None else settings.volume_path
-    if resolved_volume is None:
-        raise ValueError('volume_path or settings.volume_path is required')
     operational_projection = OperationalEventProjection()
-    sinks: list[EventSink] = [DailyTraceSink(resolved_volume, projection=operational_projection)]
+    sinks: list[EventSink] = []
+    if settings.file_logs_enabled:
+        if resolved_volume is None:
+            raise ValueError(
+                'volume_path or settings.volume_path is required when file logs are enabled'
+            )
+        sinks.append(DailyTraceSink(resolved_volume, projection=operational_projection))
     if include_console:
         sinks.append(ConsoleTextSink(projection=operational_projection))
     sinks.extend(additional_sinks)
+    sink = CompositeEventSink(sinks) if sinks else NoopEventSink()
     return configure_observability(
         settings=settings,
-        sink=CompositeEventSink(sinks),
+        sink=sink,
         sanitizer=sanitizer,
         trace_bridge=trace_bridge,
     )

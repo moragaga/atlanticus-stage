@@ -148,6 +148,8 @@ def execute_job(
             component='runtime',
             environment=configuration.environment,
             volume_path=configuration.volume_path,
+            # RuntimeConfiguration ya resolvió el ENV; Observability sólo recibe el booleano final.
+            file_logs_enabled=configuration.observability_file_logs_enabled,
         )
         _configure_runtime_observability(
             settings,

@@ -19,6 +19,7 @@ def test_configuration_resolves_application_scope(tmp_path) -> None:
     assert configuration.application == 'ada'
     assert configuration.application_root == tmp_path / 'ada'
     assert configuration.runtime_root == tmp_path / 'ada' / '.runtime'
+    assert configuration.observability_file_logs_enabled is True
     assert not hasattr(configuration, 'values')
     assert not hasattr(configuration, 'get')
     assert not hasattr(configuration, 'require')
@@ -76,5 +77,31 @@ def test_configuration_rejects_ambiguous_application_identifiers(
                 'ENVIRONMENT': 'local',
                 'APPLICATION': application,
                 'VOLUMEN_PATH': str(tmp_path),
+            }
+        )
+
+
+def test_configuration_resolves_observability_file_logs_flag(tmp_path) -> None:
+    configuration = RuntimeConfiguration.from_sources(
+        environ={
+            'ENVIRONMENT': 'local',
+            'APPLICATION': 'ada',
+            'VOLUMEN_PATH': str(tmp_path),
+            'ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED': 'false',
+        }
+    )
+
+    assert configuration.observability_file_logs_enabled is False
+
+
+@pytest.mark.parametrize('value', ['invalid', ' false ', 'TRUE '])
+def test_configuration_rejects_invalid_observability_file_logs_flag(tmp_path, value) -> None:
+    with pytest.raises(RuntimeConfigurationError, match='ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED'):
+        RuntimeConfiguration.from_sources(
+            environ={
+                'ENVIRONMENT': 'local',
+                'APPLICATION': 'ada',
+                'VOLUMEN_PATH': str(tmp_path),
+                'ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED': value,
             }
         )

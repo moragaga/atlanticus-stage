@@ -18,6 +18,9 @@ from uuid import UUID, uuid4
 
 from atlanticus.kernel import DataSanitizer, Environment, OperationStatus, utc_now
 
+# Nombre único del flag que decide solamente la persistencia local en archivos.
+ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED_VARIABLE = 'ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED'
+
 
 class EventCategory(StrEnum):
     """Familias estables utilizadas para clasificar eventos."""
@@ -287,6 +290,8 @@ class ObservabilitySettings:
     instance_id: str = field(default_factory=socket.gethostname)
     process_id: int = field(default_factory=os.getpid)
     volume_path: Path | None = None
+    # El default conserva el comportamiento histórico de procesos que sí tienen volumen.
+    file_logs_enabled: bool = True
 
     def __post_init__(self) -> None:
         # build() admite texto para el ambiente y rutas; la construcción directa exige los tipos ya
@@ -303,6 +308,8 @@ class ObservabilitySettings:
             raise ValueError('process_id must be greater than zero')
         if self.volume_path is not None and not isinstance(self.volume_path, Path):
             raise TypeError('volume_path must be a Path')
+        if not isinstance(self.file_logs_enabled, bool):
+            raise TypeError('file_logs_enabled must be a bool')
 
     @classmethod
     def build(
@@ -316,6 +323,7 @@ class ObservabilitySettings:
         instance_id: str | None = None,
         process_id: int | None = None,
         volume_path: str | Path | None = None,
+        file_logs_enabled: bool = True,
     ) -> ObservabilitySettings:
         """Construye settings sin normalizar silenciosamente el ambiente."""
 
@@ -331,6 +339,7 @@ class ObservabilitySettings:
             'environment': resolved_environment,
             'module': module,
             'volume_path': Path(volume_path) if volume_path is not None else None,
+            'file_logs_enabled': file_logs_enabled,
         }
         if instance_id is not None:
             values['instance_id'] = instance_id

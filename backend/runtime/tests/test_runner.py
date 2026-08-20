@@ -525,3 +525,20 @@ def test_iteration_can_override_static_sleep_with_adaptive_delay(tmp_path, monke
     assert iterations == [1, 2]
     assert observed_waits == [0.25]
     assert result.stop_reason == 'requested'
+
+
+def test_execute_job_can_disable_file_logs_without_disabling_console(tmp_path, capsys) -> None:
+    environment = _environment(tmp_path)
+    environment['ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED'] = 'false'
+
+    execute_job(
+        definition=_definition(),
+        iteration=lambda context: context.mark_iteration_work(),
+        argv=[],
+        environ=environment,
+    )
+
+    console = capsys.readouterr().out
+    assert 'dispatch-ingestion-job started' in console
+    assert 'dispatch-ingestion-job completed' in console
+    assert not (tmp_path / 'ada' / 'logs').exists()
