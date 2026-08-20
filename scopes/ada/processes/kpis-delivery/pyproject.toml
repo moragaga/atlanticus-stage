@@ -9,16 +9,33 @@ description = "ADA KPI latest delivery process infrastructure boundary."
 requires-python = "==3.14.2"
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
+    "ada-kpis-core==0.1.0",
     "ada-kpis-delivery==0.1.0",
+    "ada-kpis-persistence==0.1.0",
+    "atlanticus-configuration==0.1.0",
     "atlanticus-cosmos==0.1.0",
+    "atlanticus-job-runtime==0.5.0",
+    "atlanticus-json==0.1.0",
+    "atlanticus-kernel==0.1.0",
+    "atlanticus-key-vault==0.1.0",
+    "atlanticus-observability-azure==0.1.0",
 ]
 
 [dependency-groups]
 dev = ["pytest==9.1.1", "ruff==0.15.22"]
 
 [tool.uv.sources]
+ada-kpis-core = { path = "../../kpis/core", editable = true }
 ada-kpis-delivery = { path = "../../kpis/delivery", editable = true }
+ada-kpis-persistence = { path = "../../kpis/persistence", editable = true }
+atlanticus-configuration = { path = "../../../../backend/configuration", editable = true }
 atlanticus-cosmos = { path = "../../../../connectivity/cosmos", editable = true }
+atlanticus-json = { path = "../../../../backend/json", editable = true }
+atlanticus-kernel = { path = "../../../../backend/kernel", editable = true }
+atlanticus-key-vault = { path = "../../../../connectivity/key-vault", editable = true }
+atlanticus-observability = { path = "../../../../backend/observability", editable = true }
+atlanticus-observability-azure = { path = "../../../../backend/observability-azure", editable = true }
+atlanticus-job-runtime = { path = "../../../../backend/runtime", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["src"]

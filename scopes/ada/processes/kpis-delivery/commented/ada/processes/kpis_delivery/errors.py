@@ -1,3 +1,7 @@
-# Espejo comentado: frontera Cosmos del proceso KPI Latest Delivery.
+# Errores propios de configuración y persistencia del proceso; mantienen mensajes operacionales en inglés.
+class KpiDeliveryConfigurationError(Exception):
+    pass
+
+
 class KpiDeliveryRepositoryError(Exception):
     pass

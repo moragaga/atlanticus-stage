@@ -21,14 +21,14 @@ KPI_LATEST_SCHEMA_VERSION = 1
 
 def project_kpi_latest(
     *,
-    evaluation: KpiEvaluation,
+    evaluation: KpiEvaluation | None,
     bindings: Iterable[KpiDeliveryBinding],
     updated_at_utc: datetime,
 ) -> KpiDeliverySnapshot:
-    if not isinstance(evaluation, KpiEvaluation):
-        raise TypeError('evaluation must be KpiEvaluation')
+    if evaluation is not None and not isinstance(evaluation, KpiEvaluation):
+        raise TypeError('evaluation must be KpiEvaluation or None')
     normalized_bindings = _normalize_bindings(bindings)
-    results = {result.key: result for result in evaluation.results}
+    results = {} if evaluation is None else {result.key: result for result in evaluation.results}
     stores: dict[str, dict[str, KpiDeliveryValue]] = {}
     for binding in normalized_bindings:
         store = stores.setdefault(binding.store_key, {})

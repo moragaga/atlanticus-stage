@@ -1,4 +1,4 @@
-# Proyección pura: convierte el latest de Evaluation en stores consumibles sin conocer Cosmos ni configuración física.
+# Proyección pura: convierte la evaluación latest en stores consumibles sin conocer Cosmos ni la configuración física.
 from __future__ import annotations
 
 import hashlib
@@ -20,20 +20,22 @@ KPI_LATEST_PARTITION_ID = 'kpis'
 KPI_LATEST_SCHEMA_VERSION = 1
 
 
+# La ausencia completa de latest se representa como un conjunto vacío de resultados. Así cada binding configurado queda missing.
 def project_kpi_latest(
     *,
-    evaluation: KpiEvaluation,
+    evaluation: KpiEvaluation | None,
     bindings: Iterable[KpiDeliveryBinding],
     updated_at_utc: datetime,
 ) -> KpiDeliverySnapshot:
-    if not isinstance(evaluation, KpiEvaluation):
-        raise TypeError('evaluation must be KpiEvaluation')
+    if evaluation is not None and not isinstance(evaluation, KpiEvaluation):
+        raise TypeError('evaluation must be KpiEvaluation or None')
     normalized_bindings = _normalize_bindings(bindings)
-    results = {result.key: result for result in evaluation.results}
+    results = {} if evaluation is None else {result.key: result for result in evaluation.results}
     stores: dict[str, dict[str, KpiDeliveryValue]] = {}
     for binding in normalized_bindings:
         store = stores.setdefault(binding.store_key, {})
         result = results.get(binding.kpi_key)
+        # Una key pedida por configuración que no aparece en latest se conserva explícitamente como missing.
         if result is None:
             store[binding.kpi_key] = KpiDeliveryValue(
                 status=KpiDeliveryStatus.MISSING,
@@ -41,6 +43,7 @@ def project_kpi_latest(
                 value=None,
             )
             continue
+        # Los errores de Evaluation conservan su value_kind, pero nunca exponen valor al consumidor.
         if result.status is KpiStatus.ERROR:
             store[binding.kpi_key] = KpiDeliveryValue(
                 status=KpiDeliveryStatus.ERROR,
@@ -48,6 +51,7 @@ def project_kpi_latest(
                 value=None,
             )
             continue
+        # VALUE usa parsed_value y JSON conserva el valor nativo ya validado por el contrato KPI.
         store[binding.kpi_key] = KpiDeliveryValue(
             status=KpiDeliveryStatus.OK,
             value_kind=result.value_kind,
@@ -66,6 +70,7 @@ def project_kpi_latest(
     )
 
 
+# La revisión depende únicamente del contenido consumible y de la versión del contrato, nunca del timestamp de publicación.
 def calculate_kpi_latest_revision(
     stores: Mapping[str, Mapping[str, KpiDeliveryValue]],
 ) -> str:
@@ -88,6 +93,7 @@ def calculate_kpi_latest_revision(
     return hashlib.sha256(encoded).hexdigest()[:16]
 
 
+# Normalizar una sola vez hace que bindings repetidos no alteren el snapshot ni su revisión.
 def _normalize_bindings(bindings: Iterable[KpiDeliveryBinding]) -> tuple[KpiDeliveryBinding, ...]:
     try:
         values = tuple(bindings)

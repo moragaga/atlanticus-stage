@@ -171,3 +171,34 @@ def test_same_kpi_can_be_projected_to_multiple_stores() -> None:
 
     assert snapshot.stores['chancado']['tonelaje'].value == '66,00'
     assert snapshot.stores['global']['tonelaje'].value == '66,00'
+
+
+def test_missing_latest_projects_all_configured_keys_as_missing() -> None:
+    snapshot = project_kpi_latest(
+        evaluation=None,
+        bindings=(
+            KpiDeliveryBinding(store_key='chancado', kpi_key='tonelaje'),
+            KpiDeliveryBinding(store_key='time-view', kpi_key='hora_pi'),
+        ),
+        updated_at_utc=_NOW,
+    )
+
+    assert snapshot.as_document()['stores'] == {
+        'chancado': {
+            'tonelaje': {'status': 'missing', 'value_kind': None, 'value': None},
+        },
+        'time-view': {
+            'hora_pi': {'status': 'missing', 'value_kind': None, 'value': None},
+        },
+    }
+
+
+def test_empty_configuration_does_not_require_latest() -> None:
+    snapshot = project_kpi_latest(
+        evaluation=None,
+        bindings=(),
+        updated_at_utc=_NOW,
+    )
+
+    assert snapshot.stores == {}
+    assert snapshot.manifest.revision == calculate_kpi_latest_revision({})
