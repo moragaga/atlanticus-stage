@@ -75,6 +75,7 @@ PROCESS_JOBS = (
     ProcessJob("04", "blockgrade"),
     ProcessJob("05", "fabrica"),
     ProcessJob("06", "remanentes"),
+    ProcessJob("21", "kpis"),
 )
 PROCESS_JOBS_BY_NAME = {job.name: job for job in PROCESS_JOBS}
 

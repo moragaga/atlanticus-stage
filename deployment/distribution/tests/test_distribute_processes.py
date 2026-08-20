@@ -37,6 +37,7 @@ def test_job_catalog_is_stable_and_ordered() -> None:
         ("04", "blockgrade"),
         ("05", "fabrica"),
         ("06", "remanentes"),
+        ("21", "kpis"),
     )
 
 
