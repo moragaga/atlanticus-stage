@@ -51,10 +51,17 @@ generate_workspace() {
 }
 
 command_prepare() {
-    [[ "$#" -eq 0 ]] || fail "Usage: scripts/local-process.sh prepare"
+    local -a processes=("$@")
+
+    if [[ "${1:-}" == "--all" ]]; then
+        [[ "$#" -eq 1 ]] || fail "Usage: scripts/local-process.sh prepare [--all|PROCESS [PROCESS ...]]"
+        processes=()
+    fi
+
     validate_uv
     uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
         "${BUNDLER}" \
+        "${processes[@]}" \
         --repository-root "${ROOT}" \
         --output-root "${ROOT}/artifacts/processes"
     printf '%s\n' "Process artifacts prepared in: ${ROOT}/artifacts/processes"
@@ -141,6 +148,6 @@ case "${1:-}" in
         command_run "$@"
         ;;
     *)
-        fail "Usage: scripts/local-process.sh {prepare|up [--bind]|down|ps|logs [process]|run <process>}"
+        fail "Usage: scripts/local-process.sh {prepare [--all|PROCESS [PROCESS ...]]|up [--bind]|down|ps|logs [process]|run <process>}"
         ;;
 esac

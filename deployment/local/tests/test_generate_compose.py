@@ -158,7 +158,7 @@ def test_local_shell_separates_prepare_from_up_and_runs_e2e_once() -> None:
         encoding="utf-8"
     )
 
-    assert "prepare|up [--bind]" in shell
+    assert "prepare [--all|PROCESS [PROCESS ...]]|up [--bind]" in shell
     assert "command_prepare()" in shell
     assert "command_up()" in shell
     assert "compose down --remove-orphans" in shell
