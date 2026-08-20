@@ -6,9 +6,11 @@ from typing import Protocol, runtime_checkable
 from ada.kpis.core import (
     DataRuntimeContext,
     KpiCatalog,
+    KpiColumnNotRequestedError,
     KpiEvaluation,
     KpiResult,
     KpiSource,
+    KpiSourceNotRequestedError,
     KpiSourceTrace,
     KpiSpec,
     KpiStatus,
@@ -18,9 +20,9 @@ from ada.kpis.core import (
 from ada.kpis.evaluation.dependencies import KpiDependencies
 from ada.kpis.evaluation.errors import KpiInvalidValueError
 from ada.kpis.evaluation.modes import resolve_base_value
-from ada.kpis.evaluation.values import build_result, status_result
+from ada.kpis.evaluation.values import build_result, error_result
 from ada.kpis.planner import KpiLoadPlan, KpiRequirementPlanner
-from ada.kpis.sources import LoadedKpiSources
+from ada.kpis.sources import KpiSourcesError, LoadedKpiSources
 
 
 @runtime_checkable
@@ -67,8 +69,8 @@ class KpiEvaluator:
             results.append(result)
             resolved[spec.key] = result
         sources = tuple(
-            KpiSourceTrace(source=source_plan.source, watermark=watermarks.get(source_plan.source))
-            for source_plan in plan.sources
+            KpiSourceTrace(source=source, watermark=watermarks.get(source))
+            for source in plan.sources
         )
         return KpiEvaluation(
             watermark=watermark,
@@ -83,21 +85,37 @@ class KpiEvaluator:
             if not isinstance(data_context, DataRuntimeContext):
                 raise TypeError('loaded source context must be DataRuntimeContext')
             value = resolve_base_value(spec=spec, data_context=data_context)
-        except KpiInvalidValueError:
-            return status_result(
+        except KpiInvalidValueError as error:
+            return error_result(
                 key=spec.key,
                 area=spec.area,
                 value_kind=spec.value_kind,
                 persist_history=spec.persist_history,
-                status=KpiStatus.INVALID,
+                error=_safe_error(error, include_message=True),
             )
-        except Exception:
-            return status_result(
+        except KpiSourcesError as error:
+            return error_result(
                 key=spec.key,
                 area=spec.area,
                 value_kind=spec.value_kind,
                 persist_history=spec.persist_history,
-                status=KpiStatus.ERROR,
+                error=_safe_error(error, include_message=True),
+            )
+        except (KpiSourceNotRequestedError, KpiColumnNotRequestedError) as error:
+            return error_result(
+                key=spec.key,
+                area=spec.area,
+                value_kind=spec.value_kind,
+                persist_history=spec.persist_history,
+                error=_safe_error(error, include_message=True),
+            )
+        except Exception as error:
+            return error_result(
+                key=spec.key,
+                area=spec.area,
+                value_kind=spec.value_kind,
+                persist_history=spec.persist_history,
+                error=_safe_error(error, include_message=False),
             )
         return build_result(
             key=spec.key,
@@ -111,34 +129,35 @@ class KpiEvaluator:
 
     @staticmethod
     def _evaluate_over(*, spec: OverKpiSpec, resolved: Mapping[str, KpiResult]) -> KpiResult:
-        dependencies = tuple(resolved[key] for key in spec.dependencies)
-        propagated = _propagated_status(dependencies)
-        if propagated is not None:
-            return status_result(
+        failed_dependencies = tuple(
+            key for key in spec.dependencies if resolved[key].status is KpiStatus.ERROR
+        )
+        if failed_dependencies:
+            return error_result(
                 key=spec.key,
                 area=spec.area,
                 value_kind=spec.value_kind,
                 persist_history=spec.persist_history,
-                status=propagated,
+                error=f'KPI dependency failed: {", ".join(failed_dependencies)}',
             )
         values = KpiDependencies({key: resolved[key].value for key in spec.dependencies})
         try:
             value = spec.resolver(values)
-        except KpiInvalidValueError:
-            return status_result(
+        except KpiInvalidValueError as error:
+            return error_result(
                 key=spec.key,
                 area=spec.area,
                 value_kind=spec.value_kind,
                 persist_history=spec.persist_history,
-                status=KpiStatus.INVALID,
+                error=_safe_error(error, include_message=True),
             )
-        except Exception:
-            return status_result(
+        except Exception as error:
+            return error_result(
                 key=spec.key,
                 area=spec.area,
                 value_kind=spec.value_kind,
                 persist_history=spec.persist_history,
-                status=KpiStatus.ERROR,
+                error=_safe_error(error, include_message=False),
             )
         return build_result(
             key=spec.key,
@@ -151,11 +170,17 @@ class KpiEvaluator:
         )
 
 
-def _propagated_status(results: tuple[KpiResult, ...]) -> KpiStatus | None:
-    for status in (KpiStatus.ERROR, KpiStatus.INVALID, KpiStatus.MISSING):
-        if any(result.status is status for result in results):
-            return status
-    return None
+def _safe_error(error: Exception, *, include_message: bool) -> str:
+    error_type = type(error).__name__
+    if not include_message:
+        return error_type
+    message = str(error).strip()
+    if not message:
+        return error_type
+    cleaned = ' '.join(message.split())
+    if len(cleaned) > 400:
+        cleaned = f'{cleaned[:400]}...<truncated>'
+    return f'{error_type}: {cleaned}'
 
 
 def _normalize_source_watermarks(

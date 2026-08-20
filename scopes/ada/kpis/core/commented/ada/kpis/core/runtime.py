@@ -1,5 +1,4 @@
-# Define el contrato que ve un resolver durante su ejecución.
-# DataRuntimeContext contiene solo las fuentes solicitadas y cada frame ya viene recortado a columnas y ventana exactas.
+# Entrega al resolver únicamente las vistas exactas solicitadas por source y partition.
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -7,7 +6,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
-from ada.kpis.core.enums import KpiSource
+from ada.kpis.core.enums import KpiPartition, KpiSource
+from ada.kpis.core.requirements import KpiSourceView
 
 
 class KpiSourceNotRequestedError(KeyError):
@@ -32,28 +32,39 @@ class RuntimeFrameContext(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class DataRuntimeContext:
-    frames: Mapping[KpiSource, RuntimeFrameContext]
+    frames: Mapping[KpiSourceView, RuntimeFrameContext]
 
     def __post_init__(self) -> None:
-        normalized: dict[KpiSource, RuntimeFrameContext] = {}
-        for source, frame in self.frames.items():
-            if not isinstance(source, KpiSource):
-                raise TypeError('data runtime context sources must be KpiSource values')
+        normalized: dict[KpiSourceView, RuntimeFrameContext] = {}
+        for view, frame in self.frames.items():
+            if not isinstance(view, KpiSourceView):
+                raise TypeError('data runtime context keys must be KpiSourceView values')
             if not isinstance(frame, RuntimeFrameContext):
-                raise TypeError(f'{source.value}: frame must implement RuntimeFrameContext')
-            normalized[source] = frame
+                raise TypeError(f'{view.source.value}/{view.partition.value}: invalid runtime frame')
+            normalized[view] = frame
         object.__setattr__(self, 'frames', MappingProxyType(normalized))
 
     @property
-    def sources(self) -> tuple[KpiSource, ...]:
+    def views(self) -> tuple[KpiSourceView, ...]:
         return tuple(self.frames)
 
-    def get(self, source: KpiSource) -> RuntimeFrameContext:
+    @property
+    def sources(self) -> tuple[KpiSource, ...]:
+        return tuple(dict.fromkeys(view.source for view in self.frames))
+
+    def get(self, source: KpiSource, partition: KpiPartition) -> RuntimeFrameContext:
         if not isinstance(source, KpiSource):
             raise TypeError('source must be KpiSource')
+        if not isinstance(partition, KpiPartition):
+            raise TypeError('partition must be KpiPartition')
+        return self.get_view(KpiSourceView(source=source, partition=partition))
+
+    def get_view(self, view: KpiSourceView) -> RuntimeFrameContext:
+        if not isinstance(view, KpiSourceView):
+            raise TypeError('view must be KpiSourceView')
         try:
-            return self.frames[source]
+            return self.frames[view]
         except KeyError as error:
             raise KpiSourceNotRequestedError(
-                f'{source.value}: source was not requested by this KPI'
+                f'{view.source.value}/{view.partition.value}: source view was not requested by this KPI'
             ) from error

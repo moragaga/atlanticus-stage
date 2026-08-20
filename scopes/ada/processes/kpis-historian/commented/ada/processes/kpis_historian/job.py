@@ -1,4 +1,4 @@
-# Coordina catch-up de evaluations reales hasta el watermark comprometido por KPI.
+# Confirma el watermark del Historian solo después de persistir ambas proyecciones.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,7 +26,9 @@ class KpiHistorianIterationResult:
     historian_after: KpiWatermark | None
     evaluations_processed: int = 0
     history_rows: int = 0
+    error_rows: int = 0
     history_publications: int = 0
+    error_publications: int = 0
 
 
 class KpiHistorianJob:
@@ -139,8 +141,10 @@ class KpiHistorianJob:
                 historian_before=historian_before,
                 historian_after=historian_after,
                 evaluations_processed=write_result.evaluation_count,
-                history_rows=write_result.row_count,
-                history_publications=write_result.publication_count,
+                history_rows=write_result.history_row_count,
+                error_rows=write_result.error_row_count,
+                history_publications=write_result.history_publication_count,
+                error_publications=write_result.error_publication_count,
             ),
         )
 
@@ -167,13 +171,17 @@ def _record_result(
     if result.historian_after is not None:
         context.set_iteration_fact('historian_committed_after_utc', result.historian_after.text)
     if result.status is KpiHistorianIterationStatus.PROCESSED:
-        context.set_iteration_fact('evaluations_processed', result.evaluations_processed)
-        context.set_iteration_fact('history_rows', result.history_rows)
-        context.set_iteration_fact('history_publications', result.history_publications)
+        facts = {
+            'evaluations_processed': result.evaluations_processed,
+            'history_rows': result.history_rows,
+            'error_rows': result.error_rows,
+            'history_publications': result.history_publications,
+            'error_publications': result.error_publications,
+        }
+        for key, value in facts.items():
+            context.set_iteration_fact(key, value)
+            context.increment_execution_counter(key, value)
         context.mark_iteration_work()
-        context.increment_execution_counter('evaluations_processed', result.evaluations_processed)
-        context.increment_execution_counter('history_rows', result.history_rows)
-        context.increment_execution_counter('history_publications', result.history_publications)
     return result
 
 

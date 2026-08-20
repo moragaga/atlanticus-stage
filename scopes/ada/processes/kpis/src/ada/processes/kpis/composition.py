@@ -124,6 +124,9 @@ def _build_source_runtimes(
 ) -> dict[DatasetKey, DatasetFrameRuntime]:
     routes: dict[DatasetKey, DatasetFrameRuntime] = {}
     runtimes_by_application: dict[str, DatasetRuntime] = {}
+    for spec in catalog.specs:
+        for requirement in spec.requirements:
+            registry.get_view(requirement.view)
     for source in catalog_sources(catalog):
         application = settings.source_applications.application_for(source)
         runtime = runtimes_by_application.get(application)

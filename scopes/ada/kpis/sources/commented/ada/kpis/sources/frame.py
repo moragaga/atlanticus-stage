@@ -1,5 +1,4 @@
-# Espejo pedagógico: el código ejecutable es idéntico; los comentarios explican responsabilidades y fronteras.
-# Este contexto conserva helpers del legacy sin permitir acceso a columnas que la rule no declaró.
+# Implementa los helpers tabulares usados por los resolvers sin exponer columnas no solicitadas.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -69,9 +68,9 @@ class PandasRuntimeFrameContext:
 def _is_missing(value: object) -> bool:
     try:
         result = pd.isna(value)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return False
     try:
         return bool(result)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return False

@@ -1,5 +1,4 @@
-# Semántica central de los modos base de KpiSpec.
-# Aquí se resuelve el valor nativo; la presentación se aplica después.
+# Resuelve modos simples contra la vista exacta (source, partition).
 from __future__ import annotations
 
 from numbers import Integral, Real
@@ -8,7 +7,6 @@ from ada.kpis.core import DataRuntimeContext, KpiMode, KpiNativeValue, KpiSpec
 from ada.kpis.evaluation.errors import KpiInvalidValueError
 
 
-# Ejecuta un KpiSpec sin formatear ni construir KpiResult.
 def resolve_base_value(*, spec: KpiSpec, data_context: DataRuntimeContext) -> KpiNativeValue:
     if not isinstance(spec, KpiSpec):
         raise TypeError('spec must be KpiSpec')
@@ -20,7 +18,8 @@ def resolve_base_value(*, spec: KpiSpec, data_context: DataRuntimeContext) -> Kp
         assert spec.custom_resolver is not None
         return spec.custom_resolver(data_context)
     assert spec.source is not None
-    source_context = data_context.get(spec.source)
+    assert spec.partition is not None
+    source_context = data_context.get(spec.source, spec.partition)
     if spec.mode is KpiMode.LATEST:
         return source_context.last_value(spec.columns[0])
     if spec.mode is KpiMode.LATEST_NUMBER:
@@ -44,7 +43,6 @@ def resolve_base_value(*, spec: KpiSpec, data_context: DataRuntimeContext) -> Kp
     raise ValueError(f'{spec.key}: unsupported KPI mode: {spec.mode.value}')
 
 
-# STATUS conserva un mapping pequeño y explícito; casos especiales usan CUSTOM.
 def _resolve_status(value: object) -> str:
     if isinstance(value, bool):
         raise KpiInvalidValueError('status value is invalid')

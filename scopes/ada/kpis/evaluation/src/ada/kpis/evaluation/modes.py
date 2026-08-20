@@ -17,7 +17,8 @@ def resolve_base_value(*, spec: KpiSpec, data_context: DataRuntimeContext) -> Kp
         assert spec.custom_resolver is not None
         return spec.custom_resolver(data_context)
     assert spec.source is not None
-    source_context = data_context.get(spec.source)
+    assert spec.partition is not None
+    source_context = data_context.get(spec.source, spec.partition)
     if spec.mode is KpiMode.LATEST:
         return source_context.last_value(spec.columns[0])
     if spec.mode is KpiMode.LATEST_NUMBER:

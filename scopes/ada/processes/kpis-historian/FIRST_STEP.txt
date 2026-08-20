@@ -1,8 +1,8 @@
 KPIS HISTORIAN - PRIMEROS PASOS
 ==============================
 
-Este proceso consume las evaluations KPI ya confirmadas y materializa el histórico durable en
-Parquet. No calcula KPI y no usa pip.
+Este proceso consume las evaluations KPI ya confirmadas y materializa dos proyecciones durables en
+Parquet: la historia funcional y la historia local de errores. No calcula KPI y no usa pip.
 
 1. ENTRAR AL PROCESO
 --------------------
@@ -24,7 +24,8 @@ solución. Ejemplo:
 El proceso lee y escribe dentro de ese mismo root:
 
     datasets/kpis/evaluations/               lectura
-    datasets/kpis/history/                   escritura
+    datasets/kpis/history/                   escritura funcional
+    datasets/kpis/error-history/             escritura diagnóstica local
     .runtime/state/kpis/                     lectura
     .runtime/state/kpis-historian/           escritura
 
@@ -37,12 +38,13 @@ No usa KPI_APPLICATION ni deriva otro APPLICATION.
 - Mantiene su propio committed watermark en .runtime/state/kpis-historian/.
 - Hace catch-up de evaluations reales existentes y conserva sus gaps reales.
 - Si existen T1, T2 y T5, procesa T1, T2 y T5; nunca inventa T3 ni T4.
-- Solo materializa resultados con persist_history=true.
-- Los estados missing/invalid/error también se historizan cuando persist_history=true, con valor nulo.
-- Si una evaluation no contiene filas historizables, igualmente se considera consumida y el watermark
-  puede avanzar.
-- La escritura Parquet es idempotente por (timestamp_utc, key).
-- El watermark del Historian avanza solo después de completar todas las publicaciones necesarias.
+- History materializa todos los resultados con persist_history=true.
+- Un resultado ERROR con persist_history=true también queda en history con value y parsed_value nulos.
+- Error History materializa todos los resultados ERROR, incluso si persist_history=false.
+- Si una evaluation no produce filas en ninguna proyección, igualmente se considera consumida y el
+  watermark puede avanzar.
+- Ambas escrituras Parquet son idempotentes por (timestamp_utc, key).
+- El watermark del Historian avanza solo después de completar ambas proyecciones.
 - No modifica datasets/kpis/latest ni el committed watermark de kpis.
 
 4. LAYOUT
@@ -54,9 +56,31 @@ No usa KPI_APPLICATION ni deriva otro APPLICATION.
                 day=DD/
                     data.parquet
 
-El histórico es vertical. Cada fila identifica un KPI en un watermark real de evaluación.
-El valor se conserva como JSON canónico en value_json para preservar exactamente números, strings,
-objetos y arreglos sin imponer un tipo físico común a todos los KPI.
+    datasets/kpis/error-history/
+        year=YYYY/
+            month=MM/
+                day=DD/
+                    data.parquet
+
+History es vertical y usa el contrato lógico:
+
+    timestamp_utc
+    key
+    status
+    value
+    parsed_value
+
+value y parsed_value se codifican internamente como JSON canónico nullable para conservar números,
+strings, objetos y arreglos sin imponer un tipo físico distinto por KPI.
+
+Error History es una proyección diagnóstica mínima:
+
+    timestamp_utc
+    key
+    error
+
+No persiste values, metadata del KPI ni traceback. El error proviene de la evaluation durable y debe
+ser seguro para persistencia local.
 
 5. VALIDACIÓN
 -------------

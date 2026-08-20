@@ -3,7 +3,16 @@ from datetime import UTC, datetime
 import pandas as pd
 import pytest
 
-from ada.kpis.core import KpiArea, KpiCatalog, KpiMode, KpiSource, KpiSpec, KpiWatermark
+from ada.kpis.core import (
+    KpiArea,
+    KpiCatalog,
+    KpiMode,
+    KpiPartition,
+    KpiSource,
+    KpiSourceView,
+    KpiSpec,
+    KpiWatermark,
+)
 from ada.kpis.evaluation import KpiEvaluator
 from ada.kpis.persistence import (
     KpiCommitStore,
@@ -14,7 +23,13 @@ from ada.kpis.persistence import (
     KpiPersistencePaths,
 )
 from ada.kpis.planner import KpiRequirementPlanner
-from ada.kpis.sources import KpiSourceBinding, KpiSourceRegistry, LoadedKpiSource, LoadedKpiSources
+from ada.kpis.sources import (
+    KpiPartitionBinding,
+    KpiSourceBinding,
+    KpiSourceRegistry,
+    LoadedKpiSources,
+    LoadedKpiSourceView,
+)
 from ada.processes.kpis.clock import PiClockSnapshot
 from ada.processes.kpis.errors import KpiProcessWatermarkError
 from ada.processes.kpis.job import KpiIterationStatus, KpiProcessJob
@@ -43,15 +58,16 @@ class SourceLoader:
 
     def load(self, *, plan, watermark):
         self.calls += 1
-        loaded = LoadedKpiSource(
-            source=KpiSource.PI_INTERPOLATED,
-            snapshot_frame=pd.DataFrame({'value': [self.value]}),
+        view = KpiSourceView(KpiSource.PI_INTERPOLATED, KpiPartition.LATEST)
+        loaded = LoadedKpiSourceView(
+            view=view,
+            frame=pd.DataFrame({'value': [self.value]}),
         )
         return LoadedKpiSources(
             watermark=watermark,
             plan=plan,
             registry=KpiSourceRegistry({KpiSource.PI_INTERPOLATED: self.binding}),
-            loaded={KpiSource.PI_INTERPOLATED: loaded},
+            loaded={view: loaded},
             failures={},
         )
 
@@ -64,8 +80,12 @@ def _binding():
     return KpiSourceBinding(
         source=KpiSource.PI_INTERPOLATED,
         definition=definition,
-        snapshot_materialization='latest',
-        timestamp_column='timestamp_utc',
+        partitions={
+            KpiPartition.LATEST: KpiPartitionBinding(
+                partition=KpiPartition.LATEST,
+                materialization='latest',
+            )
+        },
     )
 
 
@@ -77,6 +97,7 @@ def _catalog():
                 area=KpiArea.GENERAL,
                 mode=KpiMode.LATEST_NUMBER,
                 source=KpiSource.PI_INTERPOLATED,
+                partition=KpiPartition.LATEST,
                 columns=('value',),
             ),
         )

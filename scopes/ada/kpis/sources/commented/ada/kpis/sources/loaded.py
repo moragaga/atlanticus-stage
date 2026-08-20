@@ -1,5 +1,4 @@
-# Espejo pedagógico: el código ejecutable es idéntico; los comentarios explican responsabilidades y fronteras.
-# Aquí se cumple la frontera clave: la sobrelectura física se recorta al requirement exacto antes del resolver.
+# Recorta la carga física amplia hasta la vista exacta solicitada por cada KPI.
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -8,43 +7,39 @@ from types import MappingProxyType
 
 import pandas as pd
 
-from ada.kpis.core import DataRuntimeContext, KpiSource, KpiWatermark, SourceRequirement
+from ada.kpis.core import DataRuntimeContext, KpiSourceView, KpiWatermark, SourceRequirement
 from ada.kpis.planner import KpiLoadPlan
-from ada.kpis.sources.bindings import KpiSourceBinding, KpiSourceRegistry
+from ada.kpis.sources.bindings import KpiSourceRegistry
 from ada.kpis.sources.errors import KpiSourceSchemaError, KpiSourceUnavailableError
 from ada.kpis.sources.frame import PandasRuntimeFrameContext
+from ada.kpis.sources.operational import KpiOperationalWindowResolver
 from ada.kpis.sources.shifts import MineShiftResolver
 
 
 @dataclass(frozen=True, slots=True)
 class KpiSourceLoadFailure:
-    source: KpiSource
+    view: KpiSourceView
     message: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.source, KpiSource):
-            raise TypeError('source must be KpiSource')
+        if not isinstance(self.view, KpiSourceView):
+            raise TypeError('view must be KpiSourceView')
         if not isinstance(self.message, str) or not self.message.strip():
             raise ValueError('message must be non-empty text')
         object.__setattr__(self, 'message', self.message.strip())
 
 
 @dataclass(frozen=True, slots=True)
-class LoadedKpiSource:
-    source: KpiSource
-    snapshot_frame: pd.DataFrame | None = None
-    time_frame: pd.DataFrame | None = None
-    shift_frame: pd.DataFrame | None = None
+class LoadedKpiSourceView:
+    view: KpiSourceView
+    frame: pd.DataFrame
 
     def __post_init__(self) -> None:
-        if not isinstance(self.source, KpiSource):
-            raise TypeError('source must be KpiSource')
-        for field_name in ('snapshot_frame', 'time_frame', 'shift_frame'):
-            value = getattr(self, field_name)
-            if value is not None and not isinstance(value, pd.DataFrame):
-                raise TypeError(f'{field_name} must be pandas.DataFrame or None')
-            if value is not None:
-                object.__setattr__(self, field_name, value.copy(deep=False).reset_index(drop=True))
+        if not isinstance(self.view, KpiSourceView):
+            raise TypeError('view must be KpiSourceView')
+        if not isinstance(self.frame, pd.DataFrame):
+            raise TypeError('frame must be pandas.DataFrame')
+        object.__setattr__(self, 'frame', self.frame.copy(deep=False).reset_index(drop=True))
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,9 +47,10 @@ class LoadedKpiSources:
     watermark: KpiWatermark
     plan: KpiLoadPlan
     registry: KpiSourceRegistry
-    loaded: Mapping[KpiSource, LoadedKpiSource]
-    failures: Mapping[KpiSource, KpiSourceLoadFailure]
+    loaded: Mapping[KpiSourceView, LoadedKpiSourceView]
+    failures: Mapping[KpiSourceView, KpiSourceLoadFailure]
     shift_resolver: MineShiftResolver = MineShiftResolver()
+    operational_resolver: KpiOperationalWindowResolver = KpiOperationalWindowResolver()
 
     def __post_init__(self) -> None:
         if not isinstance(self.watermark, KpiWatermark):
@@ -65,57 +61,72 @@ class LoadedKpiSources:
             raise TypeError('registry must be KpiSourceRegistry')
         loaded = dict(self.loaded)
         failures = dict(self.failures)
-        for source, item in loaded.items():
-            if not isinstance(source, KpiSource) or not isinstance(item, LoadedKpiSource):
-                raise TypeError('loaded must map KpiSource to LoadedKpiSource')
-            if item.source is not source:
-                raise ValueError('loaded source key must match loaded source value')
-        for source, failure in failures.items():
-            if not isinstance(source, KpiSource) or not isinstance(failure, KpiSourceLoadFailure):
-                raise TypeError('failures must map KpiSource to KpiSourceLoadFailure')
-            if failure.source is not source:
-                raise ValueError('failure source key must match failure source value')
+        for view, item in loaded.items():
+            if not isinstance(view, KpiSourceView) or not isinstance(item, LoadedKpiSourceView):
+                raise TypeError('loaded must map KpiSourceView to LoadedKpiSourceView')
+            if item.view != view:
+                raise ValueError('loaded view key must match loaded view value')
+        for view, failure in failures.items():
+            if not isinstance(view, KpiSourceView) or not isinstance(failure, KpiSourceLoadFailure):
+                raise TypeError('failures must map KpiSourceView to KpiSourceLoadFailure')
+            if failure.view != view:
+                raise ValueError('failure view key must match failure view value')
         overlap = set(loaded).intersection(failures)
         if overlap:
-            raise ValueError('a source cannot be loaded and failed at the same time')
+            raise ValueError('a source view cannot be loaded and failed at the same time')
         object.__setattr__(self, 'loaded', MappingProxyType(loaded))
         object.__setattr__(self, 'failures', MappingProxyType(failures))
 
     def context_for(self, kpi_key: str) -> DataRuntimeContext:
         requirements = self.plan.requirements_for(kpi_key)
         frames = {
-            source: self._frame_for(source=source, requirement=requirement)
-            for source, requirement in requirements.items()
+            requirement.view: self._frame_for(requirement=requirement)
+            for requirement in requirements
         }
         return DataRuntimeContext(frames=frames)
 
-    def _frame_for(
-        self,
-        *,
-        source: KpiSource,
-        requirement: SourceRequirement,
-    ) -> PandasRuntimeFrameContext:
-        failure = self.failures.get(source)
+    def _frame_for(self, *, requirement: SourceRequirement) -> PandasRuntimeFrameContext:
+        view = requirement.view
+        failure = self.failures.get(view)
         if failure is not None:
-            raise KpiSourceUnavailableError(source, failure.message)
+            raise KpiSourceUnavailableError(
+                view.source,
+                f'{view.partition.value}: {failure.message}',
+            )
         try:
-            loaded = self.loaded[source]
+            loaded = self.loaded[view]
         except KeyError as error:
-            raise KpiSourceUnavailableError(source, 'source was not loaded') from error
-        binding = self.registry.get(source)
+            raise KpiSourceUnavailableError(
+                view.source,
+                f'{view.partition.value}: source view was not loaded',
+            ) from error
+        binding, partition_binding = self.registry.get_view(view)
+        exact = loaded.frame
         if requirement.time_window is not None:
-            frame = _require_frame(source, loaded.time_frame, 'time')
             exact = _slice_time(
-                frame=frame,
-                binding=binding,
+                frame=exact,
+                source=view.source.value,
+                timestamp_column=partition_binding.timestamp_column,
+                start_utc=requirement.time_window.start_from(self.watermark.timestamp_utc),
+                end_utc=self.watermark.timestamp_utc,
+            )
+        elif requirement.operational_scope is not None:
+            window = self.operational_resolver.resolve(
+                scope=requirement.operational_scope,
                 watermark=self.watermark,
-                requirement=requirement,
+            )
+            exact = _slice_time(
+                frame=exact,
+                source=view.source.value,
+                timestamp_column=partition_binding.timestamp_column,
+                start_utc=window.start_utc,
+                end_utc=window.end_utc,
             )
         elif requirement.shift is not None:
-            frame = _require_frame(source, loaded.shift_frame, 'shift')
             exact = _slice_shift(
-                frame=frame,
-                binding=binding,
+                frame=exact,
+                source=view.source.value,
+                shift_column=partition_binding.shift_column,
                 shift_ids=tuple(
                     item.shift_id
                     for item in self.shift_resolver.resolve(
@@ -124,12 +135,10 @@ class LoadedKpiSources:
                     )
                 ),
             )
-        else:
-            exact = _require_frame(source, loaded.snapshot_frame, 'snapshot').copy(deep=False)
         missing = tuple(column for column in requirement.columns if column not in exact.columns)
         if missing:
             raise KpiSourceSchemaError(
-                f'{source.value}: requested columns are missing from loaded source: {missing}'
+                f'{view.source.value}/{view.partition.value}: requested columns are missing: {missing}'
             )
         projected = exact.loc[:, list(requirement.columns)].copy(deep=False).reset_index(drop=True)
         return PandasRuntimeFrameContext(projected, requirement.columns)
@@ -138,40 +147,33 @@ class LoadedKpiSources:
 def _slice_time(
     *,
     frame: pd.DataFrame,
-    binding: KpiSourceBinding,
-    watermark: KpiWatermark,
-    requirement: SourceRequirement,
+    source: str,
+    timestamp_column: str | None,
+    start_utc,
+    end_utc,
 ) -> pd.DataFrame:
-    timestamp_column = binding.timestamp_column
-    assert timestamp_column is not None
+    if timestamp_column is None:
+        raise KpiSourceSchemaError(f'{source}: source view has no timestamp column')
     if timestamp_column not in frame.columns:
-        raise KpiSourceSchemaError(
-            f'{binding.source.value}: timestamp column is missing: {timestamp_column}'
-        )
-    assert requirement.time_window is not None
+        raise KpiSourceSchemaError(f'{source}: timestamp column is missing: {timestamp_column}')
     timestamps = pd.to_datetime(frame[timestamp_column], utc=True, errors='coerce')
-    start = pd.Timestamp(watermark.timestamp_utc - requirement.time_window.to_timedelta())
-    end = pd.Timestamp(watermark.timestamp_utc)
-    return frame.loc[(timestamps >= start) & (timestamps <= end)].copy(deep=False)
+    if timestamps.isna().any():
+        raise KpiSourceSchemaError(f'{source}: timestamp column contains invalid values')
+    return frame.loc[
+        (timestamps >= pd.Timestamp(start_utc)) & (timestamps <= pd.Timestamp(end_utc))
+    ].copy(deep=False)
 
 
 def _slice_shift(
     *,
     frame: pd.DataFrame,
-    binding: KpiSourceBinding,
+    source: str,
+    shift_column: str | None,
     shift_ids: tuple[int, ...],
 ) -> pd.DataFrame:
-    shift_column = binding.shift_column
-    assert shift_column is not None
+    if shift_column is None:
+        raise KpiSourceSchemaError(f'{source}: source view has no shift column')
     if shift_column not in frame.columns:
-        raise KpiSourceSchemaError(
-            f'{binding.source.value}: shift column is missing: {shift_column}'
-        )
+        raise KpiSourceSchemaError(f'{source}: shift column is missing: {shift_column}')
     values = pd.to_numeric(frame[shift_column], errors='coerce')
     return frame.loc[values.isin(shift_ids)].copy(deep=False)
-
-
-def _require_frame(source: KpiSource, value: pd.DataFrame | None, group: str) -> pd.DataFrame:
-    if value is None:
-        raise KpiSourceUnavailableError(source, f'{group} load group is unavailable')
-    return value

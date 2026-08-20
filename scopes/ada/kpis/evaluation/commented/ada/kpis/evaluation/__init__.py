@@ -1,5 +1,4 @@
-# API pública del capability de evaluación KPI.
-# Solo reexporta contratos reutilizables; no compone jobs ni persistencia.
+# Expone el contrato público de evaluación KPI.
 from ada.kpis.evaluation.dependencies import KpiDependencies
 from ada.kpis.evaluation.errors import (
     KpiDependencyNotRequestedError,

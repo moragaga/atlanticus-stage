@@ -1,19 +1,29 @@
 import pytest
 
-from ada.kpis.core import KpiArea, KpiMode, KpiSource, KpiSpec
+from ada.kpis.core import (
+    KpiArea,
+    KpiMode,
+    KpiPartition,
+    KpiSource,
+    KpiSpec,
+    KpiTimeWindow,
+    KpiTimeWindowUnit,
+)
 from ada.kpis.evaluation.errors import KpiInvalidValueError
 from ada.kpis.evaluation.modes import resolve_base_value
 from tests.support import context
 
 
-def test_latest_and_latest_number_use_source_context_helpers() -> None:
-    data_context = context(KpiSource.PI_INTERPOLATED, {'raw': 'abc', 'number': '12.5'})
+def test_latest_and_latest_number_use_source_partition_context_helpers() -> None:
+    source = KpiSource.PI_INTERPOLATED
+    data_context = context(source, {'raw': 'abc', 'number': '12.5'})
 
     latest = KpiSpec(
         key='latest',
         area=KpiArea.MINA,
         mode=KpiMode.LATEST,
-        source=KpiSource.PI_INTERPOLATED,
+        source=source,
+        partition=KpiPartition.LATEST,
         columns=('raw',),
         is_truncated=False,
     )
@@ -21,7 +31,8 @@ def test_latest_and_latest_number_use_source_context_helpers() -> None:
         key='latest_number',
         area=KpiArea.MINA,
         mode=KpiMode.LATEST_NUMBER,
-        source=KpiSource.PI_INTERPOLATED,
+        source=source,
+        partition=KpiPartition.LATEST,
         columns=('number',),
     )
 
@@ -36,6 +47,7 @@ def test_status_has_small_explicit_contract() -> None:
         area=KpiArea.PLANTA,
         mode=KpiMode.STATUS,
         source=source,
+        partition=KpiPartition.LATEST,
         columns=('status',),
         is_truncated=False,
     )
@@ -55,13 +67,14 @@ def test_status_has_small_explicit_contract() -> None:
         resolve_base_value(spec=spec, data_context=context(source, {'status': 'partiendo'}))
 
 
-def test_status_missing_remains_missing_value() -> None:
+def test_status_without_value_returns_none_for_evaluator_to_mark_error() -> None:
     source = KpiSource.PI_INTERPOLATED
     spec = KpiSpec(
         key='status',
         area=KpiArea.PLANTA,
         mode=KpiMode.STATUS,
         source=source,
+        partition=KpiPartition.LATEST,
         columns=('status',),
         is_truncated=False,
     )
@@ -76,6 +89,7 @@ def test_sum_treats_missing_latest_numbers_as_zero() -> None:
         area=KpiArea.MINA,
         mode=KpiMode.SUM_LATESTS_NUMBERS,
         source=source,
+        partition=KpiPartition.LATEST,
         columns=('a', 'b', 'c'),
     )
 
@@ -94,6 +108,7 @@ def test_max_ignores_missing_values_and_returns_none_when_all_are_missing() -> N
         area=KpiArea.MINA,
         mode=KpiMode.MAX_LATESTS_NUMBERS,
         source=source,
+        partition=KpiPartition.LATEST,
         columns=('a', 'b'),
     )
 
@@ -103,23 +118,26 @@ def test_max_ignores_missing_values_and_returns_none_when_all_are_missing() -> N
     )
 
 
-def test_custom_receives_exact_data_runtime_context() -> None:
+def test_custom_receives_exact_data_runtime_context_for_requested_partition() -> None:
     source = KpiSource.PI_RECORDED
+    partition = KpiPartition.DAILY
     captured = []
 
     def resolver(data_context):
         captured.append(data_context)
-        return data_context.get(source).last_value_number('value')
+        return data_context.get(source, partition).last_value_number('value')
 
     spec = KpiSpec(
         key='custom',
         area=KpiArea.GENERAL,
         mode=KpiMode.CUSTOM,
         source=source,
+        partition=partition,
         columns=('value',),
+        time_window=KpiTimeWindow(1, KpiTimeWindowUnit.HOURS),
         custom_resolver=resolver,
     )
-    data_context = context(source, {'value': 7})
+    data_context = context(source, {'value': 7}, partition=partition)
 
     assert resolve_base_value(spec=spec, data_context=data_context) == 7.0
     assert captured == [data_context]

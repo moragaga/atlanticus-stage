@@ -1,5 +1,4 @@
-# Enumera el vocabulario estable que las reglas KPI pueden declarar sin usar strings libres.
-# NOTPII se diferencia de PI Web API aunque ambos publiquen datasets con semántica PI.
+# Define vocabulario tipado: fuentes lógicas, particiones, scopes operacionales y estados KPI.
 from __future__ import annotations
 
 from enum import StrEnum
@@ -29,8 +28,27 @@ class KpiSource(StrEnum):
     REMANENTES_NO_EXTRAIBLES = 'remanentes.no_extraibles'
     REMANENTES_STOCKS = 'remanentes.stocks'
 
-    FABRICA_PLANES_DAILY = 'fabrica.planes.daily'
-    FABRICA_PLANES_WEEKLY = 'fabrica.planes.weekly'
+    FABRICA_PLANES = 'fabrica.planes'
+    FABRICA_KPIS = 'fabrica.kpis'
+
+
+class KpiPartition(StrEnum):
+    LATEST = 'latest'
+    DAILY = 'daily'
+    MONTHLY = 'monthly'
+    WEEKLY = 'weekly'
+    SHIFT = 'shift'
+
+
+class KpiOperationalScope(StrEnum):
+    CURRENT_TURN_MINE = 'current_turn_mine'
+    PREVIOUS_TURN_MINE = 'previous_turn_mine'
+    CURRENT_TURN_PLANT = 'current_turn_plant'
+    PREVIOUS_TURN_PLANT = 'previous_turn_plant'
+    CURRENT_OPERATIONAL_DAY_MINE = 'current_operational_day_mine'
+    CURRENT_OPERATIONAL_DAY_PLANT = 'current_operational_day_plant'
+    CURRENT_OPERATIONAL_MONTH_MINE = 'current_operational_month_mine'
+    CURRENT_OPERATIONAL_MONTH_PLANT = 'current_operational_month_plant'
 
 
 class ShiftScope(StrEnum):
@@ -54,8 +72,6 @@ class KpiMode(StrEnum):
 
 class KpiStatus(StrEnum):
     OK = 'ok'
-    MISSING = 'missing'
-    INVALID = 'invalid'
     ERROR = 'error'
 
 

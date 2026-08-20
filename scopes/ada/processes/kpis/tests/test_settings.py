@@ -1,6 +1,15 @@
 import pytest
 
-from ada.kpis.core import KpiArea, KpiCatalog, KpiMode, KpiSource, KpiSpec
+from ada.kpis.core import (
+    KpiArea,
+    KpiCatalog,
+    KpiMode,
+    KpiPartition,
+    KpiSource,
+    KpiSpec,
+    ShiftScope,
+    ShiftSelection,
+)
 from ada.kpis.sources import PiSourceProvider
 from ada.processes.kpis.errors import KpiProcessConfigurationError
 from ada.processes.kpis.settings import (
@@ -32,16 +41,23 @@ def _configuration(**values):
 
 def _catalog(*sources: KpiSource) -> KpiCatalog:
     specs = tuple(
-        KpiSpec(
-            key=f'kpi_{index}',
-            area=KpiArea.GENERAL,
-            mode=KpiMode.LATEST_NUMBER,
-            source=source,
-            columns=('value',),
-        )
-        for index, source in enumerate(sources)
+        _spec_for_source(index=index, source=source) for index, source in enumerate(sources)
     )
     return KpiCatalog(specs=specs)
+
+
+def _spec_for_source(*, index: int, source: KpiSource) -> KpiSpec:
+    partition = KpiPartition.SHIFT if source.value.startswith('dispatch.') else KpiPartition.LATEST
+    shift = ShiftSelection(scope=ShiftScope.CURRENT) if partition is KpiPartition.SHIFT else None
+    return KpiSpec(
+        key=f'kpi_{index}',
+        area=KpiArea.GENERAL,
+        mode=KpiMode.LATEST_NUMBER,
+        source=source,
+        partition=partition,
+        columns=('value',),
+        shift=shift,
+    )
 
 
 def test_pi_source_is_explicit_and_maps_to_provider() -> None:

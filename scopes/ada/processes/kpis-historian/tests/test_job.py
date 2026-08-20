@@ -1,8 +1,13 @@
 import pytest
 
+from ada.kpis.core import KpiStatus
 from ada.kpis.persistence import KpiCommitStore, KpiEvaluationRepository, KpiPersistencePaths
 from ada.processes.kpis_historian.errors import KpiHistorianWatermarkError
-from ada.processes.kpis_historian.history import KpiHistoryWriter, history_definition
+from ada.processes.kpis_historian.history import (
+    KpiHistoryWriter,
+    error_history_definition,
+    history_definition,
+)
 from ada.processes.kpis_historian.job import KpiHistorianIterationStatus, KpiHistorianJob
 from ada.processes.kpis_historian.state import KpiHistorianCommitStore
 from atlanticus.datasets.parquet import ParquetDatasetStore
@@ -29,6 +34,13 @@ def _job(tmp_path):
         history=KpiHistoryWriter(runtime=runtime),
     )
     return job, evaluations, kpi_state, historian_state, runtime
+
+
+def _target(definition, day='19'):
+    return definition.resolve_target(
+        materialization='daily',
+        partition={'year': '2026', 'month': '08', 'day': day},
+    )
 
 
 def test_no_kpi_committed_watermark_skips_without_historian_state(tmp_path) -> None:
@@ -60,12 +72,12 @@ def test_historian_catches_up_only_real_evaluations_and_commits_latest_actual_ti
     assert result.status is KpiHistorianIterationStatus.PROCESSED
     assert result.evaluations_processed == 3
     assert result.history_rows == 3
+    assert result.error_rows == 0
     assert historian_state.read_watermark() == t5
-    target = history_definition().resolve_target(
-        materialization='daily',
-        partition={'year': '2026', 'month': '08', 'day': '19'},
-    )
-    table = runtime.read_table(definition=history_definition(), target=target).table
+    table = runtime.read_table(
+        definition=history_definition(),
+        target=_target(history_definition()),
+    ).table
     assert table.column('timestamp_utc').to_pylist() == [
         t1.timestamp_utc,
         t2.timestamp_utc,
@@ -75,7 +87,36 @@ def test_historian_catches_up_only_real_evaluations_and_commits_latest_actual_ti
     assert runtime_context.get_iteration_fact('evaluations_processed') == 3
 
 
-def test_evaluation_without_historical_results_still_advances_historian_watermark(tmp_path) -> None:
+def test_latest_only_error_writes_error_history_and_still_advances_watermark(tmp_path) -> None:
+    job, evaluations, kpi_state, historian_state, runtime = _job(tmp_path)
+    target = watermark(19, 10)
+    evaluations.write_once(
+        evaluation(
+            target,
+            persist_history=False,
+            status=KpiStatus.ERROR,
+            error='Source unavailable',
+        )
+    )
+    kpi_state.commit_watermark(target)
+
+    result = job.run_iteration(context(tmp_path))
+
+    assert result.status is KpiHistorianIterationStatus.PROCESSED
+    assert result.evaluations_processed == 1
+    assert result.history_rows == 0
+    assert result.error_rows == 1
+    assert result.history_publications == 0
+    assert result.error_publications == 1
+    assert historian_state.read_watermark() == target
+    table = runtime.read_table(
+        definition=error_history_definition(),
+        target=_target(error_history_definition()),
+    ).table
+    assert table.column('error').to_pylist() == ['Source unavailable']
+
+
+def test_evaluation_without_history_or_error_rows_still_advances_watermark(tmp_path) -> None:
     job, evaluations, kpi_state, historian_state, _ = _job(tmp_path)
     target = watermark(19, 10)
     evaluations.write_once(evaluation(target, persist_history=False))
@@ -84,9 +125,8 @@ def test_evaluation_without_historical_results_still_advances_historian_watermar
     result = job.run_iteration(context(tmp_path))
 
     assert result.status is KpiHistorianIterationStatus.PROCESSED
-    assert result.evaluations_processed == 1
     assert result.history_rows == 0
-    assert result.history_publications == 0
+    assert result.error_rows == 0
     assert historian_state.read_watermark() == target
 
 

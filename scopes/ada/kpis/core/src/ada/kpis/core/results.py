@@ -18,6 +18,7 @@ class KpiResult:
     persist_history: bool
     value: KpiNativeValue = None
     parsed_value: KpiScalar | None = None
+    error: str | None = None
 
     def __post_init__(self) -> None:
         key = _required_text(self.key, 'key')
@@ -26,9 +27,16 @@ class KpiResult:
         _require_enum(self.value_kind, KpiValueKind, 'value_kind')
         if not isinstance(self.persist_history, bool):
             raise ValueError(f'{key}: persist_history must be boolean')
-        if self.status is not KpiStatus.OK:
+        error = _optional_text(self.error, f'{key}: error')
+        if error is not None and len(error) > 500:
+            error = f'{error[:500]}...<truncated>'
+        if self.status is KpiStatus.ERROR:
             if self.value is not None or self.parsed_value is not None:
-                raise ValueError(f'{key}: non-ok result must not contain value or parsed_value')
+                raise ValueError(f'{key}: error result must not contain value or parsed_value')
+            if error is None:
+                raise ValueError(f'{key}: error result requires error')
+        elif error is not None:
+            raise ValueError(f'{key}: ok result must not contain error')
         elif self.value_kind is KpiValueKind.VALUE:
             _validate_scalar(self.value, f'{key}: value', allow_none=False)
             _validate_scalar(self.parsed_value, f'{key}: parsed_value', allow_none=False)
@@ -37,6 +45,7 @@ class KpiResult:
             if self.parsed_value is not None:
                 raise ValueError(f'{key}: json result must not contain parsed_value')
         object.__setattr__(self, 'key', key)
+        object.__setattr__(self, 'error', error)
 
     def as_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -48,6 +57,8 @@ class KpiResult:
         }
         if self.value_kind is KpiValueKind.VALUE:
             payload['parsed_value'] = self.parsed_value
+        if self.status is KpiStatus.ERROR:
+            payload['error'] = self.error
         return payload
 
     @classmethod
@@ -60,7 +71,9 @@ class KpiResult:
         persist_history = payload.get('persist_history')
         if not isinstance(persist_history, bool):
             raise ValueError(f'{key}: persist_history must be boolean')
-        parsed_value = payload.get('parsed_value')
+        error = payload.get('error')
+        if error is not None and not isinstance(error, str):
+            raise ValueError(f'{key}: error must be string or null')
         return cls(
             key=key,
             area=area,
@@ -68,7 +81,8 @@ class KpiResult:
             value_kind=value_kind,
             persist_history=persist_history,
             value=payload.get('value'),
-            parsed_value=parsed_value,
+            parsed_value=payload.get('parsed_value'),
+            error=error,
         )
 
 
@@ -133,6 +147,10 @@ class KpiEvaluation:
     @property
     def historical_results(self) -> tuple[KpiResult, ...]:
         return tuple(result for result in self.results if result.persist_history)
+
+    @property
+    def error_results(self) -> tuple[KpiResult, ...]:
+        return tuple(result for result in self.results if result.status is KpiStatus.ERROR)
 
     def as_document(self) -> dict[str, object]:
         return {
@@ -227,6 +245,12 @@ def _parse_enum(value: object, enum_type: type, field_name: str):
 def _require_enum(value: object, expected_type: type, field_name: str) -> None:
     if not isinstance(value, expected_type):
         raise TypeError(f'{field_name} must be {expected_type.__name__}')
+
+
+def _optional_text(value: str | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _required_text(value, field_name)
 
 
 def _required_text(value: str, field_name: str) -> str:

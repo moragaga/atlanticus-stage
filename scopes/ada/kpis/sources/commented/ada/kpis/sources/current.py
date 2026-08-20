@@ -1,10 +1,9 @@
-# Espejo pedagógico: el código ejecutable es idéntico; los comentarios explican responsabilidades y fronteras.
-# Este catálogo enlaza KpiSource con datasets Atlanticus sin exponer el productor físico a las rules.
-# PI_SOURCE se resuelve una vez al iniciar el proceso y selecciona en bloque los datasets PI correspondientes.
+# Declara los bindings actuales de PI, Dispatch, Blockgrade, Remanentes y planes de Fábrica.
 from __future__ import annotations
 
-from ada.kpis.core import KpiSource
+from ada.kpis.core import KpiPartition, KpiSource
 from ada.kpis.sources.bindings import (
+    KpiPartitionBinding,
     KpiSourceBinding,
     KpiSourceRegistry,
     TimePartitionGranularity,
@@ -22,22 +21,19 @@ _PI_NAMESPACES = {
 def build_current_source_registry(*, pi_source: PiSourceProvider) -> KpiSourceRegistry:
     if not isinstance(pi_source, PiSourceProvider):
         raise TypeError('pi_source must be PiSourceProvider')
-    # Una sola selección física gobierna INTERPOLATED y RECORDED durante toda la ejecución.
     pi_namespace = _PI_NAMESPACES[pi_source]
     bindings = {
-        KpiSource.PI_INTERPOLATED: _time_binding(
+        KpiSource.PI_INTERPOLATED: _pi_binding(
             source=KpiSource.PI_INTERPOLATED,
             namespace=pi_namespace,
             name='interpolated',
-            time_materialization='daily',
-            granularity=TimePartitionGranularity.DAY,
+            include_latest=True,
         ),
-        KpiSource.PI_RECORDED: _time_binding(
+        KpiSource.PI_RECORDED: _pi_binding(
             source=KpiSource.PI_RECORDED,
             namespace=pi_namespace,
             name='recorded',
-            time_materialization='monthly',
-            granularity=TimePartitionGranularity.MONTH,
+            include_latest=False,
         ),
         KpiSource.DISPATCH_TIEMPOS_MLP: _shift_binding(
             KpiSource.DISPATCH_TIEMPOS_MLP,
@@ -54,11 +50,10 @@ def build_current_source_registry(*, pi_source: PiSourceProvider) -> KpiSourceRe
             namespace=('dispatch',),
             name='std_shift_state',
         ),
-        KpiSource.DISPATCH_STD_TRUCK: _snapshot_binding(
+        KpiSource.DISPATCH_STD_TRUCK: _latest_binding(
             KpiSource.DISPATCH_STD_TRUCK,
             namespace=('dispatch',),
             name='std_truck',
-            materialization='latest',
         ),
         KpiSource.DISPATCH_STD_SHIFT_GRADE: _shift_binding(
             KpiSource.DISPATCH_STD_SHIFT_GRADE,
@@ -80,78 +75,75 @@ def build_current_source_registry(*, pi_source: PiSourceProvider) -> KpiSourceRe
             namespace=('blockgrade',),
             name='mms_blockgrade_details_bucket',
         ),
-        KpiSource.REMANENTES_EXTRAIBLES: _snapshot_binding(
+        KpiSource.REMANENTES_EXTRAIBLES: _latest_binding(
             KpiSource.REMANENTES_EXTRAIBLES,
             namespace=('remanentes',),
             name='extraibles',
-            materialization='latest',
-            timestamp_column='timestamp',
         ),
-        KpiSource.REMANENTES_NO_EXTRAIBLES: _snapshot_binding(
+        KpiSource.REMANENTES_NO_EXTRAIBLES: _latest_binding(
             KpiSource.REMANENTES_NO_EXTRAIBLES,
             namespace=('remanentes',),
             name='no_extraibles',
-            materialization='latest',
-            timestamp_column='timestamp',
         ),
-        KpiSource.REMANENTES_STOCKS: _snapshot_binding(
+        KpiSource.REMANENTES_STOCKS: _latest_binding(
             KpiSource.REMANENTES_STOCKS,
             namespace=('remanentes',),
             name='stocks',
-            materialization='latest',
-            timestamp_column='timestamp',
         ),
-        KpiSource.FABRICA_PLANES_DAILY: _snapshot_binding(
-            KpiSource.FABRICA_PLANES_DAILY,
-            namespace=('fabrica',),
-            name='planes',
-            materialization='daily',
-            timestamp_column='timestamp',
-            sibling_materializations=('weekly',),
-        ),
-        KpiSource.FABRICA_PLANES_WEEKLY: _snapshot_binding(
-            KpiSource.FABRICA_PLANES_WEEKLY,
-            namespace=('fabrica',),
-            name='planes',
-            materialization='weekly',
-            timestamp_column='timestamp',
-            sibling_materializations=('daily',),
-        ),
+        KpiSource.FABRICA_PLANES: _fabrica_planes_binding(),
     }
     return KpiSourceRegistry(bindings)
 
 
-def _time_binding(
+def _pi_binding(
     *,
     source: KpiSource,
     namespace: tuple[str, ...],
     name: str,
-    time_materialization: str,
-    granularity: TimePartitionGranularity,
+    include_latest: bool,
 ) -> KpiSourceBinding:
-    partition_dimensions = (
-        ('year', 'month', 'day')
-        if granularity is TimePartitionGranularity.DAY
-        else ('year', 'month')
-    )
-    definition = DatasetDefinition(
-        key=DatasetKey(namespace=namespace, name=name),
-        materializations=(
-            MaterializationDefinition(name='latest', layout=SingleArtifactLayout()),
+    materializations = []
+    partitions: dict[KpiPartition, KpiPartitionBinding] = {}
+    if include_latest:
+        materializations.append(MaterializationDefinition(name='latest', layout=SingleArtifactLayout()))
+        partitions[KpiPartition.LATEST] = KpiPartitionBinding(
+            partition=KpiPartition.LATEST,
+            materialization='latest',
+            timestamp_column='timestamp_utc',
+        )
+    materializations.extend(
+        (
             MaterializationDefinition(
-                name=time_materialization,
+                name='daily',
                 layout=SingleArtifactLayout(),
-                partition_dimensions=partition_dimensions,
+                partition_dimensions=('year', 'month', 'day'),
             ),
-        ),
+            MaterializationDefinition(
+                name='monthly',
+                layout=SingleArtifactLayout(),
+                partition_dimensions=('year', 'month'),
+            ),
+        )
+    )
+    partitions[KpiPartition.DAILY] = KpiPartitionBinding(
+        partition=KpiPartition.DAILY,
+        materialization='daily',
+        time_partition_granularity=TimePartitionGranularity.DAY,
+        timestamp_column='timestamp_utc',
+    )
+    partitions[KpiPartition.MONTHLY] = KpiPartitionBinding(
+        partition=KpiPartition.MONTHLY,
+        materialization='monthly',
+        time_partition_granularity=TimePartitionGranularity.MONTH,
+        timestamp_column='timestamp_utc',
     )
     return KpiSourceBinding(
         source=source,
-        definition=definition,
-        snapshot_materialization='latest',
-        time_materialization=time_materialization,
-        time_partition_granularity=granularity,
-        timestamp_column='timestamp_utc',
+        definition=DatasetDefinition(
+            key=DatasetKey(namespace=namespace, name=name),
+            materializations=tuple(materializations),
+        ),
+        partitions=partitions,
     )
 
 
@@ -174,30 +166,66 @@ def _shift_binding(
     return KpiSourceBinding(
         source=source,
         definition=definition,
-        shift_materialization='shift',
-        shift_column='shift_id',
+        partitions={
+            KpiPartition.SHIFT: KpiPartitionBinding(
+                partition=KpiPartition.SHIFT,
+                materialization='shift',
+                shift_column='shift_id',
+            )
+        },
     )
 
 
-def _snapshot_binding(
+def _latest_binding(
     source: KpiSource,
     *,
     namespace: tuple[str, ...],
     name: str,
-    materialization: str,
-    timestamp_column: str | None = None,
-    sibling_materializations: tuple[str, ...] = (),
 ) -> KpiSourceBinding:
-    names = (materialization, *sibling_materializations)
     definition = DatasetDefinition(
         key=DatasetKey(namespace=namespace, name=name),
-        materializations=tuple(
-            MaterializationDefinition(name=item, layout=SingleArtifactLayout()) for item in names
-        ),
+        materializations=(MaterializationDefinition(name='latest', layout=SingleArtifactLayout()),),
     )
     return KpiSourceBinding(
         source=source,
         definition=definition,
-        snapshot_materialization=materialization,
-        timestamp_column=timestamp_column,
+        partitions={
+            KpiPartition.LATEST: KpiPartitionBinding(
+                partition=KpiPartition.LATEST,
+                materialization='latest',
+            )
+        },
+    )
+
+
+def _fabrica_planes_binding() -> KpiSourceBinding:
+    definition = DatasetDefinition(
+        key=DatasetKey(namespace=('fabrica',), name='planes'),
+        route_segments=('fabrica', 'planes'),
+        materializations=(
+            MaterializationDefinition(
+                name='day',
+                layout=SingleArtifactLayout(),
+                route_segments=('daily',),
+            ),
+            MaterializationDefinition(
+                name='weekly',
+                layout=SingleArtifactLayout(),
+                route_segments=('weekly',),
+            ),
+        ),
+    )
+    return KpiSourceBinding(
+        source=KpiSource.FABRICA_PLANES,
+        definition=definition,
+        partitions={
+            KpiPartition.DAILY: KpiPartitionBinding(
+                partition=KpiPartition.DAILY,
+                materialization='day',
+            ),
+            KpiPartition.WEEKLY: KpiPartitionBinding(
+                partition=KpiPartition.WEEKLY,
+                materialization='weekly',
+            ),
+        },
     )

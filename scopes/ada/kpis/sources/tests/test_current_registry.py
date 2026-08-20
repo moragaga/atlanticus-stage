@@ -1,47 +1,54 @@
 import pytest
 
-from ada.kpis.core import KpiSource
+from ada.kpis.core import KpiPartition, KpiSource, KpiSourceView
 from ada.kpis.sources import (
+    KpiSourceBindingError,
     PiSourceProvider,
     TimePartitionGranularity,
     build_current_source_registry,
 )
 
 
-def test_current_registry_covers_every_typed_kpi_source() -> None:
+def test_current_registry_covers_current_bound_sources_but_not_unmaterialized_fabrica_kpis() -> None:
     registry = build_current_source_registry(pi_source=PiSourceProvider.PI_WEB_API)
 
-    assert set(registry.sources) == set(KpiSource)
+    assert KpiSource.FABRICA_KPIS not in registry.sources
+    assert set(registry.sources) == set(KpiSource) - {KpiSource.FABRICA_KPIS}
 
 
-def test_pi_web_api_provider_binds_generic_pi_sources() -> None:
+def test_pi_web_api_provider_binds_interpolated_latest_daily_monthly() -> None:
     registry = build_current_source_registry(pi_source=PiSourceProvider.PI_WEB_API)
-
     interpolated = registry.get(KpiSource.PI_INTERPOLATED)
+
     assert interpolated.definition.key.namespace == ('pi', 'web-api')
     assert interpolated.definition.key.name == 'interpolated'
-    assert interpolated.snapshot_materialization == 'latest'
-    assert interpolated.time_materialization == 'daily'
-    assert interpolated.time_partition_granularity is TimePartitionGranularity.DAY
-    assert interpolated.timestamp_column == 'timestamp_utc'
+    latest = interpolated.get_partition(KpiPartition.LATEST)
+    daily = interpolated.get_partition(KpiPartition.DAILY)
+    monthly = interpolated.get_partition(KpiPartition.MONTHLY)
+    assert latest.materialization == 'latest'
+    assert latest.time_partition_granularity is None
+    assert daily.materialization == 'daily'
+    assert daily.time_partition_granularity is TimePartitionGranularity.DAY
+    assert monthly.materialization == 'monthly'
+    assert monthly.time_partition_granularity is TimePartitionGranularity.MONTH
+    assert daily.timestamp_column == 'timestamp_utc'
 
+
+def test_recorded_has_daily_and_monthly_but_never_latest() -> None:
+    registry = build_current_source_registry(pi_source=PiSourceProvider.PI_WEB_API)
     recorded = registry.get(KpiSource.PI_RECORDED)
+
     assert recorded.definition.key.namespace == ('pi', 'web-api')
-    assert recorded.definition.key.name == 'recorded'
-    assert recorded.time_materialization == 'monthly'
-    assert recorded.time_partition_granularity is TimePartitionGranularity.MONTH
+    assert set(recorded.partitions) == {KpiPartition.DAILY, KpiPartition.MONTHLY}
+    with pytest.raises(KpiSourceBindingError, match='does not support partition: latest'):
+        registry.get_view(KpiSourceView(KpiSource.PI_RECORDED, KpiPartition.LATEST))
 
 
-def test_notpii_provider_binds_same_generic_pi_sources() -> None:
+def test_notpii_provider_changes_only_physical_pi_namespace() -> None:
     registry = build_current_source_registry(pi_source=PiSourceProvider.NOTPII)
 
-    interpolated = registry.get(KpiSource.PI_INTERPOLATED)
-    recorded = registry.get(KpiSource.PI_RECORDED)
-
-    assert interpolated.definition.key.namespace == ('pi', 'not_pii')
-    assert interpolated.definition.key.name == 'interpolated'
-    assert recorded.definition.key.namespace == ('pi', 'not_pii')
-    assert recorded.definition.key.name == 'recorded'
+    assert registry.get(KpiSource.PI_INTERPOLATED).definition.key.namespace == ('pi', 'not_pii')
+    assert registry.get(KpiSource.PI_RECORDED).definition.key.namespace == ('pi', 'not_pii')
 
 
 def test_pi_provider_must_be_explicit_and_typed() -> None:
@@ -53,33 +60,30 @@ def test_non_pi_bindings_are_independent_of_pi_provider() -> None:
     web_api = build_current_source_registry(pi_source=PiSourceProvider.PI_WEB_API)
     notpii = build_current_source_registry(pi_source=PiSourceProvider.NOTPII)
 
-    for source in KpiSource:
+    for source in web_api.sources:
         if source in {KpiSource.PI_INTERPOLATED, KpiSource.PI_RECORDED}:
             continue
         assert web_api.get(source) == notpii.get(source)
 
 
-def test_current_registry_matches_current_non_pi_dataset_contracts() -> None:
+def test_non_pi_sources_keep_source_and_partition_separate() -> None:
     registry = build_current_source_registry(pi_source=PiSourceProvider.PI_WEB_API)
 
     dispatch = registry.get(KpiSource.DISPATCH_STD_SHIFT_STATE)
+    shift = dispatch.get_partition(KpiPartition.SHIFT)
     assert dispatch.definition.key.namespace == ('dispatch',)
     assert dispatch.definition.key.name == 'std_shift_state'
-    assert dispatch.shift_materialization == 'shift'
-    assert dispatch.shift_column == 'shift_id'
-
-    blockgrade = registry.get(KpiSource.BLOCKGRADE_MMS_BLOCKGRADE_DETAILS_BUCKET)
-    assert blockgrade.definition.key.namespace == ('blockgrade',)
-    assert blockgrade.definition.key.name == 'mms_blockgrade_details_bucket'
+    assert shift.materialization == 'shift'
+    assert shift.shift_column == 'shift_id'
 
     remanentes = registry.get(KpiSource.REMANENTES_STOCKS)
-    assert remanentes.definition.key.namespace == ('remanentes',)
-    assert remanentes.definition.key.name == 'stocks'
-    assert remanentes.snapshot_materialization == 'latest'
-    assert remanentes.timestamp_column == 'timestamp'
+    assert remanentes.get_partition(KpiPartition.LATEST).materialization == 'latest'
 
-    fabrica = registry.get(KpiSource.FABRICA_PLANES_DAILY)
+    fabrica = registry.get(KpiSource.FABRICA_PLANES)
     assert fabrica.definition.key.namespace == ('fabrica',)
     assert fabrica.definition.key.name == 'planes'
-    assert fabrica.snapshot_materialization == 'daily'
-    assert fabrica.timestamp_column == 'timestamp'
+    assert fabrica.get_partition(KpiPartition.DAILY).materialization == 'day'
+    assert fabrica.get_partition(KpiPartition.WEEKLY).materialization == 'weekly'
+    assert fabrica.definition.route_segments == ('fabrica', 'planes')
+    assert fabrica.definition.get_materialization('day').resolved_route_segments == ('daily',)
+    assert fabrica.definition.get_materialization('weekly').resolved_route_segments == ('weekly',)

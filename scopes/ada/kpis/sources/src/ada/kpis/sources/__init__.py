@@ -1,4 +1,5 @@
 from ada.kpis.sources.bindings import (
+    KpiPartitionBinding,
     KpiSourceBinding,
     KpiSourceRegistry,
     TimePartitionGranularity,
@@ -14,10 +15,11 @@ from ada.kpis.sources.errors import (
 from ada.kpis.sources.frame import PandasRuntimeFrameContext
 from ada.kpis.sources.loaded import (
     KpiSourceLoadFailure,
-    LoadedKpiSource,
     LoadedKpiSources,
+    LoadedKpiSourceView,
 )
 from ada.kpis.sources.loader import KpiSourceLoader
+from ada.kpis.sources.operational import KpiOperationalWindow, KpiOperationalWindowResolver
 from ada.kpis.sources.pi import PiSourceProvider
 from ada.kpis.sources.reader import SourceDatasetReader
 from ada.kpis.sources.shifts import MineShiftResolver
@@ -25,6 +27,9 @@ from ada.kpis.sources.shifts import MineShiftResolver
 __version__ = '0.1.0'
 
 __all__ = [
+    'KpiOperationalWindow',
+    'KpiOperationalWindowResolver',
+    'KpiPartitionBinding',
     'KpiSourceBinding',
     'KpiSourceBindingError',
     'KpiSourceLoadFailure',
@@ -34,7 +39,7 @@ __all__ = [
     'KpiSourceSchemaError',
     'KpiSourcesError',
     'KpiSourceUnavailableError',
-    'LoadedKpiSource',
+    'LoadedKpiSourceView',
     'LoadedKpiSources',
     'MineShiftResolver',
     'PandasRuntimeFrameContext',

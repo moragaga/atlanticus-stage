@@ -1,93 +1,113 @@
-# Espejo pedagógico: conserva exactamente el contrato ejecutable y añade contexto en español.
-# Los planes físicos pueden sobreleer, pero requirements_by_kpi conserva cada solicitud original.
+# El plan físico se organiza por KpiSourceView, es decir, por (source, partition).
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from ada.kpis.core import KpiSource, KpiTimeWindow, ShiftSelection, SourceRequirement
+from ada.kpis.core import (
+    KpiOperationalScope,
+    KpiPartition,
+    KpiSource,
+    KpiSourceView,
+    KpiTimeWindow,
+    ShiftSelection,
+    SourceRequirement,
+)
 from ada.kpis.planner.errors import KpiPlanKeyError
 
 
 @dataclass(frozen=True, slots=True)
-class KpiSourceLoadPlan:
-    source: KpiSource
-    snapshot_columns: tuple[str, ...] = ()
-    time_columns: tuple[str, ...] = ()
-    time_window: KpiTimeWindow | None = None
-    shift_columns: tuple[str, ...] = ()
+class KpiSourceViewLoadPlan:
+    view: KpiSourceView
+    columns: tuple[str, ...]
+    time_windows: tuple[KpiTimeWindow, ...] = ()
+    operational_scopes: tuple[KpiOperationalScope, ...] = ()
     shifts: tuple[ShiftSelection, ...] = ()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.source, KpiSource):
-            raise TypeError('source must be KpiSource')
-        for field_name in ('snapshot_columns', 'time_columns', 'shift_columns'):
-            columns = _normalize_columns(getattr(self, field_name), field_name)
-            object.__setattr__(self, field_name, columns)
+        if not isinstance(self.view, KpiSourceView):
+            raise TypeError('view must be KpiSourceView')
+        columns = _normalize_columns(self.columns)
+        if not columns:
+            raise ValueError('source view load plan requires columns')
+        time_windows = tuple(self.time_windows)
+        operational_scopes = tuple(self.operational_scopes)
         shifts = tuple(self.shifts)
+        if not all(isinstance(item, KpiTimeWindow) for item in time_windows):
+            raise TypeError('time_windows must contain KpiTimeWindow values')
+        if not all(isinstance(item, KpiOperationalScope) for item in operational_scopes):
+            raise TypeError('operational_scopes must contain KpiOperationalScope values')
         if not all(isinstance(item, ShiftSelection) for item in shifts):
             raise TypeError('shifts must contain ShiftSelection values')
-        if len(shifts) != len(set(shifts)):
-            raise ValueError('shifts must not contain duplicates')
+        for name, values in (
+            ('time_windows', time_windows),
+            ('operational_scopes', operational_scopes),
+            ('shifts', shifts),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f'{name} must not contain duplicates')
+        object.__setattr__(self, 'columns', columns)
+        object.__setattr__(self, 'time_windows', time_windows)
+        object.__setattr__(self, 'operational_scopes', operational_scopes)
         object.__setattr__(self, 'shifts', shifts)
-        if self.time_columns and not isinstance(self.time_window, KpiTimeWindow):
-            raise ValueError('time_columns require time_window')
-        if not self.time_columns and self.time_window is not None:
-            raise ValueError('time_window requires time_columns')
-        if self.shift_columns and not shifts:
-            raise ValueError('shift_columns require shifts')
-        if not self.shift_columns and shifts:
-            raise ValueError('shifts require shift_columns')
-        if not self.snapshot_columns and not self.time_columns and not self.shift_columns:
-            raise ValueError('source load plan requires at least one load group')
 
     @property
-    def columns(self) -> tuple[str, ...]:
-        return _ordered_union(self.snapshot_columns, self.time_columns, self.shift_columns)
+    def source(self) -> KpiSource:
+        return self.view.source
+
+    @property
+    def partition(self) -> KpiPartition:
+        return self.view.partition
 
 
 @dataclass(frozen=True, slots=True)
 class KpiLoadPlan:
-    sources: tuple[KpiSourceLoadPlan, ...]
-    requirements_by_kpi: Mapping[str, Mapping[KpiSource, SourceRequirement]]
+    views: tuple[KpiSourceViewLoadPlan, ...]
+    requirements_by_kpi: Mapping[str, tuple[SourceRequirement, ...]]
 
     def __post_init__(self) -> None:
-        sources = tuple(self.sources)
-        if not all(isinstance(item, KpiSourceLoadPlan) for item in sources):
-            raise TypeError('sources must contain KpiSourceLoadPlan values')
-        source_keys = tuple(item.source for item in sources)
-        if len(source_keys) != len(set(source_keys)):
-            raise ValueError('source load plans must be unique by source')
-        normalized: dict[str, Mapping[KpiSource, SourceRequirement]] = {}
+        views = tuple(self.views)
+        if not all(isinstance(item, KpiSourceViewLoadPlan) for item in views):
+            raise TypeError('views must contain KpiSourceViewLoadPlan values')
+        view_keys = tuple(item.view for item in views)
+        if len(view_keys) != len(set(view_keys)):
+            raise ValueError('source view load plans must be unique by source and partition')
+        normalized: dict[str, tuple[SourceRequirement, ...]] = {}
         for key, requirements in self.requirements_by_kpi.items():
             normalized_key = _required_text(key, 'kpi key')
-            if normalized_key in normalized:
-                raise ValueError('requirements_by_kpi keys must be unique')
-            if not isinstance(requirements, Mapping):
-                raise TypeError(f'{normalized_key}: requirements must be a mapping')
-            copied: dict[KpiSource, SourceRequirement] = {}
-            for source, requirement in requirements.items():
-                if not isinstance(source, KpiSource):
-                    raise TypeError(f'{normalized_key}: requirement source must be KpiSource')
-                if not isinstance(requirement, SourceRequirement):
-                    raise TypeError(
-                        f'{normalized_key}: requirement for {source.value} must be SourceRequirement'
-                    )
-                copied[source] = requirement
-            normalized[normalized_key] = MappingProxyType(copied)
-        object.__setattr__(self, 'sources', sources)
+            copied = tuple(requirements)
+            if not all(isinstance(item, SourceRequirement) for item in copied):
+                raise TypeError(
+                    f'{normalized_key}: requirements must contain SourceRequirement values'
+                )
+            requirement_views = tuple(item.view for item in copied)
+            if len(requirement_views) != len(set(requirement_views)):
+                raise ValueError(
+                    f'{normalized_key}: requirements must be unique by source and partition'
+                )
+            normalized[normalized_key] = copied
+        object.__setattr__(self, 'views', views)
         object.__setattr__(self, 'requirements_by_kpi', MappingProxyType(normalized))
 
-    def source_plan(self, source: KpiSource) -> KpiSourceLoadPlan:
-        if not isinstance(source, KpiSource):
-            raise TypeError('source must be KpiSource')
-        for plan in self.sources:
-            if plan.source is source:
-                return plan
-        raise KpiPlanKeyError(f'{source.value}: source is not part of this load plan')
+    @property
+    def sources(self) -> tuple[KpiSource, ...]:
+        return tuple(dict.fromkeys(plan.source for plan in self.views))
 
-    def requirements_for(self, kpi_key: str) -> Mapping[KpiSource, SourceRequirement]:
+    def view_plan(
+        self,
+        source: KpiSource,
+        partition: KpiPartition,
+    ) -> KpiSourceViewLoadPlan:
+        view = KpiSourceView(source=source, partition=partition)
+        for plan in self.views:
+            if plan.view == view:
+                return plan
+        raise KpiPlanKeyError(
+            f'{source.value}/{partition.value}: view is not part of this load plan'
+        )
+
+    def requirements_for(self, kpi_key: str) -> tuple[SourceRequirement, ...]:
         key = _required_text(kpi_key, 'kpi key')
         try:
             return self.requirements_by_kpi[key]
@@ -95,15 +115,11 @@ class KpiLoadPlan:
             raise KpiPlanKeyError(f'{key}: KPI is not part of this load plan') from error
 
 
-def _normalize_columns(values: tuple[str, ...], field_name: str) -> tuple[str, ...]:
+def _normalize_columns(values: tuple[str, ...]) -> tuple[str, ...]:
     columns = tuple(_required_text(value, 'column') for value in values)
     if len(columns) != len(set(columns)):
-        raise ValueError(f'{field_name} must not contain duplicates')
+        raise ValueError('columns must not contain duplicates')
     return columns
-
-
-def _ordered_union(*groups: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(dict.fromkeys(value for group in groups for value in group))
 
 
 def _required_text(value: str, field_name: str) -> str:

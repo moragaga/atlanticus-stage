@@ -14,6 +14,10 @@ def test_public_api_is_small_and_versioned() -> None:
         'KpiHistoryWriter',
         '__version__',
         'build_composition',
+        'error_history_definition',
+        'error_history_schema',
+        'history_definition',
+        'history_schema',
         'load_configuration',
         'run',
     }

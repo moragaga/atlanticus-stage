@@ -1,5 +1,4 @@
-# Normalización del valor nativo hacia KpiResult.
-# Mantiene separado value, usado como dato, de parsed_value, usado para ilustración.
+# Convierte resultados nativos en OK o ERROR y prepara value/parsed_value sin estados ambiguos.
 from __future__ import annotations
 
 import math
@@ -8,7 +7,6 @@ from numbers import Integral, Real
 from ada.kpis.core import KpiArea, KpiNativeValue, KpiResult, KpiStatus, KpiValueKind
 
 
-# Convierte el valor del resolver en OK/MISSING/INVALID y aplica presentación VALUE.
 def build_result(
     *,
     key: str,
@@ -20,22 +18,22 @@ def build_result(
     value: KpiNativeValue,
 ) -> KpiResult:
     if value is None:
-        return status_result(
+        return error_result(
             key=key,
             area=area,
             value_kind=value_kind,
             persist_history=persist_history,
-            status=KpiStatus.MISSING,
+            error='KPI resolver returned no value',
         )
     if value_kind is KpiValueKind.JSON:
         json_value = _normalize_json_container(value)
         if json_value is None:
-            return status_result(
+            return error_result(
                 key=key,
                 area=area,
                 value_kind=value_kind,
                 persist_history=persist_history,
-                status=KpiStatus.INVALID,
+                error='KPI resolver returned an invalid JSON value',
             )
         return KpiResult(
             key=key,
@@ -47,12 +45,12 @@ def build_result(
         )
     scalar = _normalize_scalar(value)
     if scalar is None:
-        return status_result(
+        return error_result(
             key=key,
             area=area,
             value_kind=value_kind,
             persist_history=persist_history,
-            status=KpiStatus.INVALID,
+            error='KPI resolver returned an invalid scalar value',
         )
     if not is_truncated:
         return KpiResult(
@@ -66,12 +64,12 @@ def build_result(
         )
     number = _to_number(scalar)
     if number is None:
-        return status_result(
+        return error_result(
             key=key,
             area=area,
             value_kind=value_kind,
             persist_history=persist_history,
-            status=KpiStatus.INVALID,
+            error='KPI value cannot be converted to a finite number',
         )
     resolved_decimals = 2 if decimals is None else decimals
     truncated = _truncate_number(number, resolved_decimals)
@@ -86,27 +84,24 @@ def build_result(
     )
 
 
-# Construye estados sin valor para mantener el contrato de KpiResult.
-def status_result(
+def error_result(
     *,
     key: str,
     area: KpiArea,
     value_kind: KpiValueKind,
     persist_history: bool,
-    status: KpiStatus,
+    error: str,
 ) -> KpiResult:
-    if status is KpiStatus.OK:
-        raise ValueError('status_result cannot build an OK result without a value')
     return KpiResult(
         key=key,
         area=area,
-        status=status,
+        status=KpiStatus.ERROR,
         value_kind=value_kind,
         persist_history=persist_history,
+        error=error,
     )
 
 
-# Sanitiza escalares Python/numpy compatibles sin introducir Pandas.
 def _normalize_scalar(value: object) -> str | int | float | None:
     if isinstance(value, bool):
         return None
@@ -120,7 +115,6 @@ def _normalize_scalar(value: object) -> str | int | float | None:
     return None
 
 
-# Conversión numérica compatible con separadores decimal/miles usados por reglas legacy.
 def _to_number(value: str | int | float) -> float | None:
     if isinstance(value, int | float):
         number = float(value)
@@ -142,19 +136,16 @@ def _to_number(value: str | int | float) -> float | None:
     return number if math.isfinite(number) else None
 
 
-# El truncado es hacia cero y respeta la cantidad de decimales declarada.
 def _truncate_number(value: float, decimals: int) -> float:
     factor = 10**decimals
     return math.trunc(value * factor) / factor
 
 
-# parsed_value usa presentación numérica chilena para ilustración.
 def _format_number_cl(value: float, decimals: int) -> str:
     formatted = f'{value:,.{decimals}f}'
     return formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
 
 
-# JSON permanece nativo como dict/list y nunca se parsea desde string.
 def _normalize_json_container(value: object) -> dict[str, object] | list[object] | None:
     if isinstance(value, dict):
         output: dict[str, object] = {}

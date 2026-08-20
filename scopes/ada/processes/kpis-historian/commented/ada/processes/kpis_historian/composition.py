@@ -1,4 +1,4 @@
-# Ensambla repositorios, estado, Parquet y Job Runtime dentro del mismo APPLICATION.
+# Valida que cada vista solicitada tenga binding físico antes de iniciar el proceso.
 from __future__ import annotations
 
 from collections.abc import Sequence

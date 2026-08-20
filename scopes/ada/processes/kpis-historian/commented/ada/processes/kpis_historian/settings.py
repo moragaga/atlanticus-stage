@@ -1,4 +1,4 @@
-# Configuración operacional mínima; no existe routing hacia otro APPLICATION.
+# Rutea aplicaciones por source lógico; Fábrica planes y KPIs comparten FABRICA_APPLICATION.
 from __future__ import annotations
 
 from dataclasses import dataclass

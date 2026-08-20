@@ -7,6 +7,7 @@ from ada.kpis.core import (
     KpiArea,
     KpiCatalog,
     KpiMode,
+    KpiPartition,
     KpiSource,
     KpiSpec,
     KpiStatus,
@@ -45,6 +46,18 @@ def _watermark() -> KpiWatermark:
     return KpiWatermark.parse('2026-08-19T18:15:20Z')
 
 
+def _latest_spec(key: str, *, column: str = 'value', decimals: int | None = 0) -> KpiSpec:
+    return KpiSpec(
+        key=key,
+        area=KpiArea.MINA,
+        mode=KpiMode.LATEST_NUMBER,
+        source=KpiSource.PI_INTERPOLATED,
+        partition=KpiPartition.LATEST,
+        columns=(column,),
+        decimals=decimals,
+    )
+
+
 def test_evaluator_runs_entire_catalog_and_isolates_base_failures() -> None:
     source = KpiSource.PI_INTERPOLATED
 
@@ -53,30 +66,17 @@ def test_evaluator_runs_entire_catalog_and_isolates_base_failures() -> None:
 
     catalog = KpiCatalog(
         specs=(
-            KpiSpec(
-                key='good',
-                area=KpiArea.MINA,
-                mode=KpiMode.LATEST_NUMBER,
-                source=source,
-                columns=('value',),
-                decimals=0,
-            ),
+            _latest_spec('good'),
             KpiSpec(
                 key='resolver_error',
                 area=KpiArea.MINA,
                 mode=KpiMode.CUSTOM,
                 source=source,
+                partition=KpiPartition.LATEST,
                 columns=('value',),
                 custom_resolver=explode,
             ),
-            KpiSpec(
-                key='source_error',
-                area=KpiArea.MINA,
-                mode=KpiMode.LATEST_NUMBER,
-                source=source,
-                columns=('value',),
-                decimals=0,
-            ),
+            _latest_spec('source_error'),
         )
     )
     loader = FakeSourceLoader(
@@ -88,19 +88,23 @@ def test_evaluator_runs_entire_catalog_and_isolates_base_failures() -> None:
             failures={'source_error'},
         )
     )
-    evaluator = KpiEvaluator(source_loader=loader)
 
-    evaluation = evaluator.evaluate(catalog=catalog, watermark=_watermark())
+    evaluation = KpiEvaluator(source_loader=loader).evaluate(
+        catalog=catalog,
+        watermark=_watermark(),
+    )
     results = {result.key: result for result in evaluation.results}
 
     assert results['good'].status is KpiStatus.OK
     assert results['good'].value == 8.0
     assert results['resolver_error'].status is KpiStatus.ERROR
+    assert results['resolver_error'].error == 'RuntimeError'
     assert results['source_error'].status is KpiStatus.ERROR
+    assert results['source_error'].error == 'RuntimeError'
     assert tuple(results) == ('good', 'resolver_error', 'source_error')
 
 
-def test_evaluator_maps_status_contract_violation_to_invalid() -> None:
+def test_status_contract_violation_is_evaluation_error() -> None:
     source = KpiSource.PI_INTERPOLATED
     catalog = KpiCatalog(
         specs=(
@@ -109,6 +113,7 @@ def test_evaluator_maps_status_contract_violation_to_invalid() -> None:
                 area=KpiArea.PLANTA,
                 mode=KpiMode.STATUS,
                 source=source,
+                partition=KpiPartition.LATEST,
                 columns=('status',),
                 is_truncated=False,
             ),
@@ -121,34 +126,21 @@ def test_evaluator_maps_status_contract_violation_to_invalid() -> None:
         )
     )
 
-    evaluation = KpiEvaluator(source_loader=loader).evaluate(
+    result = KpiEvaluator(source_loader=loader).evaluate(
         catalog=catalog,
         watermark=_watermark(),
-    )
+    ).results[0]
 
-    assert evaluation.results[0].status is KpiStatus.INVALID
+    assert result.status is KpiStatus.ERROR
+    assert result.error == 'KpiInvalidValueError: status value is invalid'
 
 
 def test_over_kpi_runs_only_when_all_dependencies_are_ok() -> None:
     source = KpiSource.PI_INTERPOLATED
     catalog = KpiCatalog(
         specs=(
-            KpiSpec(
-                key='real',
-                area=KpiArea.MINA,
-                mode=KpiMode.LATEST_NUMBER,
-                source=source,
-                columns=('real',),
-                decimals=0,
-            ),
-            KpiSpec(
-                key='plan',
-                area=KpiArea.MINA,
-                mode=KpiMode.LATEST_NUMBER,
-                source=source,
-                columns=('plan',),
-                decimals=0,
-            ),
+            _latest_spec('real', column='real'),
+            _latest_spec('plan', column='plan'),
         ),
         over_specs=(
             OverKpiSpec(
@@ -170,19 +162,17 @@ def test_over_kpi_runs_only_when_all_dependencies_are_ok() -> None:
         )
     )
 
-    evaluation = KpiEvaluator(source_loader=loader).evaluate(
+    ratio = KpiEvaluator(source_loader=loader).evaluate(
         catalog=catalog,
         watermark=_watermark(),
-    )
-    ratio = evaluation.results[-1]
+    ).results[-1]
 
     assert ratio.status is KpiStatus.OK
     assert ratio.value == 80.0
     assert ratio.parsed_value == '80,0'
 
 
-def test_over_kpi_propagates_error_invalid_and_missing_without_running_resolver() -> None:
-    source = KpiSource.PI_INTERPOLATED
+def test_over_kpi_propagates_any_dependency_error_without_running_resolver() -> None:
     calls = []
 
     def resolver(values):
@@ -191,21 +181,15 @@ def test_over_kpi_propagates_error_invalid_and_missing_without_running_resolver(
 
     catalog = KpiCatalog(
         specs=(
+            _latest_spec('source_error'),
             KpiSpec(
-                key='error',
-                area=KpiArea.MINA,
-                mode=KpiMode.LATEST_NUMBER,
-                source=source,
-                columns=('value',),
-            ),
-            KpiSpec(
-                key='invalid',
+                key='invalid_constant',
                 area=KpiArea.MINA,
                 mode=KpiMode.CONSTANT,
                 constant_value='bad',
             ),
             KpiSpec(
-                key='missing',
+                key='empty_constant',
                 area=KpiArea.MINA,
                 mode=KpiMode.CONSTANT,
                 constant_value=None,
@@ -213,43 +197,30 @@ def test_over_kpi_propagates_error_invalid_and_missing_without_running_resolver(
         ),
         over_specs=(
             OverKpiSpec(
-                key='from_error',
+                key='derived',
                 area=KpiArea.MINA,
-                dependencies=('error',),
-                resolver=resolver,
-            ),
-            OverKpiSpec(
-                key='from_invalid',
-                area=KpiArea.MINA,
-                dependencies=('invalid',),
-                resolver=resolver,
-            ),
-            OverKpiSpec(
-                key='from_missing',
-                area=KpiArea.MINA,
-                dependencies=('missing',),
-                resolver=resolver,
-            ),
-            OverKpiSpec(
-                key='precedence',
-                area=KpiArea.MINA,
-                dependencies=('missing', 'invalid', 'error'),
+                dependencies=('source_error', 'invalid_constant', 'empty_constant'),
                 resolver=resolver,
             ),
         ),
     )
-    loader = FakeSourceLoader(FakeLoadedSources(contexts={}, failures={'error'}))
+    loader = FakeSourceLoader(FakeLoadedSources(contexts={}, failures={'source_error'}))
 
-    evaluation = KpiEvaluator(source_loader=loader).evaluate(
-        catalog=catalog,
-        watermark=_watermark(),
+    results = {
+        result.key: result
+        for result in KpiEvaluator(source_loader=loader).evaluate(
+            catalog=catalog,
+            watermark=_watermark(),
+        ).results
+    }
+
+    assert results['source_error'].status is KpiStatus.ERROR
+    assert results['invalid_constant'].status is KpiStatus.ERROR
+    assert results['empty_constant'].status is KpiStatus.ERROR
+    assert results['derived'].status is KpiStatus.ERROR
+    assert results['derived'].error == (
+        'KPI dependency failed: source_error, invalid_constant, empty_constant'
     )
-    results = {result.key: result for result in evaluation.results}
-
-    assert results['from_error'].status is KpiStatus.ERROR
-    assert results['from_invalid'].status is KpiStatus.INVALID
-    assert results['from_missing'].status is KpiStatus.MISSING
-    assert results['precedence'].status is KpiStatus.ERROR
     assert calls == []
 
 
@@ -299,18 +270,12 @@ def test_over_kpi_gets_only_declared_native_values() -> None:
     assert tuple(captured[0]) == ('left',)
 
 
-def test_evaluation_source_traces_are_top_level_and_only_for_requested_sources() -> None:
+def test_evaluation_source_traces_are_deduplicated_across_partitions() -> None:
     source = KpiSource.PI_INTERPOLATED
     source_watermark = KpiWatermark.parse('2026-08-19T18:15:10Z')
     catalog = KpiCatalog(
         specs=(
-            KpiSpec(
-                key='value',
-                area=KpiArea.MINA,
-                mode=KpiMode.LATEST_NUMBER,
-                source=source,
-                columns=('value',),
-            ),
+            _latest_spec('value'),
         )
     )
     loader = FakeSourceLoader(
@@ -335,3 +300,40 @@ def test_evaluation_source_traces_are_top_level_and_only_for_requested_sources()
     assert evaluation.as_document()['sources'] == {
         'pi.interpolated': {'watermark_utc': '2026-08-19T18:15:10Z'}
     }
+
+
+def test_custom_resolver_contract_error_keeps_safe_context_in_evaluation() -> None:
+    source = KpiSource.PI_INTERPOLATED
+
+    def resolver(data_context: DataRuntimeContext):
+        return data_context.get(KpiSource.PI_RECORDED, KpiPartition.DAILY).last_value('value')
+
+    catalog = KpiCatalog(
+        specs=(
+            KpiSpec(
+                key='bad-contract',
+                area=KpiArea.MINA,
+                mode=KpiMode.CUSTOM,
+                source=source,
+                partition=KpiPartition.LATEST,
+                columns=('value',),
+                custom_resolver=resolver,
+            ),
+        )
+    )
+    loader = FakeSourceLoader(
+        FakeLoadedSources(
+            contexts={'bad-contract': context(source, {'value': 5})},
+            failures=set(),
+        )
+    )
+
+    result = KpiEvaluator(source_loader=loader).evaluate(
+        catalog=catalog,
+        watermark=_watermark(),
+    ).results[0]
+
+    assert result.status is KpiStatus.ERROR
+    assert result.error is not None
+    assert result.error.startswith('KpiSourceNotRequestedError:')
+    assert 'pi.recorded/daily' in result.error

@@ -17,22 +17,22 @@ def build_result(
     value: KpiNativeValue,
 ) -> KpiResult:
     if value is None:
-        return status_result(
+        return error_result(
             key=key,
             area=area,
             value_kind=value_kind,
             persist_history=persist_history,
-            status=KpiStatus.MISSING,
+            error='KPI resolver returned no value',
         )
     if value_kind is KpiValueKind.JSON:
         json_value = _normalize_json_container(value)
         if json_value is None:
-            return status_result(
+            return error_result(
                 key=key,
                 area=area,
                 value_kind=value_kind,
                 persist_history=persist_history,
-                status=KpiStatus.INVALID,
+                error='KPI resolver returned an invalid JSON value',
             )
         return KpiResult(
             key=key,
@@ -44,12 +44,12 @@ def build_result(
         )
     scalar = _normalize_scalar(value)
     if scalar is None:
-        return status_result(
+        return error_result(
             key=key,
             area=area,
             value_kind=value_kind,
             persist_history=persist_history,
-            status=KpiStatus.INVALID,
+            error='KPI resolver returned an invalid scalar value',
         )
     if not is_truncated:
         return KpiResult(
@@ -63,12 +63,12 @@ def build_result(
         )
     number = _to_number(scalar)
     if number is None:
-        return status_result(
+        return error_result(
             key=key,
             area=area,
             value_kind=value_kind,
             persist_history=persist_history,
-            status=KpiStatus.INVALID,
+            error='KPI value cannot be converted to a finite number',
         )
     resolved_decimals = 2 if decimals is None else decimals
     truncated = _truncate_number(number, resolved_decimals)
@@ -83,22 +83,21 @@ def build_result(
     )
 
 
-def status_result(
+def error_result(
     *,
     key: str,
     area: KpiArea,
     value_kind: KpiValueKind,
     persist_history: bool,
-    status: KpiStatus,
+    error: str,
 ) -> KpiResult:
-    if status is KpiStatus.OK:
-        raise ValueError('status_result cannot build an OK result without a value')
     return KpiResult(
         key=key,
         area=area,
-        status=status,
+        status=KpiStatus.ERROR,
         value_kind=value_kind,
         persist_history=persist_history,
+        error=error,
     )
 
 

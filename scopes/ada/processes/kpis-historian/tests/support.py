@@ -14,12 +14,25 @@ def evaluation(
     *,
     key: str = 'kpi-a',
     value: object = 10,
+    parsed_value: object | None = None,
     persist_history: bool = True,
     status: KpiStatus = KpiStatus.OK,
     value_kind: KpiValueKind = KpiValueKind.VALUE,
+    error: str = 'KPI evaluation failed',
 ) -> KpiEvaluation:
-    if status is KpiStatus.OK:
-        parsed_value = value if value_kind is KpiValueKind.VALUE else None
+    if status is KpiStatus.ERROR:
+        result = KpiResult(
+            key=key,
+            area=KpiArea.GENERAL,
+            status=status,
+            value_kind=value_kind,
+            persist_history=persist_history,
+            error=error,
+        )
+    else:
+        resolved_parsed = (
+            value if parsed_value is None and value_kind is KpiValueKind.VALUE else parsed_value
+        )
         result = KpiResult(
             key=key,
             area=KpiArea.GENERAL,
@@ -27,15 +40,7 @@ def evaluation(
             value_kind=value_kind,
             persist_history=persist_history,
             value=value,
-            parsed_value=parsed_value,
-        )
-    else:
-        result = KpiResult(
-            key=key,
-            area=KpiArea.GENERAL,
-            status=status,
-            value_kind=value_kind,
-            persist_history=persist_history,
+            parsed_value=resolved_parsed,
         )
     return KpiEvaluation(watermark=target, results=(result,))
 

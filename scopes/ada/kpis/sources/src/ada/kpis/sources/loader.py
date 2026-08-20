@@ -4,19 +4,21 @@ from datetime import UTC, date, datetime
 
 import pandas as pd
 
-from ada.kpis.core import KpiSource, KpiWatermark
-from ada.kpis.planner import KpiLoadPlan, KpiSourceLoadPlan
+from ada.kpis.core import KpiSourceView, KpiWatermark
+from ada.kpis.planner import KpiLoadPlan, KpiSourceViewLoadPlan
 from ada.kpis.sources.bindings import (
+    KpiPartitionBinding,
     KpiSourceBinding,
     KpiSourceRegistry,
     TimePartitionGranularity,
 )
-from ada.kpis.sources.errors import KpiSourceBindingError, KpiSourceSchemaError, KpiSourcesError
+from ada.kpis.sources.errors import KpiSourceSchemaError, KpiSourcesError
 from ada.kpis.sources.loaded import (
     KpiSourceLoadFailure,
-    LoadedKpiSource,
     LoadedKpiSources,
+    LoadedKpiSourceView,
 )
+from ada.kpis.sources.operational import KpiOperationalWindowResolver
 from ada.kpis.sources.reader import SourceDatasetReader
 from ada.kpis.sources.shifts import MineShiftResolver
 
@@ -28,6 +30,7 @@ class KpiSourceLoader:
         reader: SourceDatasetReader,
         registry: KpiSourceRegistry,
         shift_resolver: MineShiftResolver | None = None,
+        operational_resolver: KpiOperationalWindowResolver | None = None,
     ) -> None:
         if not isinstance(reader, SourceDatasetReader):
             raise TypeError('reader must implement SourceDatasetReader')
@@ -35,28 +38,37 @@ class KpiSourceLoader:
             raise TypeError('registry must be KpiSourceRegistry')
         if shift_resolver is not None and not isinstance(shift_resolver, MineShiftResolver):
             raise TypeError('shift_resolver must be MineShiftResolver or None')
+        if operational_resolver is not None and not isinstance(
+            operational_resolver, KpiOperationalWindowResolver
+        ):
+            raise TypeError('operational_resolver must be KpiOperationalWindowResolver or None')
         self._reader = reader
         self._registry = registry
         self._shift_resolver = shift_resolver or MineShiftResolver()
+        self._operational_resolver = operational_resolver or KpiOperationalWindowResolver()
 
     def load(self, *, plan: KpiLoadPlan, watermark: KpiWatermark) -> LoadedKpiSources:
         if not isinstance(plan, KpiLoadPlan):
             raise TypeError('plan must be KpiLoadPlan')
         if not isinstance(watermark, KpiWatermark):
             raise TypeError('watermark must be KpiWatermark')
-        loaded: dict[KpiSource, LoadedKpiSource] = {}
-        failures: dict[KpiSource, KpiSourceLoadFailure] = {}
-        for source_plan in plan.sources:
+        loaded: dict[KpiSourceView, LoadedKpiSourceView] = {}
+        failures: dict[KpiSourceView, KpiSourceLoadFailure] = {}
+        for view_plan in plan.views:
             try:
-                binding = self._registry.get(source_plan.source)
-                loaded[source_plan.source] = self._load_source(
-                    plan=source_plan,
-                    binding=binding,
-                    watermark=watermark,
+                binding, partition_binding = self._registry.get_view(view_plan.view)
+                loaded[view_plan.view] = LoadedKpiSourceView(
+                    view=view_plan.view,
+                    frame=self._load_view(
+                        plan=view_plan,
+                        binding=binding,
+                        partition_binding=partition_binding,
+                        watermark=watermark,
+                    ),
                 )
             except KpiSourcesError as error:
-                failures[source_plan.source] = KpiSourceLoadFailure(
-                    source=source_plan.source,
+                failures[view_plan.view] = KpiSourceLoadFailure(
+                    view=view_plan.view,
                     message=str(error),
                 )
         return LoadedKpiSources(
@@ -66,177 +78,144 @@ class KpiSourceLoader:
             loaded=loaded,
             failures=failures,
             shift_resolver=self._shift_resolver,
+            operational_resolver=self._operational_resolver,
         )
 
-    def _load_source(
+    def _load_view(
         self,
         *,
-        plan: KpiSourceLoadPlan,
+        plan: KpiSourceViewLoadPlan,
         binding: KpiSourceBinding,
+        partition_binding: KpiPartitionBinding,
         watermark: KpiWatermark,
-    ) -> LoadedKpiSource:
-        snapshot = (
-            self._load_snapshot(binding=binding, columns=plan.snapshot_columns)
-            if plan.snapshot_columns
-            else None
-        )
-        time = (
-            self._load_time(
-                binding=binding,
-                columns=plan.time_columns,
-                watermark=watermark,
-                plan=plan,
-            )
-            if plan.time_columns
-            else None
-        )
-        shift = (
-            self._load_shift(
-                binding=binding,
-                columns=plan.shift_columns,
-                watermark=watermark,
-                plan=plan,
-            )
-            if plan.shift_columns
-            else None
-        )
-        return LoadedKpiSource(
-            source=plan.source,
-            snapshot_frame=snapshot,
-            time_frame=time,
-            shift_frame=shift,
-        )
-
-    def _load_snapshot(
-        self,
-        *,
-        binding: KpiSourceBinding,
-        columns: tuple[str, ...],
     ) -> pd.DataFrame:
-        materialization = binding.snapshot_materialization
-        if materialization is None:
-            raise KpiSourceBindingError(
-                f'{binding.source.value}: source does not support snapshot reads'
+        columns = _with_technical(
+            plan.columns,
+            partition_binding.timestamp_column,
+            partition_binding.shift_column,
+        )
+        if partition_binding.shift_column is not None:
+            return self._load_shift_view(
+                plan=plan,
+                binding=binding,
+                partition_binding=partition_binding,
+                columns=columns,
+                watermark=watermark,
             )
-        read_columns = _with_technical(columns, binding.timestamp_column)
-        target = binding.definition.resolve_target(materialization=materialization)
+        if partition_binding.time_partition_granularity is not None:
+            return self._load_time_view(
+                plan=plan,
+                binding=binding,
+                partition_binding=partition_binding,
+                columns=columns,
+                watermark=watermark,
+            )
+        target = binding.definition.resolve_target(
+            materialization=partition_binding.materialization
+        )
         frame = self._reader.read_frame(
             definition=binding.definition,
             target=target,
-            columns=read_columns,
+            columns=columns,
         )
-        output = _empty_or_copy(frame, read_columns)
-        if binding.timestamp_column is not None:
-            output = _normalize_timestamp(
-                source=binding.source,
-                frame=output,
-                column=binding.timestamp_column,
-            )
-        return output
+        return _empty_or_copy(frame, columns)
 
-    def _load_time(
+    def _load_time_view(
         self,
         *,
+        plan: KpiSourceViewLoadPlan,
         binding: KpiSourceBinding,
+        partition_binding: KpiPartitionBinding,
         columns: tuple[str, ...],
         watermark: KpiWatermark,
-        plan: KpiSourceLoadPlan,
     ) -> pd.DataFrame:
-        materialization = binding.time_materialization
-        timestamp_column = binding.timestamp_column
-        granularity = binding.time_partition_granularity
-        if materialization is None or timestamp_column is None or granularity is None:
-            raise KpiSourceBindingError(
-                f'{binding.source.value}: source does not support time-window reads'
-            )
-        assert plan.time_window is not None
-        start = watermark.timestamp_utc - plan.time_window.to_timedelta()
-        end = watermark.timestamp_utc
-        read_columns = _with_technical(columns, timestamp_column)
+        start_utc, end_utc = self._load_bounds(plan=plan, watermark=watermark)
+        assert partition_binding.time_partition_granularity is not None
         frames: list[pd.DataFrame] = []
-        for partition in _time_partitions(start=start, end=end, granularity=granularity):
+        for partition in _time_partitions(
+            start=start_utc,
+            end=end_utc,
+            granularity=partition_binding.time_partition_granularity,
+        ):
             target = binding.definition.resolve_target(
-                materialization=materialization,
+                materialization=partition_binding.materialization,
                 partition=partition,
             )
             frame = self._reader.read_frame(
                 definition=binding.definition,
                 target=target,
-                columns=read_columns,
-                timestamp_column=timestamp_column,
-                start_utc=start,
-                end_utc=end,
+                columns=columns,
+                timestamp_column=partition_binding.timestamp_column,
+                start_utc=start_utc,
+                end_utc=end_utc,
             )
             if frame is not None:
                 frames.append(frame)
-        output = _concat_or_empty(frames, read_columns)
-        return _normalize_timestamp(
-            source=binding.source,
-            frame=output,
-            column=timestamp_column,
+        combined = _concat_or_empty(frames, columns)
+        return _sort_time(
+            combined,
+            source=plan.source.value,
+            column=partition_binding.timestamp_column,
         )
 
-    def _load_shift(
+    def _load_shift_view(
         self,
         *,
+        plan: KpiSourceViewLoadPlan,
         binding: KpiSourceBinding,
+        partition_binding: KpiPartitionBinding,
         columns: tuple[str, ...],
         watermark: KpiWatermark,
-        plan: KpiSourceLoadPlan,
     ) -> pd.DataFrame:
-        materialization = binding.shift_materialization
-        shift_column = binding.shift_column
-        if materialization is None or shift_column is None:
-            raise KpiSourceBindingError(
-                f'{binding.source.value}: source does not support shift reads'
-            )
-        turns = {
-            item.shift_id: item
-            for selection in plan.shifts
-            for item in self._shift_resolver.resolve(selection=selection, watermark=watermark)
-        }
-        ordered_turns = tuple(sorted(turns.values(), key=lambda item: item.shift_start_utc))
-        read_columns = _with_technical(columns, shift_column)
+        turns = []
+        for selection in plan.shifts:
+            for turn in self._shift_resolver.resolve(selection=selection, watermark=watermark):
+                if turn.shift_id not in {item.shift_id for item in turns}:
+                    turns.append(turn)
         frames: list[pd.DataFrame] = []
-        for turn in ordered_turns:
+        for turn in turns:
             target = binding.definition.resolve_target(
-                materialization=materialization,
+                materialization=partition_binding.materialization,
                 partition=turn.partition,
             )
             frame = self._reader.read_frame(
                 definition=binding.definition,
                 target=target,
-                columns=read_columns,
+                columns=columns,
             )
-            if frame is None:
-                continue
-            values = pd.to_numeric(frame[shift_column], errors='coerce')
-            if values.isna().any():
-                raise KpiSourceSchemaError(
-                    f'{binding.source.value}: shift partition contains invalid shift_id values'
-                )
-            if values.ne(turn.shift_id).any():
-                raise KpiSourceSchemaError(
-                    f'{binding.source.value}: shift partition contains unexpected shift_id values'
-                )
-            frames.append(frame)
-        return _concat_or_empty(frames, read_columns)
+            if frame is not None:
+                frames.append(frame)
+        return _concat_or_empty(frames, columns)
+
+    def _load_bounds(
+        self,
+        *,
+        plan: KpiSourceViewLoadPlan,
+        watermark: KpiWatermark,
+    ) -> tuple[datetime, datetime]:
+        starts = [window.start_from(watermark.timestamp_utc) for window in plan.time_windows]
+        ends = [watermark.timestamp_utc for _ in plan.time_windows]
+        for scope in plan.operational_scopes:
+            window = self._operational_resolver.resolve(scope=scope, watermark=watermark)
+            starts.append(window.start_utc)
+            ends.append(window.end_utc)
+        if not starts:
+            raise KpiSourceSchemaError(
+                f'{plan.source.value}/{plan.partition.value}: time partition requires a selector'
+            )
+        return min(starts), max(ends)
 
 
-def _normalize_timestamp(
-    *,
-    source: KpiSource,
-    frame: pd.DataFrame,
-    column: str,
-) -> pd.DataFrame:
+def _sort_time(frame: pd.DataFrame, *, source: str, column: str | None) -> pd.DataFrame:
+    if column is None:
+        raise KpiSourceSchemaError(f'{source}: partitioned time view has no timestamp column')
     if column not in frame.columns:
-        raise KpiSourceSchemaError(f'{source.value}: timestamp column is missing: {column}')
+        raise KpiSourceSchemaError(f'{source}: timestamp column is missing: {column}')
     if frame.empty:
         return frame.reset_index(drop=True)
-    original = frame[column]
-    parsed = pd.to_datetime(original, utc=True, errors='coerce')
+    parsed = pd.to_datetime(frame[column], utc=True, errors='coerce')
     if parsed.isna().any():
-        raise KpiSourceSchemaError(f'{source.value}: timestamp column contains invalid values')
+        raise KpiSourceSchemaError(f'{source}: timestamp column contains invalid values')
     output = frame.copy(deep=False)
     output[column] = parsed
     return output.sort_values(column, kind='stable').reset_index(drop=True)
@@ -265,10 +244,15 @@ def _concat_or_empty(frames: list[pd.DataFrame], columns: tuple[str, ...]) -> pd
     )
 
 
-def _with_technical(columns: tuple[str, ...], technical: str | None) -> tuple[str, ...]:
-    if technical is None or technical in columns:
-        return columns
-    return (*columns, technical)
+def _with_technical(
+    columns: tuple[str, ...],
+    *technical_columns: str | None,
+) -> tuple[str, ...]:
+    output = list(columns)
+    for technical in technical_columns:
+        if technical is not None and technical not in output:
+            output.append(technical)
+    return tuple(output)
 
 
 def _time_partitions(

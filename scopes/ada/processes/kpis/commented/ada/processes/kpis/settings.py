@@ -1,6 +1,4 @@
-# Define la configuración del proceso KPI y el ruteo explícito de cada familia de fuentes hacia la APPLICATION que materializa sus datasets.
-# PI_SOURCE selecciona el proveedor lógico PI; PI_APPLICATION indica dónde vive físicamente ese proveedor.
-# Las APPLICATION opcionales solo son obligatorias si el catálogo realmente usa una fuente de esa familia.
+# Rutea aplicaciones por source lógico; Fábrica planes y KPIs comparten FABRICA_APPLICATION.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,8 +27,8 @@ _SOURCE_APPLICATION_VARIABLES = {
     KpiSource.REMANENTES_EXTRAIBLES: 'REMANENTES_APPLICATION',
     KpiSource.REMANENTES_NO_EXTRAIBLES: 'REMANENTES_APPLICATION',
     KpiSource.REMANENTES_STOCKS: 'REMANENTES_APPLICATION',
-    KpiSource.FABRICA_PLANES_DAILY: 'FABRICA_APPLICATION',
-    KpiSource.FABRICA_PLANES_WEEKLY: 'FABRICA_APPLICATION',
+    KpiSource.FABRICA_PLANES: 'FABRICA_APPLICATION',
+    KpiSource.FABRICA_KPIS: 'FABRICA_APPLICATION',
 }
 
 
@@ -180,7 +178,7 @@ def catalog_sources(catalog: KpiCatalog) -> tuple[KpiSource, ...]:
 def _catalog_sources(catalog: KpiCatalog) -> tuple[KpiSource, ...]:
     sources: set[KpiSource] = set()
     for spec in catalog.specs:
-        sources.update(spec.requirements)
+        sources.update(requirement.source for requirement in spec.requirements)
     return tuple(sorted(sources, key=lambda item: item.value))
 
 

@@ -1,8 +1,17 @@
-# Expone la API pública estable del core de KPI de ADA.
-# El core solo contiene contratos y no conoce infraestructura, datasets físicos ni procesos.
+# Expone el contrato público reusable del núcleo KPI.
 from ada.kpis.core.catalog import KpiCatalog
-from ada.kpis.core.enums import KpiArea, KpiMode, KpiSource, KpiStatus, KpiValueKind, ShiftScope
+from ada.kpis.core.enums import (
+    KpiArea,
+    KpiMode,
+    KpiOperationalScope,
+    KpiPartition,
+    KpiSource,
+    KpiStatus,
+    KpiValueKind,
+    ShiftScope,
+)
 from ada.kpis.core.requirements import (
+    KpiSourceView,
     KpiTimeWindow,
     KpiTimeWindowUnit,
     ShiftSelection,
@@ -29,12 +38,15 @@ __all__ = [
     'KpiJsonValue',
     'KpiMode',
     'KpiNativeValue',
+    'KpiOperationalScope',
+    'KpiPartition',
     'KpiResolver',
     'KpiResult',
     'KpiScalar',
     'KpiSource',
     'KpiSourceNotRequestedError',
     'KpiSourceTrace',
+    'KpiSourceView',
     'KpiSpec',
     'KpiStatus',
     'KpiTimeWindow',

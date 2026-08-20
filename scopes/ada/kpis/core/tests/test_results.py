@@ -71,25 +71,38 @@ def test_json_result_keeps_native_dict_or_list_without_parsed_value() -> None:
         )
 
 
-def test_non_ok_result_carries_no_value_and_can_still_be_historical() -> None:
+def test_error_result_has_no_values_and_keeps_safe_diagnostic() -> None:
     result = KpiResult(
-        key='missing',
+        key='failed',
         area=KpiArea.GENERAL,
-        status=KpiStatus.MISSING,
+        status=KpiStatus.ERROR,
         value_kind=KpiValueKind.VALUE,
         persist_history=True,
+        error='Required source column was not available',
     )
+
     assert result.value is None
-    assert result.persist_history is True
+    assert result.parsed_value is None
+    assert result.error == 'Required source column was not available'
+    assert result.as_payload()['error'] == 'Required source column was not available'
+
+    with pytest.raises(ValueError, match='requires error'):
+        KpiResult(
+            key='failed-without-error',
+            area=KpiArea.GENERAL,
+            status=KpiStatus.ERROR,
+            value_kind=KpiValueKind.VALUE,
+            persist_history=True,
+        )
 
 
-def test_evaluation_uses_typed_source_trace_and_native_json() -> None:
+def test_evaluation_exposes_history_and_error_projections_independently() -> None:
     evaluation = KpiEvaluation(
         watermark=_watermark(),
         sources=(KpiSourceTrace(KpiSource.PI_INTERPOLATED, _watermark()),),
         results=(
             KpiResult(
-                key='value-kpi',
+                key='historical-ok',
                 area=KpiArea.MINA,
                 status=KpiStatus.OK,
                 value_kind=KpiValueKind.VALUE,
@@ -98,21 +111,33 @@ def test_evaluation_uses_typed_source_trace_and_native_json() -> None:
                 parsed_value='12,30',
             ),
             KpiResult(
-                key='json-kpi',
+                key='historical-error',
+                area=KpiArea.MINA,
+                status=KpiStatus.ERROR,
+                value_kind=KpiValueKind.VALUE,
+                persist_history=True,
+                error='Resolver failed',
+            ),
+            KpiResult(
+                key='latest-only-error',
                 area=KpiArea.PLANTA,
-                status=KpiStatus.OK,
+                status=KpiStatus.ERROR,
                 value_kind=KpiValueKind.JSON,
                 persist_history=False,
-                value=[{'name': 'A', 'value': 1}],
+                error='Source unavailable',
             ),
         ),
     )
 
-    document = evaluation.as_document()
-    assert document['watermark_utc'] == '2026-08-19T18:15:20Z'
-    assert document['sources'] == {'pi.interpolated': {'watermark_utc': '2026-08-19T18:15:20Z'}}
-    assert evaluation.historical_results[0].key == 'value-kpi'
-    assert KpiEvaluation.from_document(document) == evaluation
+    assert tuple(result.key for result in evaluation.historical_results) == (
+        'historical-ok',
+        'historical-error',
+    )
+    assert tuple(result.key for result in evaluation.error_results) == (
+        'historical-error',
+        'latest-only-error',
+    )
+    assert KpiEvaluation.from_document(evaluation.as_document()) == evaluation
 
 
 def test_value_result_rejects_json_and_json_result_rejects_scalar() -> None:

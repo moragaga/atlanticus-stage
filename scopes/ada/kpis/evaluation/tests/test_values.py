@@ -49,7 +49,7 @@ def test_non_truncated_scalar_is_not_presentation_transformed() -> None:
     assert result.parsed_value == 'operando'
 
 
-def test_none_is_missing_but_invalid_scalar_is_invalid() -> None:
+def test_missing_or_invalid_scalar_becomes_evaluation_error() -> None:
     missing = build_result(
         key='missing',
         area=KpiArea.GENERAL,
@@ -69,13 +69,15 @@ def test_none_is_missing_but_invalid_scalar_is_invalid() -> None:
         value='not-a-number',
     )
 
-    assert missing.status is KpiStatus.MISSING
-    assert invalid.status is KpiStatus.INVALID
+    assert missing.status is KpiStatus.ERROR
+    assert invalid.status is KpiStatus.ERROR
+    assert missing.error == 'KPI resolver returned no value'
+    assert invalid.error == 'KPI value cannot be converted to a finite number'
     assert missing.value is None
     assert invalid.value is None
 
 
-def test_nan_and_infinity_are_invalid() -> None:
+def test_nan_and_infinity_become_error() -> None:
     for value in (float('nan'), float('inf'), float('-inf')):
         result = build_result(
             key='invalid',
@@ -86,7 +88,8 @@ def test_nan_and_infinity_are_invalid() -> None:
             is_truncated=True,
             value=value,
         )
-        assert result.status is KpiStatus.INVALID
+        assert result.status is KpiStatus.ERROR
+        assert result.error == 'KPI resolver returned an invalid scalar value'
 
 
 def test_json_remains_native_and_has_no_parsed_value() -> None:
@@ -105,7 +108,7 @@ def test_json_remains_native_and_has_no_parsed_value() -> None:
     assert result.parsed_value is None
 
 
-def test_json_string_is_not_auto_parsed() -> None:
+def test_json_string_is_not_auto_parsed_and_becomes_error() -> None:
     result = build_result(
         key='json',
         area=KpiArea.PLANTA,
@@ -116,4 +119,5 @@ def test_json_string_is_not_auto_parsed() -> None:
         value='{"a": 1}',
     )
 
-    assert result.status is KpiStatus.INVALID
+    assert result.status is KpiStatus.ERROR
+    assert result.error == 'KPI resolver returned an invalid JSON value'

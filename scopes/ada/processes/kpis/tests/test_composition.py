@@ -1,6 +1,6 @@
 import pytest
 
-from ada.kpis.core import KpiArea, KpiCatalog, KpiMode, KpiSource, KpiSpec
+from ada.kpis.core import KpiArea, KpiCatalog, KpiMode, KpiPartition, KpiSource, KpiSpec
 from ada.kpis.sources import PiSourceProvider
 from ada.processes.kpis.composition import build_composition
 from ada.processes.kpis.errors import KpiProcessConfigurationError
@@ -17,6 +17,7 @@ def _catalog(source=KpiSource.PI_INTERPOLATED) -> KpiCatalog:
                 area=KpiArea.GENERAL,
                 mode=KpiMode.LATEST_NUMBER,
                 source=source,
+                partition=KpiPartition.LATEST,
                 columns=('value',),
             ),
         )

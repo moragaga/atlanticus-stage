@@ -7,8 +7,10 @@ import pytest
 
 from ada.kpis.core import (
     DataRuntimeContext,
+    KpiPartition,
     KpiSource,
     KpiSourceNotRequestedError,
+    KpiSourceView,
     RuntimeFrameContext,
 )
 
@@ -28,7 +30,7 @@ class FakeFrameContext:
         return default if value is None else value
 
 
-def test_runtime_frame_contract_exposes_legacy_helpers() -> None:
+def test_runtime_frame_contract_exposes_helpers() -> None:
     frame = FakeFrameContext(dataframe=[{'a': 1}, {'a': 2}])
     assert isinstance(frame, RuntimeFrameContext)
     assert frame.last_row() == {'a': 2}
@@ -36,21 +38,26 @@ def test_runtime_frame_contract_exposes_legacy_helpers() -> None:
     assert frame.last_value_number('a') == 2.0
 
 
-def test_data_runtime_context_uses_typed_sources_and_rejects_unrequested_access() -> None:
-    frame = FakeFrameContext(dataframe=[])
-    data_context = DataRuntimeContext({KpiSource.PI_INTERPOLATED: frame})
+def test_data_runtime_context_keys_frames_by_source_and_partition() -> None:
+    latest = FakeFrameContext(dataframe=[])
+    daily = FakeFrameContext(dataframe=[])
+    latest_view = KpiSourceView(KpiSource.PI_INTERPOLATED, KpiPartition.LATEST)
+    daily_view = KpiSourceView(KpiSource.PI_INTERPOLATED, KpiPartition.DAILY)
+    data_context = DataRuntimeContext({latest_view: latest, daily_view: daily})
 
     assert data_context.sources == (KpiSource.PI_INTERPOLATED,)
-    assert data_context.get(KpiSource.PI_INTERPOLATED) is frame
+    assert data_context.views == (latest_view, daily_view)
+    assert data_context.get(KpiSource.PI_INTERPOLATED, KpiPartition.LATEST) is latest
+    assert data_context.get_view(daily_view) is daily
 
     with pytest.raises(KpiSourceNotRequestedError, match='was not requested'):
-        data_context.get(KpiSource.DISPATCH_TIEMPOS_MLP)
+        data_context.get(KpiSource.PI_INTERPOLATED, KpiPartition.MONTHLY)
 
     with pytest.raises(TypeError, match='source must be KpiSource'):
-        data_context.get('pi.interpolated')  # type: ignore[arg-type]
+        data_context.get('pi.interpolated', KpiPartition.LATEST)  # type: ignore[arg-type]
 
 
 def test_data_runtime_context_rejects_untyped_mapping_keys() -> None:
     frame = FakeFrameContext(dataframe=[])
-    with pytest.raises(TypeError, match='KpiSource values'):
+    with pytest.raises(TypeError, match='KpiSourceView'):
         DataRuntimeContext({'pi.interpolated': frame})  # type: ignore[dict-item]

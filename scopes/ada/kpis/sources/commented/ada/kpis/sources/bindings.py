@@ -1,5 +1,4 @@
-# Espejo pedagógico: el código ejecutable es idéntico; los comentarios explican responsabilidades y fronteras.
-# Los bindings describen cómo localizar snapshots, series UTC o particiones por shift sin hardcodear rutas físicas absolutas.
+# Vincula cada source lógico con las particiones físicas que realmente soporta.
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -7,7 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
 
-from ada.kpis.core import KpiSource
+from ada.kpis.core import KpiPartition, KpiSource, KpiSourceView
 from ada.kpis.sources.errors import KpiSourceBindingError
 from atlanticus.datasets.errors import DatasetTargetError
 from atlanticus.datasets.models import DatasetDefinition
@@ -19,65 +18,78 @@ class TimePartitionGranularity(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class KpiPartitionBinding:
+    partition: KpiPartition
+    materialization: str
+    time_partition_granularity: TimePartitionGranularity | None = None
+    timestamp_column: str | None = None
+    shift_column: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.partition, KpiPartition):
+            raise TypeError('partition must be KpiPartition')
+        materialization = _required_text(self.materialization, 'materialization')
+        timestamp = _optional_text(self.timestamp_column)
+        shift_column = _optional_text(self.shift_column)
+        if self.time_partition_granularity is not None and not isinstance(
+            self.time_partition_granularity, TimePartitionGranularity
+        ):
+            raise TypeError('time_partition_granularity must be TimePartitionGranularity or None')
+        if self.time_partition_granularity is not None and timestamp is None:
+            raise KpiSourceBindingError(
+                f'{self.partition.value}: partitioned time binding requires timestamp_column'
+            )
+        if shift_column is not None and self.time_partition_granularity is not None:
+            raise KpiSourceBindingError(
+                f'{self.partition.value}: shift binding cannot use time partition granularity'
+            )
+        object.__setattr__(self, 'materialization', materialization)
+        object.__setattr__(self, 'timestamp_column', timestamp)
+        object.__setattr__(self, 'shift_column', shift_column)
+
+
+@dataclass(frozen=True, slots=True)
 class KpiSourceBinding:
     source: KpiSource
     definition: DatasetDefinition
-    snapshot_materialization: str | None = None
-    time_materialization: str | None = None
-    time_partition_granularity: TimePartitionGranularity | None = None
-    shift_materialization: str | None = None
-    timestamp_column: str | None = None
-    shift_column: str | None = None
+    partitions: Mapping[KpiPartition, KpiPartitionBinding]
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, KpiSource):
             raise TypeError('source must be KpiSource')
         if not isinstance(self.definition, DatasetDefinition):
             raise TypeError(f'{self.source.value}: definition must be DatasetDefinition')
-        snapshot = _optional_text(self.snapshot_materialization)
-        time = _optional_text(self.time_materialization)
-        shift = _optional_text(self.shift_materialization)
-        timestamp = _optional_text(self.timestamp_column)
-        shift_column = _optional_text(self.shift_column)
-        object.__setattr__(self, 'snapshot_materialization', snapshot)
-        object.__setattr__(self, 'time_materialization', time)
-        object.__setattr__(self, 'shift_materialization', shift)
-        object.__setattr__(self, 'timestamp_column', timestamp)
-        object.__setattr__(self, 'shift_column', shift_column)
-        if snapshot is None and time is None and shift is None:
-            raise KpiSourceBindingError(
-                f'{self.source.value}: binding requires at least one materialization'
-            )
-        for materialization in (snapshot, time, shift):
-            if materialization is None:
-                continue
+        if not isinstance(self.partitions, Mapping) or not self.partitions:
+            raise KpiSourceBindingError(f'{self.source.value}: binding requires partitions')
+        normalized: dict[KpiPartition, KpiPartitionBinding] = {}
+        for key, partition in self.partitions.items():
+            if not isinstance(key, KpiPartition):
+                raise TypeError(f'{self.source.value}: partition keys must be KpiPartition values')
+            if not isinstance(partition, KpiPartitionBinding):
+                raise TypeError(f'{self.source.value}/{key.value}: invalid partition binding')
+            if partition.partition is not key:
+                raise KpiSourceBindingError(
+                    f'{self.source.value}/{key.value}: partition key and binding must match'
+                )
             try:
-                self.definition.get_materialization(materialization)
+                self.definition.get_materialization(partition.materialization)
             except DatasetTargetError as error:
                 raise KpiSourceBindingError(
-                    f'{self.source.value}: unknown materialization: {materialization}'
+                    f'{self.source.value}/{key.value}: unknown materialization: '
+                    f'{partition.materialization}'
                 ) from error
-        if time is not None:
-            if not isinstance(self.time_partition_granularity, TimePartitionGranularity):
-                raise KpiSourceBindingError(
-                    f'{self.source.value}: time materialization requires partition granularity'
-                )
-            if timestamp is None:
-                raise KpiSourceBindingError(
-                    f'{self.source.value}: time materialization requires timestamp_column'
-                )
-        elif self.time_partition_granularity is not None:
+            normalized[key] = partition
+        object.__setattr__(self, 'partitions', MappingProxyType(normalized))
+
+    def get_partition(self, partition: KpiPartition) -> KpiPartitionBinding:
+        if not isinstance(partition, KpiPartition):
+            raise TypeError('partition must be KpiPartition')
+        try:
+            return self.partitions[partition]
+        except KeyError as error:
             raise KpiSourceBindingError(
-                f'{self.source.value}: time partition granularity requires time materialization'
-            )
-        if shift is not None and shift_column is None:
-            raise KpiSourceBindingError(
-                f'{self.source.value}: shift materialization requires shift_column'
-            )
-        if shift is None and shift_column is not None:
-            raise KpiSourceBindingError(
-                f'{self.source.value}: shift_column requires shift materialization'
-            )
+                f'{self.source.value}: source does not support partition: {partition.value}'
+            ) from error
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,14 +122,22 @@ class KpiSourceRegistry:
         try:
             return self.bindings[source]
         except KeyError as error:
-            raise KpiSourceBindingError(
-                f'{source.value}: source has no registered binding'
-            ) from error
+            raise KpiSourceBindingError(f'{source.value}: source has no registered binding') from error
+
+    def get_view(self, view: KpiSourceView) -> tuple[KpiSourceBinding, KpiPartitionBinding]:
+        if not isinstance(view, KpiSourceView):
+            raise TypeError('view must be KpiSourceView')
+        binding = self.get(view.source)
+        return binding, binding.get_partition(view.partition)
 
 
 def _optional_text(value: str | None) -> str | None:
     if value is None:
         return None
+    return _required_text(value, 'optional text')
+
+
+def _required_text(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise ValueError('optional text values must be non-empty strings or None')
+        raise ValueError(f'{field_name} must be a non-empty string')
     return value.strip()

@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ada.kpis.core import DataRuntimeContext, KpiSource
+from ada.kpis.core import DataRuntimeContext, KpiPartition, KpiSource, KpiSourceView
 
 
 @dataclass
@@ -27,9 +27,15 @@ class FakeFrame:
             return default
         try:
             return float(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return default
 
 
-def context(source: KpiSource, values: Mapping[str, Any]) -> DataRuntimeContext:
-    return DataRuntimeContext(frames={source: FakeFrame(values)})
+def context(
+    source: KpiSource,
+    values: Mapping[str, Any],
+    *,
+    partition: KpiPartition = KpiPartition.LATEST,
+) -> DataRuntimeContext:
+    view = KpiSourceView(source=source, partition=partition)
+    return DataRuntimeContext(frames={view: FakeFrame(values)})

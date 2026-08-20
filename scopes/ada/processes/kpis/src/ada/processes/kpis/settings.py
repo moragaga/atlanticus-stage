@@ -26,8 +26,8 @@ _SOURCE_APPLICATION_VARIABLES = {
     KpiSource.REMANENTES_EXTRAIBLES: 'REMANENTES_APPLICATION',
     KpiSource.REMANENTES_NO_EXTRAIBLES: 'REMANENTES_APPLICATION',
     KpiSource.REMANENTES_STOCKS: 'REMANENTES_APPLICATION',
-    KpiSource.FABRICA_PLANES_DAILY: 'FABRICA_APPLICATION',
-    KpiSource.FABRICA_PLANES_WEEKLY: 'FABRICA_APPLICATION',
+    KpiSource.FABRICA_PLANES: 'FABRICA_APPLICATION',
+    KpiSource.FABRICA_KPIS: 'FABRICA_APPLICATION',
 }
 
 
@@ -177,7 +177,7 @@ def catalog_sources(catalog: KpiCatalog) -> tuple[KpiSource, ...]:
 def _catalog_sources(catalog: KpiCatalog) -> tuple[KpiSource, ...]:
     sources: set[KpiSource] = set()
     for spec in catalog.specs:
-        sources.update(spec.requirements)
+        sources.update(requirement.source for requirement in spec.requirements)
     return tuple(sorted(sources, key=lambda item: item.value))
 
 

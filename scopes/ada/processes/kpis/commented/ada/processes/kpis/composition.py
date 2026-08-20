@@ -1,6 +1,4 @@
-# Compone clock, source routing, evaluator y persistence sin poner reglas KPI en infraestructura.
-# APPLICATION pertenece al proceso KPI y sus salidas. PI_APPLICATION y las demás rutas de
-# source pueden apuntar a aplicaciones diferentes sin cambiar KpiSpec ni KpiSource.
+# Valida que cada vista solicitada tenga binding físico antes de iniciar el proceso.
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -127,6 +125,9 @@ def _build_source_runtimes(
 ) -> dict[DatasetKey, DatasetFrameRuntime]:
     routes: dict[DatasetKey, DatasetFrameRuntime] = {}
     runtimes_by_application: dict[str, DatasetRuntime] = {}
+    for spec in catalog.specs:
+        for requirement in spec.requirements:
+            registry.get_view(requirement.view)
     for source in catalog_sources(catalog):
         application = settings.source_applications.application_for(source)
         runtime = runtimes_by_application.get(application)

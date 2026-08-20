@@ -1,9 +1,8 @@
-from datetime import timedelta
-
 from ada.kpis.core import (
     KpiArea,
     KpiCatalog,
     KpiMode,
+    KpiPartition,
     KpiSource,
     KpiSpec,
     KpiTimeWindow,
@@ -19,55 +18,63 @@ def _resolver(_):
     return None
 
 
-def test_planner_widens_physical_time_load_and_keeps_exact_requirements() -> None:
+def test_planner_merges_columns_and_selectors_per_source_partition() -> None:
     three_days = KpiTimeWindow(3, KpiTimeWindowUnit.DAYS)
     two_hours = KpiTimeWindow(2, KpiTimeWindowUnit.HOURS)
-    first = KpiSpec(
-        key='a',
-        area=KpiArea.MINA,
-        mode=KpiMode.CUSTOM,
-        source=KpiSource.PI_INTERPOLATED,
-        columns=('a', 'b', 'c', 'd', 'e'),
-        time_window=three_days,
-        custom_resolver=_resolver,
+    catalog = KpiCatalog(
+        specs=(
+            KpiSpec(
+                key='a',
+                area=KpiArea.MINA,
+                mode=KpiMode.CUSTOM,
+                source=KpiSource.PI_INTERPOLATED,
+                partition=KpiPartition.DAILY,
+                columns=('a', 'b', 'c', 'd', 'e'),
+                time_window=three_days,
+                custom_resolver=_resolver,
+            ),
+            KpiSpec(
+                key='b',
+                area=KpiArea.MINA,
+                mode=KpiMode.CUSTOM,
+                source=KpiSource.PI_INTERPOLATED,
+                partition=KpiPartition.DAILY,
+                columns=('a', 'c', 'e'),
+                time_window=two_hours,
+                custom_resolver=_resolver,
+            ),
+        )
     )
-    second = KpiSpec(
-        key='b',
-        area=KpiArea.MINA,
-        mode=KpiMode.CUSTOM,
-        source=KpiSource.PI_INTERPOLATED,
-        columns=('a', 'c', 'e'),
-        time_window=two_hours,
-        custom_resolver=_resolver,
-    )
 
-    plan = KpiRequirementPlanner().plan(KpiCatalog(specs=(first, second)))
+    plan = KpiRequirementPlanner().plan(catalog)
 
-    source_plan = plan.source_plan(KpiSource.PI_INTERPOLATED)
-    assert source_plan.time_columns == ('a', 'b', 'c', 'd', 'e')
-    assert source_plan.time_window is three_days
-    assert source_plan.time_window.to_timedelta() == timedelta(days=3)
-    assert plan.requirements_for('b')[KpiSource.PI_INTERPOLATED].columns == ('a', 'c', 'e')
-    assert plan.requirements_for('b')[KpiSource.PI_INTERPOLATED].time_window is two_hours
+    daily = plan.view_plan(KpiSource.PI_INTERPOLATED, KpiPartition.DAILY)
+    assert daily.columns == ('a', 'b', 'c', 'd', 'e')
+    assert daily.time_windows == (three_days, two_hours)
+    exact = plan.requirements_for('b')[0]
+    assert exact.columns == ('a', 'c', 'e')
+    assert exact.time_window is two_hours
 
 
-def test_planner_separates_snapshot_time_and_shift_load_groups() -> None:
+def test_planner_keeps_latest_daily_and_shift_as_distinct_views() -> None:
     current = ShiftSelection(ShiftScope.CURRENT)
     days = ShiftSelection(ShiftScope.DAYS, days=3)
     catalog = KpiCatalog(
         specs=(
             KpiSpec(
-                key='snapshot',
+                key='latest',
                 area=KpiArea.MINA,
                 mode=KpiMode.LATEST_NUMBER,
                 source=KpiSource.PI_INTERPOLATED,
+                partition=KpiPartition.LATEST,
                 columns=('latest',),
             ),
             KpiSpec(
-                key='time',
+                key='daily',
                 area=KpiArea.MINA,
                 mode=KpiMode.CUSTOM,
                 source=KpiSource.PI_INTERPOLATED,
+                partition=KpiPartition.DAILY,
                 columns=('series',),
                 time_window=KpiTimeWindow(90, KpiTimeWindowUnit.MINUTES),
                 custom_resolver=_resolver,
@@ -77,6 +84,7 @@ def test_planner_separates_snapshot_time_and_shift_load_groups() -> None:
                 area=KpiArea.MINA,
                 mode=KpiMode.CUSTOM,
                 source=KpiSource.DISPATCH_STD_SHIFT_STATE,
+                partition=KpiPartition.SHIFT,
                 columns=('state',),
                 shift=current,
                 custom_resolver=_resolver,
@@ -86,6 +94,7 @@ def test_planner_separates_snapshot_time_and_shift_load_groups() -> None:
                 area=KpiArea.MINA,
                 mode=KpiMode.CUSTOM,
                 source=KpiSource.DISPATCH_STD_SHIFT_STATE,
+                partition=KpiPartition.SHIFT,
                 columns=('eqmt', 'state'),
                 shift=days,
                 custom_resolver=_resolver,
@@ -95,31 +104,41 @@ def test_planner_separates_snapshot_time_and_shift_load_groups() -> None:
 
     plan = KpiRequirementPlanner().plan(catalog)
 
-    pi = plan.source_plan(KpiSource.PI_INTERPOLATED)
-    assert pi.snapshot_columns == ('latest',)
-    assert pi.time_columns == ('series',)
-    dispatch = plan.source_plan(KpiSource.DISPATCH_STD_SHIFT_STATE)
-    assert dispatch.shift_columns == ('state', 'eqmt')
+    assert plan.view_plan(KpiSource.PI_INTERPOLATED, KpiPartition.LATEST).columns == ('latest',)
+    assert plan.view_plan(KpiSource.PI_INTERPOLATED, KpiPartition.DAILY).columns == ('series',)
+    dispatch = plan.view_plan(KpiSource.DISPATCH_STD_SHIFT_STATE, KpiPartition.SHIFT)
+    assert dispatch.columns == ('state', 'eqmt')
     assert dispatch.shifts == (current, days)
+    assert plan.sources == (
+        KpiSource.PI_INTERPOLATED,
+        KpiSource.DISPATCH_STD_SHIFT_STATE,
+    )
 
 
-def test_requirements_by_source_remain_unmerged_for_each_rule() -> None:
+def test_same_kpi_can_request_two_partitions_of_same_source() -> None:
+    latest = SourceRequirement(
+        source=KpiSource.PI_INTERPOLATED,
+        partition=KpiPartition.LATEST,
+        columns=('current',),
+    )
+    daily = SourceRequirement(
+        source=KpiSource.PI_INTERPOLATED,
+        partition=KpiPartition.DAILY,
+        columns=('series',),
+        time_window=KpiTimeWindow(2, KpiTimeWindowUnit.HOURS),
+    )
     spec = KpiSpec(
         key='multi',
         area=KpiArea.GENERAL,
         mode=KpiMode.CUSTOM,
-        requirements_by_source={
-            KpiSource.PI_INTERPOLATED: SourceRequirement(
-                columns=('pi_a',),
-                time_window=KpiTimeWindow(2, KpiTimeWindowUnit.HOURS),
-            ),
-            KpiSource.REMANENTES_STOCKS: SourceRequirement(columns=('stock_3080',)),
-        },
+        source_requirements=(latest, daily),
         custom_resolver=_resolver,
     )
 
     plan = KpiRequirementPlanner().plan(KpiCatalog(specs=(spec,)))
 
-    exact = plan.requirements_for('multi')
-    assert exact[KpiSource.PI_INTERPOLATED].columns == ('pi_a',)
-    assert exact[KpiSource.REMANENTES_STOCKS].columns == ('stock_3080',)
+    assert plan.requirements_for('multi') == (latest, daily)
+    assert tuple(view.partition for view in plan.views) == (
+        KpiPartition.LATEST,
+        KpiPartition.DAILY,
+    )
