@@ -13,8 +13,8 @@ una solución particular.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.0` |
-| Estado | En revisión |
+| Versión del documento | `1.0.1` |
+| Estado | Validado |
 | Lenguaje base | Python `3.14.2` |
 | Unidad de distribución | Wheel por package construible |
 | Audiencia | Arquitectura, desarrollo y mantenimiento técnico |
@@ -428,7 +428,7 @@ compatibilidad explícito.
 
 ## Control documental
 
-La versión `1.0.0` corresponde exclusivamente a esta guía. No representa una versión global de
+La versión `1.0.1` corresponde exclusivamente a esta guía. No representa una versión global de
 Atlanticus ni modifica las versiones de sus packages, wheels, aplicaciones o artifacts.
 
 ---
