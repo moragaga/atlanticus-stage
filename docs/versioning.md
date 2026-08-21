@@ -12,8 +12,8 @@ reproducible y no sea únicamente una etiqueta modificada antes de generar un wh
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.0` |
-| Estado | En revisión |
+| Versión del documento | `1.0.1` |
+| Estado | Validado |
 | Política propuesta | Semantic Versioning `MAJOR.MINOR.PATCH` |
 | Fuente primaria | `[project].version` del `pyproject.toml` propietario |
 | Audiencia | Desarrollo, mantenimiento técnico y arquitectura |
@@ -436,7 +436,7 @@ antes de formalizar publicación y rollback en la guía de deployment.
 
 ## Control documental
 
-La versión `1.0.0` corresponde exclusivamente a esta guía. No representa una versión de Atlanticus,
+La versión `1.0.1` corresponde exclusivamente a esta guía. No representa una versión de Atlanticus,
 de sus librerías, aplicaciones, wheels, artifacts o dependencias.
 
 ---

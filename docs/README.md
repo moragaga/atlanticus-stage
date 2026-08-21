@@ -11,7 +11,7 @@ dónde se explica cada tema sin duplicar procedimientos entre capas, módulos y 
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.7.0` |
+| Versión del documento | `1.9.0` |
 | Estado | En revisión |
 | Audiencia | Desarrollo, arquitectura, soporte y plataforma |
 | Documento superior | `README.md` |
@@ -61,9 +61,9 @@ Las rutas se convertirán en enlaces cuando cada documento haya sido creado y va
 | [Arquitectura](architecture.md) | `docs/architecture.md` | Capas, contratos, dependencias permitidas, composición y límites. | Validado |
 | [Configuración](configuration.md) | `docs/configuration.md` | Variables de entorno, archivos de configuración, secretos y resolución por ambiente. | Validado |
 | [Ejecución local](local-execution.md) | `docs/local-execution.md` | Ejecución desde source o artifact mediante UV, Docker y orquestadores. | Validado |
-| Empaquetado | `docs/packaging.md` | Construcción, inspección y validación de wheels y artifacts. | En revisión |
-| Versionamiento | `docs/versioning.md` | SemVer, actualización de dependencias y gate previo a una publicación. | Pendiente |
-| Deployment | `docs/deployment.md` | Distribuciones, contenedores y mecanismos de despliegue soportados. | Pendiente |
+| [Empaquetado](packaging.md) | `docs/packaging.md` | Construcción, inspección y validación de wheels y artifacts. | Validado |
+| [Versionamiento](versioning.md) | `docs/versioning.md` | SemVer, actualización de dependencias y gate previo a una publicación. | Validado |
+| Deployment | `docs/deployment.md` | Distribuciones, contenedores y mecanismos de despliegue soportados. | En revisión |
 
 ## Recorridos recomendados
 
@@ -142,12 +142,13 @@ mantienen el enlace y sus diferencias específicas.
 
 ## Control documental
 
-La versión `1.7.0` corresponde exclusivamente a este índice. No representa una versión global de
+La versión `1.9.0` corresponde exclusivamente a este índice. No representa una versión global de
 Atlanticus ni modifica las versiones de sus librerías, aplicaciones, wheels o artifacts.
 
 Las guías **Primeros pasos y desarrollo**, **Ejecución local**, **Arquitectura** y
-**Configuración** se encuentran validadas. La guía **Empaquetado** es la siguiente propuesta en
-revisión; su ruta se transformará en enlace cuando quede aprobada.
+**Configuración**, **Empaquetado** y **Versionamiento** se encuentran validadas. La guía
+**Deployment** es la siguiente propuesta en revisión; su ruta se transformará en enlace cuando
+quede aprobada.
 
 ---
 

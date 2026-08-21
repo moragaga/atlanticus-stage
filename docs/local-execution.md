@@ -12,7 +12,7 @@ adecuado sin convertir Docker en un requisito para cada prueba local.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.2` |
+| Versión del documento | `1.0.3` |
 | Estado | Validado |
 | Python requerido | `3.14.2` |
 | Gestor de proyectos | UV |
@@ -281,8 +281,22 @@ dependencias: source editable durante desarrollo y wheels internos dentro del ar
 ## 3. Ejecutar un artifact con Docker
 
 Esta modalidad valida el contrato de contenedor de un único artifact. Los comandos siguientes se
-ejecutan desde la raíz del repositorio, después de preparar y configurar
-`artifacts/processes/kpis/.env`.
+ejecutan desde la raíz del repositorio después de preparar el artifact, pero **antes** de crear su
+`.env` o cualquier otro archivo activo dentro del contexto Docker.
+
+El contexto actual es `artifacts/` y no posee un filtro propio que excluya secretos. Antes del build,
+esta búsqueda debe terminar sin output:
+
+```bash
+find artifacts/processes -type f \
+  \( -name '.env' -o -name 'config.json' -o -name 'secrets.json' \) \
+  -print
+```
+
+Si aparece una ruta, no debe ejecutarse el build directo. El archivo se encuentra dentro del
+contexto que Docker enviará al builder. La solución estable para usos repetidos debe ser aislar el
+contexto mediante código y pruebas; no basta con confiar en que el Dockerfile no utilizará el
+archivo.
 
 ### Construir la imagen
 
@@ -296,6 +310,15 @@ docker build \
 
 El contexto debe ser `artifacts/` porque el Dockerfile copia `processes/<FILENAME>/`. Durante la
 construcción se instala el artifact con su lock y se verifica que el comando declarado exista.
+
+Solo después de construir la imagen se crea el archivo utilizado durante la ejecución:
+
+```bash
+cp artifacts/processes/kpis/.env.detail artifacts/processes/kpis/.env
+```
+
+Debe completarse antes de iniciar el contenedor. `--env-file` inyecta sus valores en runtime; el
+archivo ya no participa en el build que terminó anteriormente.
 
 ### Ejecutar una sola iteración
 
