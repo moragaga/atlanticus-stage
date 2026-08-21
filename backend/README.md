@@ -12,8 +12,8 @@ de jobs, sin incorporar reglas de una solución particular como ADA.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.0` |
-| Estado | En revisión |
+| Versión del documento | `1.0.1` |
+| Estado | Validado |
 | Tipo de proyecto | Workspace UV no instalable |
 | Python requerido | `3.14.2` |
 | Unidades construibles | 10 wheels independientes |
@@ -269,7 +269,7 @@ convertir estas rutas en enlaces.
 
 | Módulo | Ruta | Estado documental |
 |---|---|---|
-| Kernel | `backend/kernel/README.md` | Pendiente de revisión |
+| Kernel | `backend/kernel/README.md` | En revisión |
 | JSON | `backend/json/README.md` | Pendiente |
 | Configuration | `backend/configuration/README.md` | Pendiente |
 | Datasets | `backend/datasets/README.md` | Pendiente de revisión |
@@ -304,11 +304,11 @@ módulos superiores.
 
 ## Control documental
 
-La versión `1.0.0` corresponde únicamente a este README de área. No representa una versión global
+La versión `1.0.1` corresponde únicamente a este README de área. No representa una versión global
 de Backend ni modifica las versiones de sus wheels.
 
-El documento permanece **En revisión** hasta confirmar que el catálogo, los límites y el orden de
-navegación resultan adecuados antes de avanzar a `backend/kernel/README.md`.
+El documento se encuentra **Validado**. El catálogo, los límites y el orden de navegación fueron
+aprobados. `backend/kernel/README.md` es la siguiente propuesta documental en revisión.
 
 ---
 
