@@ -12,7 +12,7 @@ de jobs, sin incorporar reglas de una solución particular como ADA.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.1` |
+| Versión del documento | `1.1.0` |
 | Estado | Validado |
 | Tipo de proyecto | Workspace UV no instalable |
 | Python requerido | `3.14.2` |
@@ -269,8 +269,8 @@ convertir estas rutas en enlaces.
 
 | Módulo | Ruta | Estado documental |
 |---|---|---|
-| Kernel | `backend/kernel/README.md` | En revisión |
-| JSON | `backend/json/README.md` | Pendiente |
+| [Kernel](kernel/README.md) | `backend/kernel/README.md` | Validado |
+| JSON | `backend/json/README.md` | En revisión |
 | Configuration | `backend/configuration/README.md` | Pendiente |
 | Datasets | `backend/datasets/README.md` | Pendiente de revisión |
 | Datasets Parquet | `backend/datasets-parquet/README.md` | Pendiente de revisión |
@@ -304,11 +304,11 @@ módulos superiores.
 
 ## Control documental
 
-La versión `1.0.1` corresponde únicamente a este README de área. No representa una versión global
+La versión `1.1.0` corresponde únicamente a este README de área. No representa una versión global
 de Backend ni modifica las versiones de sus wheels.
 
-El documento se encuentra **Validado**. El catálogo, los límites y el orden de navegación fueron
-aprobados. `backend/kernel/README.md` es la siguiente propuesta documental en revisión.
+El documento se encuentra **Validado**. Kernel también fue validado y se incorporó a la navegación.
+`backend/json/README.md` es la siguiente propuesta documental en revisión.
 
 ---
 

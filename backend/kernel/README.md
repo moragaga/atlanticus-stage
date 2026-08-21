@@ -13,8 +13,8 @@ runtime ni reglas funcionales.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.0` |
-| Estado | En revisión |
+| Versión del documento | `1.0.1` |
+| Estado | Validado |
 | Ruta física | `backend/kernel/` |
 | Distribución | `atlanticus-kernel` |
 | Import público | `atlanticus.kernel` |
@@ -430,11 +430,11 @@ diferente.
 
 ## Control documental
 
-La versión `1.0.0` corresponde únicamente a este README. La versión técnica actual del wheel
+La versión `1.0.1` corresponde únicamente a este README. La versión técnica actual del wheel
 continúa siendo la declarada por su `pyproject.toml`.
 
-El documento permanece **En revisión** hasta confirmar su contrato público, límites y tratamiento
-del ambiente. Su aprobación no modifica código ni publica una nueva versión de Kernel.
+El documento se encuentra **Validado**. Su aprobación no modifica código ni publica una nueva
+versión de Kernel.
 
 ---
 

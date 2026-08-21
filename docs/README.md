@@ -11,7 +11,7 @@ dónde se explica cada tema sin duplicar procedimientos entre capas, módulos y 
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.11.0` |
+| Versión del documento | `1.11.1` |
 | Estado | En revisión |
 | Audiencia | Desarrollo, arquitectura, soporte y plataforma |
 | Documento superior | `README.md` |
@@ -142,13 +142,13 @@ mantienen el enlace y sus diferencias específicas.
 
 ## Control documental
 
-La versión `1.11.0` corresponde exclusivamente a este índice. No representa una versión global de
+La versión `1.11.1` corresponde exclusivamente a este índice. No representa una versión global de
 Atlanticus ni modifica las versiones de sus librerías, aplicaciones, wheels o artifacts.
 
 Las guías **Primeros pasos y desarrollo**, **Ejecución local**, **Arquitectura** y
 **Configuración**, **Empaquetado**, **Versionamiento** y **Deployment** se encuentran validadas.
-El índice de área **Backend** también se encuentra validado. Su primer documento de módulo,
-**Kernel**, permanece en revisión dentro del índice de Backend.
+El índice de área **Backend** también se encuentra validado. El estado y la navegación de sus
+módulos se mantienen exclusivamente en ese índice de área.
 
 ---
 
