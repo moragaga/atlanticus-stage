@@ -11,7 +11,7 @@ dónde se explica cada tema sin duplicar procedimientos entre capas, módulos y 
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.3.0` |
+| Versión del documento | `1.4.0` |
 | Estado | Validado |
 | Audiencia | Desarrollo, arquitectura, soporte y plataforma |
 | Documento superior | `README.md` |
@@ -58,7 +58,7 @@ Las rutas se convertirán en enlaces cuando cada documento haya sido creado y va
 | Guía | Ruta prevista | Responsabilidad | Estado |
 |---|---|---|---|
 | [Primeros pasos y desarrollo](development.md) | `docs/development.md` | Instalación de UV y Python, entorno, sincronización, `.venv`, proyectos, nombres, Ruff y pruebas. | Validado |
-| Arquitectura | `docs/architecture.md` | Capas, contratos, dependencias permitidas, composición y límites. | Pendiente |
+| Arquitectura | `docs/architecture.md` | Capas, contratos, dependencias permitidas, composición y límites. | En revisión |
 | Configuración | `docs/configuration.md` | Variables de entorno, archivos de configuración, secretos y resolución por ambiente. | Pendiente |
 | [Ejecución local](local-execution.md) | `docs/local-execution.md` | Ejecución desde source o artifact mediante UV, Docker y orquestadores. | Validado |
 | Empaquetado | `docs/packaging.md` | Construcción, inspección y validación de wheels y artifacts. | Pendiente |
@@ -142,11 +142,12 @@ mantienen el enlace y sus diferencias específicas.
 
 ## Control documental
 
-La versión `1.3.0` corresponde exclusivamente a este índice. No representa una versión global de
+La versión `1.4.0` corresponde exclusivamente a este índice. No representa una versión global de
 Atlanticus ni modifica las versiones de sus librerías, aplicaciones, wheels o artifacts.
 
 Las guías **Primeros pasos y desarrollo** y **Ejecución local** se encuentran validadas. La
-siguiente guía planificada es **Arquitectura**.
+guía **Arquitectura** es la siguiente propuesta en revisión; su ruta se transformará en enlace
+cuando quede aprobada.
 
 ---
 
