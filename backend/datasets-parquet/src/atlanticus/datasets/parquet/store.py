@@ -18,11 +18,6 @@ import pyarrow.parquet as pq
 
 from atlanticus.datasets.layouts import FileSetLayout, SingleArtifactLayout
 from atlanticus.datasets.models import DatasetDefinition, DatasetPartKey, DatasetTarget
-from atlanticus.datasets.results import (
-    DatasetPublicationResult,
-    PublicationQuality,
-    PublicationStatus,
-)
 from atlanticus.datasets.parquet.errors import (
     ParquetCorruptionError,
     ParquetLayoutError,
@@ -49,6 +44,11 @@ from atlanticus.datasets.parquet.models import (
     ParquetWriteOptions,
     _Artifact,
     _ResolvedPublication,
+)
+from atlanticus.datasets.results import (
+    DatasetPublicationResult,
+    PublicationQuality,
+    PublicationStatus,
 )
 
 _TEMPORARY_PATTERN = re.compile(r'^\..+\.[0-9a-f]{32}\.tmp$')
