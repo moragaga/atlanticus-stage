@@ -9,7 +9,7 @@ conectores, aplicaciones web y soluciones de datos a partir de capacidades reuti
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.2.0` |
+| Versión del documento | `1.2.1` |
 | Lenguaje base | Python `3.14.2` |
 | Gestión de proyectos y dependencias | `uv` |
 | Distribución de paquetes | Wheels de Python |
@@ -190,30 +190,12 @@ especializadas, no a esta introducción.
 
 ## Documentación
 
-La documentación sigue la misma jerarquía que la plataforma:
+Para instalar, desarrollar, configurar, ejecutar, empaquetar o desplegar Atlanticus, consulta el
+[índice general de documentación](docs/README.md).
 
-1. Este README presenta Atlanticus y permite identificar sus áreas principales.
-2. `docs/` contiene las guías transversales compartidas por todos los módulos.
-3. Cada área global explica sus límites, módulos y relaciones.
-4. Cada módulo documenta su contrato y sus particularidades.
-5. Cada aplicación ejecutable explica el significado funcional de su ejecución.
-
-Las guías transversales se organizarán por responsabilidad para mantener una sola fuente de verdad:
-
-| Guía | Contenido |
-|---|---|
-| Primeros pasos y desarrollo | Instalación de UV y Python, preparación del entorno, sincronización, `.venv`, estructura de proyectos y creación de módulos. |
-| Arquitectura | Capas, dependencias permitidas, contratos, composición y límites. |
-| Configuración | Variables de entorno, archivos de configuración, secretos y resolución por ambiente. |
-| Ejecución local | Ejecución desde source o artifact mediante UV, Docker y los orquestadores disponibles. |
-| Empaquetado | Construcción, inspección y validación de wheels y artifacts. |
-| Versionamiento | SemVer, correcciones, nuevas capacidades, actualización de dependencias y gate previo a una versión. |
-| Deployment | Distribuciones, contenedores y mecanismos de despliegue realmente soportados. |
-
-Los README de cada módulo describirán qué puede hacer, qué configuración propia utiliza y qué
-contratos expone. Los procedimientos compartidos se referenciarán desde estas guías para evitar que
-la misma instrucción de sincronización, ejecución o construcción quede duplicada en múltiples
-lugares.
+El índice organiza las guías transversales y la navegación hacia cada área, módulo y aplicación.
+Los README específicos explican sus capacidades y particularidades, mientras los procedimientos
+compartidos permanecen centralizados para evitar instrucciones duplicadas.
 
 ## Filosofía de calidad
 
@@ -245,7 +227,7 @@ integre comprenda la expectativa antes de modificar o publicar un módulo.
 
 ## Control documental
 
-La versión `1.2.0` pertenece exclusivamente a este README. No representa una versión global de
+La versión `1.2.1` pertenece exclusivamente a este README. No representa una versión global de
 Atlanticus ni sustituye las versiones declaradas por sus paquetes.
 
 Git conserva el historial técnico del archivo. La versión documental permite identificar su
