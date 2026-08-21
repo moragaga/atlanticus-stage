@@ -13,8 +13,8 @@ silenciosamente documentos ambiguos, corruptos o parcialmente escritos.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.0` |
-| Estado | En revisión |
+| Versión del documento | `1.0.1` |
+| Estado | Validado |
 | Ruta física | `backend/json/` |
 | Distribución | `atlanticus-json` |
 | Import público | `atlanticus.json` |
@@ -310,12 +310,13 @@ El wheel no depende de otros módulos de Atlanticus. Los consumidores declarados
 
 - `ada-kpis-persistence`;
 - el proceso `kpis`;
+- el proceso `kpis-historian`;
 - el proceso `kpis-delivery`.
 
-`kpis-historian` también importa `JsonDocumentStore` directamente, pero su
-`[project].dependencies` no declara `atlanticus-json`; hoy lo recibe transitivamente mediante
-`ada-kpis-persistence` y mantiene una fuente UV local. Esto es deuda técnica del consumidor: una
-dependencia importada directamente debe declararse directamente.
+`kpis-historian` importa `JsonDocumentStore` directamente y declara `atlanticus-json` como
+dependencia productiva directa. La entrada correspondiente en `[tool.uv.sources]` resuelve el wheel
+local durante el desarrollo sin convertir una dependencia transitiva en parte implícita del
+contrato.
 
 Los usos actuales se concentran en evaluaciones KPI y su composición. JSON no conoce esos modelos;
 solo recibe mappings construidos por la capability propietaria.
@@ -412,16 +413,15 @@ Ruff, formato y pruebas se ejecutan antes y después del cambio conforme a
 - Un fallo de `fsync` posterior a `os.replace` puede producir un resultado de commit incierto.
 - No existe límite total de bytes para un documento.
 - No se verificó durabilidad en Windows, filesystem de red ni volúmenes cloud montados.
-- `kpis-historian` debe declarar su dependencia directa.
 - Incorporar el README a la metadata del wheel requiere modificar y validar `pyproject.toml`.
 
 ## Control documental
 
-La versión `1.0.0` corresponde únicamente a este README. La versión técnica del wheel continúa
+La versión `1.0.1` corresponde únicamente a este README. La versión técnica del wheel continúa
 siendo la declarada por su `pyproject.toml`.
 
-El documento permanece **En revisión**. Su aprobación no corrige las limitaciones técnicas
-registradas ni publica una nueva versión de Atlanticus JSON.
+El documento se encuentra **Validado**. Esta revisión registra la dependencia directa corregida en
+`kpis-historian`; no publica una nueva versión de Atlanticus JSON.
 
 ---
 
