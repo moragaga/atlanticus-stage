@@ -11,8 +11,8 @@ dónde se explica cada tema sin duplicar procedimientos entre capas, módulos y 
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.0` |
-| Estado | En revisión |
+| Versión del documento | `1.1.0` |
+| Estado | Validado |
 | Audiencia | Desarrollo, arquitectura, soporte y plataforma |
 | Documento superior | `README.md` |
 
@@ -57,7 +57,7 @@ Las rutas se convertirán en enlaces cuando cada documento haya sido creado y va
 
 | Guía | Ruta prevista | Responsabilidad | Estado |
 |---|---|---|---|
-| Primeros pasos y desarrollo | `docs/development.md` | Instalación de UV y Python, entorno, sincronización, `.venv`, proyectos, nombres, Ruff y pruebas. | Pendiente |
+| Primeros pasos y desarrollo | `docs/development.md` | Instalación de UV y Python, entorno, sincronización, `.venv`, proyectos, nombres, Ruff y pruebas. | En revisión |
 | Arquitectura | `docs/architecture.md` | Capas, contratos, dependencias permitidas, composición y límites. | Pendiente |
 | Configuración | `docs/configuration.md` | Variables de entorno, archivos de configuración, secretos y resolución por ambiente. | Pendiente |
 | Ejecución local | `docs/local-execution.md` | Ejecución desde source o artifact mediante UV, Docker y orquestadores. | Pendiente |
@@ -142,11 +142,11 @@ mantienen el enlace y sus diferencias específicas.
 
 ## Control documental
 
-La versión `1.0.0` corresponde exclusivamente a este índice. No representa una versión global de
+La versión `1.1.0` corresponde exclusivamente a este índice. No representa una versión global de
 Atlanticus ni modifica las versiones de sus librerías, aplicaciones, wheels o artifacts.
 
-La primera guía que se incorporará será **Primeros pasos y desarrollo**. Cuando quede validada, su
-ruta se transformará en el primer enlace activo de este índice.
+La guía **Primeros pasos y desarrollo** se encuentra en revisión. Su ruta se transformará en enlace
+cuando quede validada. La siguiente guía planificada es **Arquitectura**.
 
 ---
 
