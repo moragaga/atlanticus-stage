@@ -12,8 +12,8 @@ adecuado sin convertir Docker en un requisito para cada prueba local.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.1` |
-| Estado | En revisión |
+| Versión del documento | `1.0.2` |
+| Estado | Validado |
 | Python requerido | `3.14.2` |
 | Gestor de proyectos | UV |
 | Ejemplo transversal | Proceso ADA `kpis` |
@@ -505,7 +505,7 @@ flujos Bash disponibles.
 
 ## Control documental
 
-La versión `1.0.1` corresponde exclusivamente a esta guía. No representa una versión de Atlanticus,
+La versión `1.0.2` corresponde exclusivamente a esta guía. No representa una versión de Atlanticus,
 de sus procesos, wheels, artifacts ni imágenes.
 
 ---
