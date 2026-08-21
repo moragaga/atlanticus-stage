@@ -12,8 +12,8 @@ el repositorio y cuáles todavía dependen de una plataforma externa o de trabaj
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.0` |
-| Estado | En revisión |
+| Versión del documento | `1.0.1` |
+| Estado | Validado |
 | Python requerido para generar una distribución | `3.14.2` |
 | Gestor utilizado durante la preparación | UV |
 | Tecnología de contenedores soportada | Docker y Docker Compose |
@@ -459,11 +459,11 @@ según el tipo de aplicación: job programado, worker continuo o servicio HTTP.
 
 ## Control documental
 
-La versión `1.0.0` corresponde exclusivamente a esta guía. No representa una versión de
+La versión `1.0.1` corresponde exclusivamente a esta guía. No representa una versión de
 Atlanticus, de sus procesos, artifacts, imágenes o distribuciones.
 
-El documento permanece **En revisión**. Sus rutas y comandos fueron contrastados con el snapshot,
-pero la ejecución Docker de una distribución con credenciales reales queda explícitamente
+El documento se encuentra **Validado**. Sus rutas y comandos fueron contrastados con el snapshot,
+pero la ejecución Docker de una distribución con credenciales reales permanece explícitamente
 bloqueada hasta resolver y probar el aislamiento del contexto de build.
 
 ---
