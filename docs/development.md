@@ -12,8 +12,8 @@ coherentes con la estructura existente.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.1.0` |
-| Estado | En revisión |
+| Versión del documento | `1.1.1` |
+| Estado | Validado |
 | Python requerido | `3.14.2` |
 | Gestor de proyectos | UV |
 | Audiencia | Desarrollo y mantenimiento técnico |
