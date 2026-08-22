@@ -12,7 +12,7 @@ de jobs, sin incorporar reglas de una solución particular como ADA.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.4.0` |
+| Versión del documento | `1.5.0` |
 | Estado | Validado |
 | Tipo de proyecto | Workspace UV no instalable |
 | Python requerido | `3.14.2` |
@@ -274,7 +274,7 @@ convertir estas rutas en enlaces.
 | [Configuration](configuration/README.md) | `backend/configuration/README.md` | Validado |
 | Datasets | `backend/datasets/README.md` | En revisión |
 | Datasets Parquet | `backend/datasets-parquet/README.md` | En revisión |
-| Datasets Runtime | `backend/datasets-runtime/README.md` | Pendiente de revisión |
+| Datasets Runtime | `backend/datasets-runtime/README.md` | En revisión |
 | Observability | `backend/observability/README.md` | Pendiente de revisión |
 | Observability Azure | `backend/observability-azure/README.md` | Pendiente de revisión |
 | State | `backend/state/README.md` | Pendiente de revisión |
@@ -304,12 +304,13 @@ módulos superiores.
 
 ## Control documental
 
-La versión `1.4.0` corresponde únicamente a este README de área. No representa una versión global
+La versión `1.5.0` corresponde únicamente a este README de área. No representa una versión global
 de Backend ni modifica las versiones de sus wheels.
 
 El documento se encuentra **Validado**. Kernel, JSON y Configuration también fueron validados y se
-incorporaron a la navegación. `backend/datasets/README.md` y
-`backend/datasets-parquet/README.md` son las propuestas documentales actualmente en revisión.
+incorporaron a la navegación. `backend/datasets/README.md`,
+`backend/datasets-parquet/README.md` y `backend/datasets-runtime/README.md` son las propuestas
+documentales actualmente en revisión.
 
 ---
 
