@@ -1,4 +1,18 @@
+<p align="right">
+  <img src="../../../docs/assets/atlanticus-isotype.png" alt="Atlanticus" width="260">
+</p>
+
 # Diseño de `atlanticus-datasets`
+
+[Volver a Datasets](../README.md) · [Volver a Backend](../../README.md) ·
+[Volver al índice de documentación](../../../docs/README.md)
+
+| Referencia | Valor |
+|---|---|
+| Versión del documento | `1.0.0` |
+| Estado | En revisión |
+| Documento propietario | `backend/datasets/README.md` |
+| Tipo | Apéndice arquitectónico |
 
 ## Responsabilidad
 
@@ -15,17 +29,23 @@ ocurrió con esa unidad?”. No decide cómo obtener, transformar, serializar o 
 | Resumen confirmado | `atlanticus-state` a solicitud del job |
 | Detalle de faltantes y reintentos | Pipeline control |
 
+`DatasetContext` se menciona como capacidad futura y no forma parte del código ni de la API pública
+del snapshot actual.
+
 ## Identidad lógica
 
-`DatasetKey` contiene namespace y nombre, pero no aplicación. La aplicación aparece al resolver un
-`DatasetTarget`, porque una misma definición puede reutilizarse en distintas composiciones.
+`DatasetKey` contiene namespace y nombre, pero no aplicación. `DatasetTarget` tampoco incorpora la
+aplicación, porque una misma definición puede reutilizarse en distintas composiciones.
 
 ```text
 DatasetKey:    ingestion/dispatch/truck-events
 Materialidad: operational-week
 Partición:    operational_year=2026, operational_week=W30
-Target:       application=ada + todos los elementos anteriores
+Target:       DatasetKey + materialización + partición
 ```
+
+La aplicación no forma parte de `DatasetTarget` en la versión actual. La raíz física elegida por
+el adapter o el runtime es la que separa aplicaciones y volúmenes durante la persistencia.
 
 Las identidades nunca se normalizan silenciosamente. Nombres, dimensiones y valores deben llegar
 como strings seguros y explícitos. Las particiones se reordenan según la definición para producir
@@ -41,8 +61,8 @@ declarar sus propios segmentos. `None` deriva la ruta desde la identidad; una tu
 materialización omite ese nivel cuando la partición ya expresa la representación.
 
 El adaptador aporta exclusivamente la raíz física y agrega nombres de artefactos. Por ejemplo, con
-raíz `application=ada/datasets`, ruta de dataset `dispatch/std_shift_dumps` y materialización sin
-segmento, una partición produce:
+una raíz física ya resuelta para la aplicación, ruta de dataset `dispatch/std_shift_dumps` y
+materialización sin segmento, una partición produce:
 
 ```text
 dispatch/std_shift_dumps/year=2026/month=08/day=06/turn=001/data.parquet
@@ -91,8 +111,8 @@ calcular item_count
 
 Un resultado `skipped` tiene `artifact_count=0`, no contiene `size_bytes` ni firma y siempre marca
 calidad `warning`. Un resultado `committed` o `unchanged` exige al menos un item y un artefacto.
-Cuando exista `datasets-parquet`, sus operaciones `replace`, `merge` y `publish_parts` deberán
-evaluar el vacío antes de crear la carpeta de una partición, un temporal o un manifiesto.
+`datasets-parquet` debe evaluar el vacío antes de crear la carpeta de una partición, un temporal o
+un manifiesto en sus operaciones `replace`, `merge` y `publish_parts`.
 
 ## Calidad y estado técnico
 
@@ -110,9 +130,20 @@ La versión inicial presupone un solo escritor activo por target o partición. E
 servicio; este wheel no implementa locks, leases ni compare-and-swap. Los adaptadores serán
 responsables del commit atómico dentro de ese supuesto.
 
-## Evolución prevista
+## Implementaciones sobre el contrato
 
-`atlanticus-datasets-parquet` dependerá de este contrato e incorporará `replace`, `merge`,
-publicación de partes, manifiestos, recuperación de temporales y lectura proyectada. Los catálogos
-de PI y Dispatch seguirán fuera de ambos wheels. Una nueva materialización o dimensión en ADA no
-debe exigir una versión nueva del core.
+`atlanticus-datasets-parquet` depende de este wheel e implementa persistencia física, manifiestos,
+publicación de partes y lectura proyectada. `atlanticus-datasets-runtime` agrega la fachada de uso
+para datos tabulares. Los catálogos de PI, Dispatch y ADA permanecen fuera de los tres wheels. Una
+nueva materialización o dimensión de una aplicación no debe exigir una versión nueva del core si
+el contrato neutral existente puede representarla.
+
+## Control documental
+
+La versión `1.0.0` corresponde únicamente a este apéndice. El documento permanece **En revisión**
+y se valida junto con `backend/datasets/README.md`.
+
+---
+
+[Volver a Datasets](../README.md) · [Volver a Backend](../../README.md) ·
+[Volver al índice de documentación](../../../docs/README.md)

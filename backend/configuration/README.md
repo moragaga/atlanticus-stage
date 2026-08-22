@@ -14,8 +14,8 @@ funcional.
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.0` |
-| Estado | En revisión |
+| Versión del documento | `1.0.1` |
+| Estado | Validado |
 | Ruta física | `backend/configuration/` |
 | Distribución | `atlanticus-configuration` |
 | Import público | `atlanticus.configuration` |
@@ -435,10 +435,10 @@ Ruff, formato y pruebas se ejecutan antes y después del cambio conforme a
 
 ## Control documental
 
-La versión `1.0.0` corresponde únicamente a este README. La versión técnica del wheel continúa
+La versión `1.0.1` corresponde únicamente a este README. La versión técnica del wheel continúa
 siendo la declarada por su `pyproject.toml`.
 
-El documento permanece **En revisión**. Su aprobación no publica una nueva versión de
+El documento se encuentra **Validado**. Su validación no publica una nueva versión de
 `atlanticus-configuration` ni elimina los límites técnicos registrados.
 
 ---

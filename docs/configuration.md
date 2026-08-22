@@ -12,7 +12,7 @@ por Azure Key Vault y la configuración externa utilizada por la plataforma de d
 
 | Referencia | Valor |
 |---|---|
-| Versión del documento | `1.0.1` |
+| Versión del documento | `1.0.2` |
 | Estado | Validado |
 | Contrato base | `atlanticus-configuration` |
 | Ambientes backend | `local`, `dev`, `uat`, `stg`, `prd` |
@@ -347,7 +347,10 @@ El manifiesto rechaza:
 - `exists_in_key_vault` que no sea booleano;
 - una fuente activa sin `secret_name` o `value` válido.
 
-Los nombres de secretos aceptan entre 1 y 127 letras, números o guiones.
+El manifiesto solo exige que `secret_name` sea texto no vacío. La regla Azure de 1 a 127 letras,
+números o guiones se valida posteriormente en `KeyVaultClient`, cuando el resolver concreto realiza
+la consulta. Esta separación permite que el contrato de Configuration permanezca neutral respecto
+del proveedor.
 
 ## 7. Valores, tipos y normalización
 
@@ -531,7 +534,7 @@ estables en configuración dinámica.
 
 ## Control documental
 
-La versión `1.0.1` corresponde exclusivamente a esta guía. No representa una versión de Atlanticus,
+La versión `1.0.2` corresponde exclusivamente a esta guía. No representa una versión de Atlanticus,
 de `atlanticus-configuration`, de los procesos ni de sus artifacts.
 
 ---
