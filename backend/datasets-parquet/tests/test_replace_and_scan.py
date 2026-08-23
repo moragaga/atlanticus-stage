@@ -7,6 +7,8 @@ import pyarrow as pa
 import pytest
 from parquet_test_helpers import timestamp_array
 
+import atlanticus.datasets.parquet._publication as publication_module
+import atlanticus.datasets.parquet._scan as scan_module
 import atlanticus.datasets.parquet.store as store_module
 from atlanticus.datasets import DatasetDefinition, PublicationSkipReason, PublicationStatus
 from atlanticus.datasets.parquet import (
@@ -285,7 +287,7 @@ def test_confirmed_artifact_invalid_schema_is_classified_as_corruption(
     def reject_schema(_schema: pa.Schema) -> None:
         raise ParquetSchemaError('controlled invalid physical schema')
 
-    monkeypatch.setattr(store, '_validate_schema', reject_schema)
+    monkeypatch.setattr(publication_module, '_validate_schema', reject_schema)
 
     with pytest.raises(ParquetCorruptionError, match='schema is invalid') as captured:
         store.read(definition=pi_definition, target=target)
@@ -308,7 +310,7 @@ def test_scan_type_change_after_inspection_is_classified_as_corruption(
     )
 
     monkeypatch.setattr(
-        store_module.pq,
+        scan_module.pq,
         'read_table',
         lambda *_args, **_kwargs: pa.table({'value': pa.array([1.0], type=pa.float64())}),
     )

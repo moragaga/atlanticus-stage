@@ -8,6 +8,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+import atlanticus.datasets.parquet._publication as publication_module
 import atlanticus.datasets.parquet.store as store_module
 from atlanticus.datasets import DatasetDefinition, PublicationStatus
 from atlanticus.datasets.parquet import (
@@ -88,13 +89,13 @@ def test_poc_dispatch_uses_flat_parts_manifest_and_shift_pruning(
 
     expected_part = next(part['path'] for part in manifest['parts'] if part['value'] == '26199002')
     inspected_paths: list[str] = []
-    original_signature = store_module._file_signature
+    original_signature = publication_module._file_signature
 
     def track_signature(path: Path) -> str:
         inspected_paths.append(path.name)
         return original_signature(path)
 
-    monkeypatch.setattr(store_module, '_file_signature', track_signature)
+    monkeypatch.setattr(publication_module, '_file_signature', track_signature)
 
     selected = store.scan(
         definition=dispatch_definition,
@@ -141,7 +142,7 @@ def test_signature_read_failure_is_exposed_as_parquet_read_error(
     def fail_signature(_path: Path) -> str:
         raise PermissionError('controlled signature read failure')
 
-    monkeypatch.setattr(store_module, '_file_signature', fail_signature)
+    monkeypatch.setattr(publication_module, '_file_signature', fail_signature)
 
     with pytest.raises(ParquetReadError, match='could not read parquet artifact'):
         store.read(definition=dispatch_definition, target=target)
@@ -558,7 +559,7 @@ def test_confirmed_part_schema_mismatch_is_classified_as_corruption(
     def reject_physical_schema(**_kwargs: object) -> None:
         raise ParquetSchemaError('controlled physical schema mismatch')
 
-    monkeypatch.setattr(store, '_validate_physical_schema', reject_physical_schema)
+    monkeypatch.setattr(publication_module, '_validate_physical_schema', reject_physical_schema)
 
     with pytest.raises(ParquetCorruptionError, match='current manifest') as captured:
         store.read(definition=dispatch_definition, target=target)

@@ -21,8 +21,14 @@ from atlanticus.datasets.parquet._filesystem import (
     _fsync_directory,
     _is_owned_part_filename,
     _is_temporary_filename,
-    _validate_part_filename as _validate_part_filename_impl,
 )
+from atlanticus.datasets.parquet._publication import (
+    _read_file_signature,
+    _read_manifest,
+    _resolve_publication,
+    _validate_preserved_parts,
+)
+from atlanticus.datasets.parquet._scan import _scan_publications
 from atlanticus.datasets.parquet._validation import (
     _align_table as _align_table_impl,
     _normalize_columns,
@@ -38,13 +44,11 @@ from atlanticus.datasets.parquet.errors import (
     ParquetCorruptionError,
     ParquetLayoutError,
     ParquetPublicationNotFoundError,
-    ParquetReadError,
     ParquetSchemaError,
     ParquetValidationError,
     ParquetWriteError,
 )
 from atlanticus.datasets.parquet.manifest import (
-    _decode_manifest,
     _encode_manifest,
     _Manifest,
     _ManifestPart,
@@ -53,29 +57,17 @@ from atlanticus.datasets.parquet.manifest import (
 )
 from atlanticus.datasets.parquet.models import (
     ColumnFilter,
-    FilterOperator,
     ParquetCleanupResult,
     ParquetPart,
     ParquetReadResult,
     ParquetWriteOptions,
     _Artifact,
-    _ResolvedPublication,
 )
 from atlanticus.datasets.results import (
     DatasetPublicationResult,
     PublicationQuality,
     PublicationStatus,
 )
-
-_FILTER_OPERATORS = {
-    FilterOperator.EQUAL: '=',
-    FilterOperator.NOT_EQUAL: '!=',
-    FilterOperator.GREATER_THAN: '>',
-    FilterOperator.GREATER_THAN_OR_EQUAL: '>=',
-    FilterOperator.LESS_THAN: '<',
-    FilterOperator.LESS_THAN_OR_EQUAL: '<=',
-    FilterOperator.IN: 'in',
-}
 
 
 class ParquetDatasetStore:
@@ -146,9 +138,10 @@ class ParquetDatasetStore:
         except ParquetPublicationNotFoundError:
             current = None
         if current is not None and table.equals(current.table, check_metadata=True):
-            publication = self._resolve_publication(
+            publication = _resolve_publication(
                 definition=definition,
                 target=target,
+                target_path=self.path_for(definition=definition, target=target),
             )
             artifact = publication.artifacts[0]
             return self._publication_result(
@@ -220,9 +213,10 @@ class ParquetDatasetStore:
                 combined = pa.concat_tables((aligned_current, incoming))
                 merged = self._deduplicate(combined, keys=keys, ordering=ordering)
                 if merged.equals(current.table, check_metadata=True):
-                    publication = self._resolve_publication(
+                    publication = _resolve_publication(
                         definition=definition,
                         target=target,
+                        target_path=self.path_for(definition=definition, target=target),
                     )
                     artifact = publication.artifacts[0]
                     return self._publication_result(
@@ -291,7 +285,7 @@ class ParquetDatasetStore:
             )
         target_path = self.path_for(definition=definition, target=target)
         with self._write_lock:
-            current = self._read_manifest(
+            current = _read_manifest(
                 target_path=target_path,
                 target=target,
                 part_dimension=layout.part_dimension,
@@ -333,7 +327,7 @@ class ParquetDatasetStore:
                         'a file-set publication must contain at least one part'
                     )
                 parts = tuple(sorted(next_parts.values(), key=lambda item: item.value))
-                self._validate_preserved_parts(
+                _validate_preserved_parts(
                     target_path=target_path,
                     schema=schema,
                     parts=parts,
@@ -387,7 +381,11 @@ class ParquetDatasetStore:
     ) -> pa.Schema:
         """Lee solamente el schema confirmado de un target."""
 
-        return self._resolve_publication(definition=definition, target=target).schema
+        return _resolve_publication(
+            definition=definition,
+            target=target,
+            target_path=self.path_for(definition=definition, target=target),
+        ).schema
 
     def read(
         self,
@@ -421,60 +419,19 @@ class ParquetDatasetStore:
         if not all(isinstance(item, ColumnFilter) for item in resolved_filters):
             raise ParquetValidationError('filters must contain only ColumnFilter values')
         publications = tuple(
-            self._resolve_publication(
+            _resolve_publication(
                 definition=definition,
                 target=target,
+                target_path=self.path_for(definition=definition, target=target),
                 filters=resolved_filters,
             )
             for target in resolved_targets
         )
-        output_schema = self._resolve_scan_schema(
+        return _scan_publications(
+            targets=resolved_targets,
             publications=publications,
             columns=projected_columns,
-        )
-        filter_fields = self._resolve_filter_fields(
-            publications=publications,
             filters=resolved_filters,
-        )
-        tables: list[pa.Table] = []
-        artifact_count = 0
-        size_bytes = 0
-        warnings: list[str] = []
-        publication_tokens: list[str] = []
-        for publication in publications:
-            selected, residual_filters = self._select_artifacts(
-                publication=publication,
-                filters=resolved_filters,
-            )
-            if publication.publication_token is not None:
-                publication_tokens.append(publication.publication_token)
-            for artifact in selected:
-                table, artifact_warnings = self._scan_artifact(
-                    publication=publication,
-                    artifact=artifact,
-                    output_schema=output_schema,
-                    filters=residual_filters,
-                    filter_fields=filter_fields,
-                )
-                tables.append(table)
-                warnings.extend(artifact_warnings)
-                artifact_count += 1
-                size_bytes += artifact.size_bytes
-        result_table = (
-            pa.concat_tables(tables)
-            if tables
-            else pa.Table.from_arrays(
-                [pa.array([], type=field.type) for field in output_schema],
-                schema=output_schema,
-            )
-        )
-        return ParquetReadResult(
-            table=result_table,
-            targets=resolved_targets,
-            artifact_count=artifact_count,
-            size_bytes=size_bytes,
-            publication_tokens=tuple(publication_tokens),
-            warnings=tuple(dict.fromkeys(warnings)),
         )
 
     def cleanup(
@@ -493,7 +450,7 @@ class ParquetDatasetStore:
             part_dimension = None
             if isinstance(materialization.layout, FileSetLayout):
                 part_dimension = materialization.layout.part_dimension
-                current = self._read_manifest(
+                current = _read_manifest(
                     target_path=target_path,
                     target=target,
                     part_dimension=part_dimension,
@@ -642,331 +599,6 @@ class ParquetDatasetStore:
             except OSError:
                 pass
 
-    def _resolve_publication(
-        self,
-        *,
-        definition: DatasetDefinition,
-        target: DatasetTarget,
-        filters: tuple[ColumnFilter, ...] = (),
-    ) -> _ResolvedPublication:
-        materialization = definition.get_materialization(target.materialization)
-        definition.validate_target(target)
-        target_path = self.path_for(definition=definition, target=target)
-        if isinstance(materialization.layout, SingleArtifactLayout):
-            path = target_path / 'data.parquet'
-            artifact = self._inspect_artifact(path=path, missing_is_publication=True)
-            return _ResolvedPublication(
-                target=target,
-                schema=artifact.schema,
-                artifacts=(artifact,),
-            )
-        manifest = self._read_manifest(
-            target_path=target_path,
-            target=target,
-            part_dimension=materialization.layout.part_dimension,
-            missing_ok=False,
-        )
-        assert manifest is not None
-        for part in manifest.parts:
-            self._validate_part_filename(
-                part=part,
-                part_dimension=manifest.part_dimension,
-            )
-        selected_parts = self._select_manifest_parts(
-            manifest=manifest,
-            filters=filters,
-        )
-        artifacts: list[_Artifact] = []
-        for part in selected_parts:
-            artifact = self._inspect_artifact(
-                path=target_path / part.path,
-                missing_is_publication=False,
-                expected_item_count=part.item_count,
-                expected_size_bytes=part.size_bytes,
-                content_signature=part.content_signature,
-                part_value=part.value,
-            )
-            try:
-                self._validate_physical_schema(
-                    physical=artifact.schema,
-                    logical=manifest.schema,
-                    context=f'part {part.value}',
-                )
-            except ParquetSchemaError as error:
-                raise ParquetCorruptionError(
-                    f'parquet part schema does not match current manifest: {part.path}'
-                ) from error
-            artifacts.append(artifact)
-        return _ResolvedPublication(
-            target=target,
-            schema=manifest.schema,
-            artifacts=tuple(artifacts),
-            publication_token=manifest.publication_token,
-            part_dimension=manifest.part_dimension,
-        )
-
-    def _inspect_artifact(
-        self,
-        *,
-        path: Path,
-        missing_is_publication: bool,
-        expected_item_count: int | None = None,
-        expected_size_bytes: int | None = None,
-        content_signature: str | None = None,
-        part_value: str | None = None,
-    ) -> _Artifact:
-        try:
-            size_bytes = path.stat().st_size
-        except FileNotFoundError as error:
-            if missing_is_publication:
-                raise ParquetPublicationNotFoundError(
-                    f'parquet publication does not exist: {path}'
-                ) from error
-            raise ParquetCorruptionError(
-                f'current manifest references a missing parquet part: {path.name}'
-            ) from error
-        except OSError as error:
-            raise ParquetReadError(f'could not inspect parquet artifact: {path.name}') from error
-        if expected_size_bytes is not None and size_bytes != expected_size_bytes:
-            raise ParquetCorruptionError(
-                f'parquet part size does not match current manifest: {path.name}'
-            )
-        if content_signature is not None and _read_file_signature(path) != content_signature:
-            raise ParquetCorruptionError(
-                f'parquet part signature does not match current manifest: {path.name}'
-            )
-        try:
-            parquet_file = pq.ParquetFile(path)
-            schema = parquet_file.schema_arrow
-            item_count = parquet_file.metadata.num_rows
-        except (OSError, pa.ArrowException) as error:
-            raise ParquetCorruptionError(
-                f'parquet artifact cannot be opened: {path.name}'
-            ) from error
-        if item_count < 1:
-            raise ParquetCorruptionError(f'confirmed parquet artifact is empty: {path.name}')
-        if expected_item_count is not None and item_count != expected_item_count:
-            raise ParquetCorruptionError(
-                f'parquet part row count does not match current manifest: {path.name}'
-            )
-        try:
-            self._validate_schema(schema)
-        except ParquetSchemaError as error:
-            raise ParquetCorruptionError(
-                f'parquet artifact schema is invalid: {path.name}'
-            ) from error
-        return _Artifact(
-            path=path,
-            schema=schema,
-            item_count=item_count,
-            size_bytes=size_bytes,
-            content_signature=content_signature,
-            part_value=part_value,
-        )
-
-    def _read_manifest(
-        self,
-        *,
-        target_path: Path,
-        target: DatasetTarget,
-        part_dimension: str,
-        missing_ok: bool,
-    ) -> _Manifest | None:
-        path = target_path / 'current.json'
-        try:
-            content = path.read_bytes()
-        except FileNotFoundError as error:
-            if missing_ok:
-                return None
-            raise ParquetPublicationNotFoundError(
-                f'parquet publication does not exist: {path}'
-            ) from error
-        except OSError as error:
-            raise ParquetReadError('could not read parquet current manifest') from error
-        return _decode_manifest(
-            content,
-            expected_target=target.identifier,
-            expected_part_dimension=part_dimension,
-        )
-
-    def _scan_artifact(
-        self,
-        *,
-        publication: _ResolvedPublication,
-        artifact: _Artifact,
-        output_schema: pa.Schema,
-        filters: tuple[ColumnFilter, ...],
-        filter_fields: dict[str, pa.Field],
-    ) -> tuple[pa.Table, tuple[str, ...]]:
-        physical_names = set(artifact.schema.names)
-        for item in filters:
-            if item.column not in physical_names:
-                return _empty_table(output_schema), ()
-        read_columns = [field.name for field in output_schema if field.name in physical_names]
-        sentinel: str | None = None
-        if not read_columns:
-            sentinel = artifact.schema.names[0]
-            read_columns.append(sentinel)
-        parquet_filters = [
-            self._to_parquet_filter(item=item, field=filter_fields[item.column]) for item in filters
-        ]
-        try:
-            table = pq.read_table(
-                artifact.path,
-                columns=read_columns,
-                filters=parquet_filters or None,
-            )
-        except (OSError, pa.ArrowException) as error:
-            raise ParquetReadError(
-                f'could not scan parquet artifact: {artifact.path.name}'
-            ) from error
-        if sentinel is not None:
-            table = table.drop((sentinel,))
-        arrays: list[pa.ChunkedArray | pa.Array] = []
-        warnings: list[str] = []
-        for field in output_schema:
-            if field.name in table.column_names:
-                column = table[field.name]
-                if column.type != field.type:
-                    raise ParquetCorruptionError(
-                        f'parquet artifact schema changed while scanning column {field.name}'
-                    )
-                arrays.append(column)
-            else:
-                arrays.append(pa.nulls(table.num_rows, type=field.type))
-                part = '' if artifact.part_value is None else f' part={artifact.part_value}'
-                warnings.append(
-                    f'column {field.name} is absent from {publication.target.identifier}{part}; '
-                    'null values were projected'
-                )
-        return pa.Table.from_arrays(arrays, schema=output_schema), tuple(warnings)
-
-    def _resolve_scan_schema(
-        self,
-        *,
-        publications: tuple[_ResolvedPublication, ...],
-        columns: tuple[str, ...] | None,
-    ) -> pa.Schema:
-        if columns is None:
-            return publications[0].schema
-        fields = [
-            self._resolve_field(publications=publications, column=column, required=True)
-            for column in columns
-        ]
-        return pa.schema(fields)
-
-    def _resolve_filter_fields(
-        self,
-        *,
-        publications: tuple[_ResolvedPublication, ...],
-        filters: tuple[ColumnFilter, ...],
-    ) -> dict[str, pa.Field]:
-        fields: dict[str, pa.Field] = {}
-        for item in filters:
-            if item.column in fields:
-                continue
-            field = self._resolve_field(
-                publications=publications,
-                column=item.column,
-                required=False,
-            )
-            if field is None:
-                part_only = all(
-                    publication.part_dimension == item.column
-                    and item.operator in {FilterOperator.EQUAL, FilterOperator.IN}
-                    for publication in publications
-                )
-                if not part_only:
-                    raise ParquetSchemaError(
-                        f'filter column does not exist in the requested publications: {item.column}'
-                    )
-            else:
-                fields[item.column] = field
-        return fields
-
-    def _resolve_field(
-        self,
-        *,
-        publications: tuple[_ResolvedPublication, ...],
-        column: str,
-        required: bool,
-    ) -> pa.Field | None:
-        found = [
-            publication.schema.field(column)
-            for publication in publications
-            if column in publication.schema.names
-        ]
-        if not found:
-            if required:
-                raise ParquetSchemaError(
-                    f'column does not exist in the requested publications: {column}'
-                )
-            return None
-        expected_type = found[-1].type
-        if any(field.type != expected_type for field in found):
-            types = sorted({str(field.type) for field in found})
-            raise ParquetSchemaError(f'incompatible types for column {column}: {types}')
-        nullable = len(found) != len(publications) or any(field.nullable for field in found)
-        authoritative = found[-1]
-        return pa.field(
-            column,
-            authoritative.type,
-            nullable=nullable,
-            metadata=authoritative.metadata,
-        )
-
-    def _select_manifest_parts(
-        self,
-        *,
-        manifest: _Manifest,
-        filters: tuple[ColumnFilter, ...],
-    ) -> tuple[_ManifestPart, ...]:
-        parts = manifest.parts
-        for item in filters:
-            if item.column == manifest.part_dimension and item.operator in {
-                FilterOperator.EQUAL,
-                FilterOperator.IN,
-            }:
-                parts = tuple(
-                    part for part in parts if _part_filter_matches(part_value=part.value, item=item)
-                )
-        return parts
-
-    def _select_artifacts(
-        self,
-        *,
-        publication: _ResolvedPublication,
-        filters: tuple[ColumnFilter, ...],
-    ) -> tuple[tuple[_Artifact, ...], tuple[ColumnFilter, ...]]:
-        artifacts = publication.artifacts
-        residual: list[ColumnFilter] = []
-        for item in filters:
-            if item.column == publication.part_dimension and item.operator in {
-                FilterOperator.EQUAL,
-                FilterOperator.IN,
-            }:
-                artifacts = tuple(
-                    artifact
-                    for artifact in artifacts
-                    if artifact.part_value is not None
-                    and _part_filter_matches(part_value=artifact.part_value, item=item)
-                )
-            else:
-                residual.append(item)
-        return artifacts, tuple(residual)
-
-    def _to_parquet_filter(self, *, item: ColumnFilter, field: pa.Field) -> tuple[str, str, object]:
-        try:
-            if item.operator is FilterOperator.IN:
-                value = pa.array(item.value, type=field.type).to_pylist()
-            else:
-                value = pa.scalar(item.value, type=field.type).as_py()
-        except (pa.ArrowException, TypeError, ValueError) as error:
-            raise ParquetValidationError(
-                f'filter value is incompatible with column {item.column} ({field.type})'
-            ) from error
-        return item.column, _FILTER_OPERATORS[item.operator], value
-
     def _resolve_incoming_schema(
         self,
         *,
@@ -984,47 +616,6 @@ class ParquetDatasetStore:
                     'all incoming parts must use the same authoritative schema'
                 )
         return first
-
-    def _validate_preserved_parts(
-        self,
-        *,
-        target_path: Path,
-        schema: pa.Schema,
-        parts: tuple[_ManifestPart, ...],
-    ) -> None:
-        for part in parts:
-            artifact = self._inspect_artifact(
-                path=target_path / part.path,
-                missing_is_publication=False,
-                expected_item_count=part.item_count,
-                expected_size_bytes=part.size_bytes,
-                content_signature=part.content_signature,
-                part_value=part.value,
-            )
-            self._validate_physical_schema(
-                physical=artifact.schema,
-                logical=schema,
-                context=f'part {part.value}',
-            )
-
-    def _validate_physical_schema(
-        self,
-        *,
-        physical: pa.Schema,
-        logical: pa.Schema,
-        context: str,
-    ) -> None:
-        self._validate_schema(physical)
-        self._validate_schema(logical)
-        for field in logical:
-            if field.name not in physical.names:
-                continue
-            physical_field = physical.field(field.name)
-            if physical_field.type != field.type:
-                raise ParquetSchemaError(
-                    f'{context} has incompatible type for column {field.name}: '
-                    f'{physical_field.type} != {field.type}'
-                )
 
     def _validate_table(self, table: pa.Table) -> None:
         _validate_table_impl(table)
@@ -1122,14 +713,6 @@ class ParquetDatasetStore:
                 f'{operation} is not supported for {type(materialization.layout).__name__}'
             )
         return materialization.layout
-
-    def _validate_part_filename(
-        self,
-        *,
-        part: _ManifestPart,
-        part_dimension: str,
-    ) -> None:
-        _validate_part_filename_impl(part=part, part_dimension=part_dimension)
 
     def _cleanup_locked(
         self,
@@ -1237,26 +820,6 @@ class ParquetDatasetStore:
             content_signature=manifest.content_signature,
             started=started,
         )
-
-
-def _part_filter_matches(*, part_value: str, item: ColumnFilter) -> bool:
-    if item.operator is FilterOperator.EQUAL:
-        return part_value == str(item.value)
-    return part_value in {str(value) for value in item.value}
-
-
-def _empty_table(schema: pa.Schema) -> pa.Table:
-    return pa.Table.from_arrays(
-        [pa.array([], type=field.type) for field in schema],
-        schema=schema,
-    )
-
-
-def _read_file_signature(path: Path) -> str:
-    try:
-        return _file_signature(path)
-    except OSError as error:
-        raise ParquetReadError(f'could not read parquet artifact: {path.name}') from error
 
 
 def _utc_now() -> datetime:
