@@ -1,11 +1,9 @@
-# Espejo pedagógico: read_schema inspecciona metadatos confirmados sin leer el contenido tabular.
+# Espejo pedagógico: el store conserva la fachada pública y delega helpers internos sin cambiar contratos.
 """Store Parquet atómico basado exclusivamente en tablas PyArrow."""
 
 from __future__ import annotations
 
-import hashlib
 import os
-import re
 import threading
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
@@ -19,6 +17,24 @@ import pyarrow.parquet as pq
 
 from atlanticus.datasets.layouts import FileSetLayout, SingleArtifactLayout
 from atlanticus.datasets.models import DatasetDefinition, DatasetPartKey, DatasetTarget
+from atlanticus.datasets.parquet._filesystem import (
+    _file_signature,
+    _fsync_directory,
+    _is_owned_part_filename,
+    _is_temporary_filename,
+    _validate_part_filename as _validate_part_filename_impl,
+)
+from atlanticus.datasets.parquet._validation import (
+    _align_table as _align_table_impl,
+    _normalize_columns,
+    _normalize_incoming_parts as _normalize_incoming_parts_impl,
+    _normalize_remove_parts as _normalize_remove_parts_impl,
+    _normalize_targets,
+    _validate_key_values as _validate_key_values_impl,
+    _validate_merge_columns as _validate_merge_columns_impl,
+    _validate_schema as _validate_schema_impl,
+    _validate_table as _validate_table_impl,
+)
 from atlanticus.datasets.parquet.errors import (
     ParquetCorruptionError,
     ParquetLayoutError,
@@ -52,8 +68,6 @@ from atlanticus.datasets.results import (
     PublicationStatus,
 )
 
-_TEMPORARY_PATTERN = re.compile(r'^\..+\.[0-9a-f]{32}\.tmp$')
-_PART_SIGNATURE_PATTERN = re.compile(r'^[0-9a-f]{64}$')
 _FILTER_OPERATORS = {
     FilterOperator.EQUAL: '=',
     FilterOperator.NOT_EQUAL: '!=',
@@ -1015,15 +1029,10 @@ class ParquetDatasetStore:
                 )
 
     def _validate_table(self, table: pa.Table) -> None:
-        if not isinstance(table, pa.Table):
-            raise ParquetValidationError('table must be a pyarrow.Table')
-        self._validate_schema(table.schema)
-        if table.num_columns == 0:
-            raise ParquetValidationError('table must contain at least one column')
+        _validate_table_impl(table)
 
     def _validate_schema(self, schema: pa.Schema) -> None:
-        if len(schema.names) != len(set(schema.names)):
-            raise ParquetSchemaError('schema column names must not contain duplicates')
+        _validate_schema_impl(schema)
 
     def _validate_merge_columns(
         self,
@@ -1032,15 +1041,10 @@ class ParquetDatasetStore:
         keys: tuple[str, ...],
         ordering: tuple[str, ...],
     ) -> None:
-        for column in (*keys, *ordering):
-            if column not in table.column_names:
-                raise ParquetSchemaError(f'merge column does not exist: {column}')
-        self._validate_key_values(table, keys=keys)
+        _validate_merge_columns_impl(table, keys=keys, ordering=ordering)
 
     def _validate_key_values(self, table: pa.Table, *, keys: tuple[str, ...]) -> None:
-        for column in keys:
-            if table[column].null_count:
-                raise ParquetValidationError(f'merge key column must not contain nulls: {column}')
+        _validate_key_values_impl(table, keys=keys)
 
     def _align_table(
         self,
@@ -1049,19 +1053,7 @@ class ParquetDatasetStore:
         schema: pa.Schema,
         context: str,
     ) -> pa.Table:
-        arrays: list[pa.ChunkedArray | pa.Array] = []
-        for field in schema:
-            if field.name not in table.column_names:
-                arrays.append(pa.nulls(table.num_rows, type=field.type))
-                continue
-            column = table[field.name]
-            if column.type != field.type:
-                raise ParquetSchemaError(
-                    f'{context} has incompatible type for column {field.name}: '
-                    f'{column.type} != {field.type}'
-                )
-            arrays.append(column)
-        return pa.Table.from_arrays(arrays, schema=schema)
+        return _align_table_impl(table=table, schema=schema, context=context)
 
     def _deduplicate(
         self,
@@ -1098,24 +1090,11 @@ class ParquetDatasetStore:
         part_dimension: str,
         values: Iterable[ParquetPart],
     ) -> dict[str, ParquetPart]:
-        if isinstance(values, str | bytes):
-            raise ParquetValidationError('incoming_parts must be an iterable of ParquetPart')
-        try:
-            parts = tuple(values)
-        except TypeError as error:
-            raise ParquetValidationError(
-                'incoming_parts must be an iterable of ParquetPart'
-            ) from error
-        if not all(isinstance(item, ParquetPart) for item in parts):
-            raise ParquetValidationError('incoming_parts must contain only ParquetPart values')
-        normalized: dict[str, ParquetPart] = {}
-        for part in parts:
-            if part.key.target != target or part.key.dimension != part_dimension:
-                raise ParquetValidationError('incoming part does not belong to the target layout')
-            if part.key.value in normalized:
-                raise ParquetValidationError(f'duplicate incoming part value: {part.key.value}')
-            normalized[part.key.value] = part
-        return normalized
+        return _normalize_incoming_parts_impl(
+            target=target,
+            part_dimension=part_dimension,
+            values=values,
+        )
 
     def _normalize_remove_parts(
         self,
@@ -1124,24 +1103,11 @@ class ParquetDatasetStore:
         part_dimension: str,
         values: Iterable[DatasetPartKey],
     ) -> set[str]:
-        if isinstance(values, str | bytes):
-            raise ParquetValidationError('remove_parts must be an iterable of DatasetPartKey')
-        try:
-            parts = tuple(values)
-        except TypeError as error:
-            raise ParquetValidationError(
-                'remove_parts must be an iterable of DatasetPartKey'
-            ) from error
-        if not all(isinstance(item, DatasetPartKey) for item in parts):
-            raise ParquetValidationError('remove_parts must contain only DatasetPartKey values')
-        normalized: set[str] = set()
-        for part in parts:
-            if part.target != target or part.dimension != part_dimension:
-                raise ParquetValidationError('removed part does not belong to the target layout')
-            if part.value in normalized:
-                raise ParquetValidationError(f'duplicate removed part value: {part.value}')
-            normalized.add(part.value)
-        return normalized
+        return _normalize_remove_parts_impl(
+            target=target,
+            part_dimension=part_dimension,
+            values=values,
+        )
 
     def _require_layout(
         self,
@@ -1165,14 +1131,7 @@ class ParquetDatasetStore:
         part: _ManifestPart,
         part_dimension: str,
     ) -> None:
-        digest = part.content_signature.removeprefix('sha256:')
-        if not _PART_SIGNATURE_PATTERN.fullmatch(digest):
-            raise ParquetCorruptionError('parquet part signature is invalid')
-        expected = f'{part_dimension}={part.value}--{digest}.parquet'
-        if part.path != expected:
-            raise ParquetCorruptionError(
-                f'parquet part filename does not match its identity: {part.path}'
-            )
+        _validate_part_filename_impl(part=part, part_dimension=part_dimension)
 
     def _cleanup_locked(
         self,
@@ -1199,7 +1158,7 @@ class ParquetDatasetStore:
         except OSError as error:
             raise ParquetWriteError('could not inspect parquet target for cleanup') from error
         for candidate in candidates:
-            is_temporary = candidate.is_file() and _TEMPORARY_PATTERN.fullmatch(candidate.name)
+            is_temporary = candidate.is_file() and _is_temporary_filename(candidate.name)
             is_orphan_part = (
                 part_dimension is not None
                 and candidate.is_file()
@@ -1282,41 +1241,6 @@ class ParquetDatasetStore:
         )
 
 
-def _normalize_targets(values: Iterable[DatasetTarget]) -> tuple[DatasetTarget, ...]:
-    if isinstance(values, DatasetTarget | str | bytes):
-        raise ParquetValidationError('targets must be a non-string iterable of DatasetTarget')
-    try:
-        targets = tuple(values)
-    except TypeError as error:
-        raise ParquetValidationError('targets must be an iterable of DatasetTarget') from error
-    if not targets or not all(isinstance(item, DatasetTarget) for item in targets):
-        raise ParquetValidationError('targets must contain at least one DatasetTarget')
-    if len(set(targets)) != len(targets):
-        raise ParquetValidationError('targets must not contain duplicates')
-    return targets
-
-
-def _normalize_columns(
-    values: Iterable[str],
-    *,
-    field: str,
-    allow_empty: bool,
-) -> tuple[str, ...]:
-    if isinstance(values, str | bytes):
-        raise ParquetValidationError(f'{field} must be a non-string iterable')
-    try:
-        columns = tuple(values)
-    except TypeError as error:
-        raise ParquetValidationError(f'{field} must be an iterable of strings') from error
-    if not allow_empty and not columns:
-        raise ParquetValidationError(f'{field} must not be empty')
-    if not all(isinstance(column, str) and column for column in columns):
-        raise ParquetValidationError(f'{field} must contain non-empty strings')
-    if len(set(columns)) != len(columns):
-        raise ParquetValidationError(f'{field} must not contain duplicates')
-    return columns
-
-
 def _part_filter_matches(*, part_value: str, item: ColumnFilter) -> bool:
     if item.operator is FilterOperator.EQUAL:
         return part_value == str(item.value)
@@ -1335,34 +1259,6 @@ def _read_file_signature(path: Path) -> str:
         return _file_signature(path)
     except OSError as error:
         raise ParquetReadError(f'could not read parquet artifact: {path.name}') from error
-
-
-def _file_signature(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open('rb') as file_handle:
-        while content := file_handle.read(1024 * 1024):
-            digest.update(content)
-    return f'sha256:{digest.hexdigest()}'
-
-
-def _is_owned_part_filename(name: str, *, part_dimension: str) -> bool:
-    prefix = f'{part_dimension}='
-    suffix = '.parquet'
-    if not name.startswith(prefix) or not name.endswith(suffix) or '--' not in name:
-        return False
-    value_and_digest = name[len(prefix) : -len(suffix)]
-    value, digest = value_and_digest.rsplit('--', 1)
-    return bool(value) and bool(_PART_SIGNATURE_PATTERN.fullmatch(digest))
-
-
-def _fsync_directory(path: Path) -> None:
-    if os.name == 'nt':
-        return
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def _utc_now() -> datetime:
