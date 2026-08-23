@@ -1,5 +1,6 @@
-# El runner compone lease, señales, observabilidad, recursos e iteraciones sin conocer ADA.
-# El código bajo estos comentarios es equivalente al productivo y conserva el mismo comportamiento.
+# El runner compone configuración, lease, observabilidad, recursos y ciclo de iteraciones.
+# R20C.1 no cambia todavía el protocolo del lease: sólo incorpora la ventana temporal efectiva al contexto.
+# Los datos scheduled se agregan a la telemetría como hechos operacionales, sin conocimiento de plataforma.
 
 """Composición oficial de lease, observabilidad y ciclo de iteraciones."""
 
@@ -116,8 +117,6 @@ def execute_job(
     )
     run_id = str(uuid4())
     correlation_id = str(uuid4())
-    # El contexto nace antes de competir por la lease. Así la espera consume el mismo presupuesto
-    # temporal que el resto de la ejecución y nunca extiende silenciosamente una réplica.
     context = JobRuntimeContext.create(
         definition=definition,
         configuration=configuration,
@@ -148,7 +147,6 @@ def execute_job(
             component='runtime',
             environment=configuration.environment,
             volume_path=configuration.volume_path,
-            # RuntimeConfiguration ya resolvió el ENV; Observability sólo recibe el booleano final.
             file_logs_enabled=configuration.observability_file_logs_enabled,
         )
         _configure_runtime_observability(
@@ -160,10 +158,22 @@ def execute_job(
         if acquisition.recovered is not None:
             _emit_recovered_timeout(settings, acquisition.recovered)
 
-        # Persistimos como hechos operacionales cuánto presupuesto consumió la coordinación y si
-        # el job tuvo que recuperar un owner expirado antes de iniciar trabajo de negocio.
         context.set_execution_fact('lease_wait_seconds', acquisition.waited_seconds)
         context.set_execution_fact('lease_recovered', acquisition.recovered is not None)
+        context.set_execution_fact('execution_mode', context.execution_mode)
+        if context.scheduled_at_utc is not None:
+            context.set_execution_fact('scheduled_at_utc', context.scheduled_at_utc.isoformat())
+        if context.next_scheduled_at_utc is not None:
+            context.set_execution_fact(
+                'next_scheduled_at_utc',
+                context.next_scheduled_at_utc.isoformat(),
+            )
+        if context.platform_deadline_utc is not None:
+            context.set_execution_fact(
+                'platform_deadline_utc',
+                context.platform_deadline_utc.isoformat(),
+            )
+        context.set_execution_fact('execution_deadline_utc', context.deadline_utc.isoformat())
         lease.start_renewal(on_lost=context.request_stop)
         try:
             with _cooperative_sigterm(context):
@@ -200,8 +210,6 @@ def _run_iterations(
     lease: ExecutionLease,
 ) -> RuntimeExecutionResult:
     started = context.started_monotonic
-    # No conservamos una lista de duraciones: contador + suma permiten promedio O(1)
-    # y mantienen memoria constante incluso en jobs que ejecutan miles de iteraciones.
     iteration_count = 0
     total_iteration_duration = 0.0
     work_iterations = 0
@@ -235,6 +243,13 @@ def _run_iterations(
                                 cancellation_reason = context.stop_reason
                             else:
                                 stop_reason = 'safe_execution_window_elapsed'
+                            break
+                        if (
+                            context.execution_mode == 'scheduled_external'
+                            and context.safe_remaining_seconds
+                            < definition.iteration_timeout_seconds
+                        ):
+                            stop_reason = 'insufficient_remaining_time'
                             break
 
                         iteration_number = iteration_count + 1
@@ -294,7 +309,6 @@ def _run_iterations(
                             break
 
                         average_duration = total_iteration_duration / iteration_count
-                        # La espera calculada por la iteración tiene prioridad; si no existe se conserva el cadence estático.
                         requested_delay = context._next_iteration_delay()
                         sleep_seconds = (
                             max(0.0, definition.sleep_seconds - duration_seconds)
@@ -427,8 +441,6 @@ def _effective_lease_wait_seconds(
     definition: JobDefinition,
     context: JobRuntimeContext,
 ) -> float:
-    # None usa el presupuesto seguro restante menos una iteración completa. Así adquirir
-    # ownership siempre deja espacio para trabajo útil; un cap explícito solo puede reducirlo.
     available_for_wait = max(
         0.0,
         context.safe_remaining_seconds - definition.iteration_timeout_seconds,

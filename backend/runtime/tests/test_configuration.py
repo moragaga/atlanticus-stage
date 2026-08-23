@@ -107,3 +107,69 @@ def test_configuration_rejects_invalid_observability_file_logs_flag(tmp_path, va
                 'ATLANTICUS_OBSERVABILITY_FILE_LOGS_ENABLED': value,
             }
         )
+
+
+def test_configuration_defaults_to_relative_invocation_metadata(tmp_path) -> None:
+    configuration = RuntimeConfiguration.from_sources(
+        environ={
+            'ENVIRONMENT': 'local',
+            'APPLICATION': 'ada',
+            'VOLUMEN_PATH': str(tmp_path),
+        }
+    )
+
+    assert configuration.job_schedule_cron is None
+    assert configuration.job_schedule_timezone == 'UTC'
+    assert configuration.job_platform_timeout_seconds is None
+
+
+def test_configuration_resolves_effective_schedule_and_platform_metadata(tmp_path) -> None:
+    configuration = RuntimeConfiguration.from_sources(
+        environ={
+            'ENVIRONMENT': 'local',
+            'APPLICATION': 'ada',
+            'VOLUMEN_PATH': str(tmp_path),
+            'ATLANTICUS_JOB_SCHEDULE_CRON': '0 */2 * * *',
+            'ATLANTICUS_JOB_SCHEDULE_TIMEZONE': 'UTC',
+            'ATLANTICUS_JOB_PLATFORM_TIMEOUT_SECONDS': '300',
+        }
+    )
+
+    assert configuration.job_schedule_cron == '0 */2 * * *'
+    assert configuration.job_schedule_timezone == 'UTC'
+    assert configuration.job_platform_timeout_seconds == 300
+
+
+@pytest.mark.parametrize(
+    ('name', 'value'),
+    [
+        ('ATLANTICUS_JOB_SCHEDULE_CRON', 'not cron'),
+        ('ATLANTICUS_JOB_SCHEDULE_CRON', '*/0 * * * *'),
+        ('ATLANTICUS_JOB_PLATFORM_TIMEOUT_SECONDS', '0'),
+        ('ATLANTICUS_JOB_PLATFORM_TIMEOUT_SECONDS', 'nan'),
+    ],
+)
+def test_configuration_rejects_invalid_job_runtime_metadata(tmp_path, name, value) -> None:
+    values = {
+        'ENVIRONMENT': 'local',
+        'APPLICATION': 'ada',
+        'VOLUMEN_PATH': str(tmp_path),
+        name: value,
+    }
+    if name == 'ATLANTICUS_JOB_SCHEDULE_CRON':
+        values['ATLANTICUS_JOB_SCHEDULE_TIMEZONE'] = 'UTC'
+
+    with pytest.raises(RuntimeConfigurationError):
+        RuntimeConfiguration.from_sources(environ=values)
+
+
+def test_configuration_rejects_schedule_timezone_without_cron(tmp_path) -> None:
+    with pytest.raises(RuntimeConfigurationError, match='requires ATLANTICUS_JOB_SCHEDULE_CRON'):
+        RuntimeConfiguration.from_sources(
+            environ={
+                'ENVIRONMENT': 'local',
+                'APPLICATION': 'ada',
+                'VOLUMEN_PATH': str(tmp_path),
+                'ATLANTICUS_JOB_SCHEDULE_TIMEZONE': 'America/Santiago',
+            }
+        )

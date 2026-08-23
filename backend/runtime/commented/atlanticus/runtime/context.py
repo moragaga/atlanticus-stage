@@ -1,5 +1,6 @@
 # El contexto comparte presupuesto temporal, cancelación cooperativa y memoria efímera por ejecución.
-# El código bajo estos comentarios es equivalente al productivo y conserva el mismo comportamiento.
+# Además expone los límites UTC calculados para que un consumidor pueda entender la ventana que realmente obtuvo.
+# Los deadlines monotónicos siguen gobernando esperas y cancelación para no depender de saltos del reloj de pared.
 
 """Contexto liviano entregado a cada iteración del job."""
 
@@ -10,11 +11,13 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event
 from typing import TypeVar, cast
 
 from atlanticus.observability import ObservabilityLogger, get_observability_logger
+from atlanticus.runtime._window import build_execution_window
 from atlanticus.runtime.configuration import RuntimeConfiguration
 from atlanticus.runtime.definition import JobDefinition
 from atlanticus.runtime.errors import RuntimeCancellationRequested
@@ -34,6 +37,13 @@ class JobRuntimeContext:
     started_monotonic: float
     deadline_monotonic: float
     safe_deadline_monotonic: float
+    execution_mode: str
+    started_at_utc: datetime
+    scheduled_at_utc: datetime | None
+    next_scheduled_at_utc: datetime | None
+    platform_deadline_utc: datetime | None
+    deadline_utc: datetime
+    safe_deadline_utc: datetime
     clock: Callable[[], float] = field(default=time.monotonic, repr=False)
     logger: ObservabilityLogger = field(
         default_factory=lambda: get_observability_logger('atlanticus.runtime')
@@ -62,6 +72,14 @@ class JobRuntimeContext:
             _require_finite_number(getattr(self, name), name)
         if not self.started_monotonic <= self.safe_deadline_monotonic <= self.deadline_monotonic:
             raise ValueError('runtime deadlines must be ordered')
+        if self.execution_mode not in {'relative', 'scheduled_external'}:
+            raise ValueError('execution_mode must be relative or scheduled_external')
+        for name in ('started_at_utc', 'deadline_utc', 'safe_deadline_utc'):
+            _require_utc_datetime(getattr(self, name), name)
+        for name in ('scheduled_at_utc', 'next_scheduled_at_utc', 'platform_deadline_utc'):
+            value = getattr(self, name)
+            if value is not None:
+                _require_utc_datetime(value, name)
         if not callable(self.clock):
             raise TypeError('clock must be callable')
         if not isinstance(self.logger, ObservabilityLogger):
@@ -82,17 +100,34 @@ class JobRuntimeContext:
         run_id: str,
         correlation_id: str,
         clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], datetime] | None = None,
     ) -> JobRuntimeContext:
         started = clock()
         _require_finite_number(started, 'clock result')
+        if wall_clock is not None and not callable(wall_clock):
+            raise TypeError('wall_clock must be callable')
+        resolved_wall_clock = _utc_now if wall_clock is None else wall_clock
+        window = build_execution_window(
+            definition=definition,
+            configuration=configuration,
+            started_at_utc=resolved_wall_clock(),
+            started_monotonic=started,
+        )
         return cls(
             definition=definition,
             configuration=configuration,
             run_id=run_id,
             correlation_id=correlation_id,
-            started_monotonic=started,
-            deadline_monotonic=started + definition.execution_timeout_seconds,
-            safe_deadline_monotonic=started + definition.safe_execution_seconds,
+            started_monotonic=window.started_monotonic,
+            deadline_monotonic=window.deadline_monotonic,
+            safe_deadline_monotonic=window.safe_deadline_monotonic,
+            execution_mode=window.mode,
+            started_at_utc=window.started_at_utc,
+            scheduled_at_utc=window.scheduled_at_utc,
+            next_scheduled_at_utc=window.next_scheduled_at_utc,
+            platform_deadline_utc=window.platform_deadline_utc,
+            deadline_utc=window.deadline_utc,
+            safe_deadline_utc=window.safe_deadline_utc,
             clock=clock,
             logger=get_observability_logger(definition.module_name),
         )
@@ -197,8 +232,6 @@ class JobRuntimeContext:
     def mark_iteration_work(self) -> None:
         self._iteration_has_work = True
 
-    # Un proceso que conoce su propia cadencia puede reemplazar solo la próxima espera.
-    # El runtime no interpreta por qué ese delay es correcto y lo limpia al iniciar la siguiente iteración.
     def set_next_iteration_delay(self, seconds: float) -> None:
         _require_finite_number(seconds, 'seconds')
         if seconds < 0:
@@ -254,3 +287,16 @@ def _validate_stop_reason(reason: str) -> str:
 def _normalize_memory_key(key: str) -> str:
     _require_non_empty_string(key, 'key')
     return key.strip()
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _require_utc_datetime(value: datetime, name: str) -> None:
+    if not isinstance(value, datetime):
+        raise TypeError(f'{name} must be a datetime')
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f'{name} must be timezone-aware')
+    if value.astimezone(UTC) != value:
+        raise ValueError(f'{name} must use UTC timezone')

@@ -542,3 +542,100 @@ def test_execute_job_can_disable_file_logs_without_disabling_console(tmp_path, c
     assert 'dispatch-ingestion-job started' in console
     assert 'dispatch-ingestion-job completed' in console
     assert not (tmp_path / 'ada' / 'logs').exists()
+
+
+def test_scheduled_run_once_uses_effective_window_without_changing_iteration_policy(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import atlanticus.runtime.context as context_module
+
+    monkeypatch.setattr(
+        context_module,
+        '_utc_now',
+        lambda: datetime(2026, 8, 23, 21, 10, 5, tzinfo=UTC),
+    )
+    observed: list[tuple[str, datetime | None, datetime]] = []
+    definition = JobDefinition(
+        module_name='scheduled_job',
+        service_name='scheduled-job',
+        run_once=True,
+        iteration_timeout_seconds=60,
+        execution_timeout_seconds=600,
+        shutdown_grace_seconds=20,
+        lease_timeout_seconds=120,
+        lease_wait_seconds=0,
+        resource_sample_seconds=0.01,
+    )
+    environ = {
+        **_environment(tmp_path),
+        'ATLANTICUS_JOB_SCHEDULE_CRON': '*/10 * * * *',
+        'ATLANTICUS_JOB_PLATFORM_TIMEOUT_SECONDS': '120',
+    }
+
+    def iteration(context: JobRuntimeContext) -> None:
+        observed.append(
+            (
+                context.execution_mode,
+                context.scheduled_at_utc,
+                context.deadline_utc,
+            )
+        )
+
+    result = execute_job(
+        definition=definition,
+        iteration=iteration,
+        argv=[],
+        environ=environ,
+    )
+
+    assert result.iteration_count == 1
+    assert result.stop_reason == 'run_once'
+    assert observed == [
+        (
+            'scheduled_external',
+            datetime(2026, 8, 23, 21, 10, 0, tzinfo=UTC),
+            datetime(2026, 8, 23, 21, 12, 5, tzinfo=UTC),
+        )
+    ]
+
+
+def test_scheduled_run_once_skips_business_work_when_effective_window_is_too_short(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import atlanticus.runtime.context as context_module
+
+    monkeypatch.setattr(
+        context_module,
+        '_utc_now',
+        lambda: datetime(2026, 8, 23, 21, 10, 5, tzinfo=UTC),
+    )
+    calls: list[int] = []
+    definition = JobDefinition(
+        module_name='scheduled_job',
+        service_name='scheduled-job',
+        run_once=True,
+        iteration_timeout_seconds=60,
+        execution_timeout_seconds=600,
+        shutdown_grace_seconds=20,
+        lease_timeout_seconds=120,
+        lease_wait_seconds=0,
+        resource_sample_seconds=0.01,
+    )
+    environ = {
+        **_environment(tmp_path),
+        'ATLANTICUS_JOB_SCHEDULE_CRON': '*/10 * * * *',
+        'ATLANTICUS_JOB_PLATFORM_TIMEOUT_SECONDS': '50',
+    }
+
+    result = execute_job(
+        definition=definition,
+        iteration=lambda context: calls.append(context.iteration),
+        argv=[],
+        environ=environ,
+    )
+
+    assert calls == []
+    assert result.iteration_count == 0
+    assert result.stop_reason == 'insufficient_remaining_time'

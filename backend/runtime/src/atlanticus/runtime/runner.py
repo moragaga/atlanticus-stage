@@ -156,6 +156,20 @@ def execute_job(
 
         context.set_execution_fact('lease_wait_seconds', acquisition.waited_seconds)
         context.set_execution_fact('lease_recovered', acquisition.recovered is not None)
+        context.set_execution_fact('execution_mode', context.execution_mode)
+        if context.scheduled_at_utc is not None:
+            context.set_execution_fact('scheduled_at_utc', context.scheduled_at_utc.isoformat())
+        if context.next_scheduled_at_utc is not None:
+            context.set_execution_fact(
+                'next_scheduled_at_utc',
+                context.next_scheduled_at_utc.isoformat(),
+            )
+        if context.platform_deadline_utc is not None:
+            context.set_execution_fact(
+                'platform_deadline_utc',
+                context.platform_deadline_utc.isoformat(),
+            )
+        context.set_execution_fact('execution_deadline_utc', context.deadline_utc.isoformat())
         lease.start_renewal(on_lost=context.request_stop)
         try:
             with _cooperative_sigterm(context):
@@ -225,6 +239,13 @@ def _run_iterations(
                                 cancellation_reason = context.stop_reason
                             else:
                                 stop_reason = 'safe_execution_window_elapsed'
+                            break
+                        if (
+                            context.execution_mode == 'scheduled_external'
+                            and context.safe_remaining_seconds
+                            < definition.iteration_timeout_seconds
+                        ):
+                            stop_reason = 'insufficient_remaining_time'
                             break
 
                         iteration_number = iteration_count + 1
