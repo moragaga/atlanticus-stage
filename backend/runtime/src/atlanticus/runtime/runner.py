@@ -94,6 +94,8 @@ def execute_job(
     *,
     definition: JobDefinition,
     iteration: Callable[[JobRuntimeContext], Any],
+    recovery: Callable[[JobRuntimeContext], Any] | None = None,
+    drain: Callable[[JobRuntimeContext], Any] | None = None,
     argv: Sequence[str] | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> RuntimeExecutionResult:
@@ -103,6 +105,10 @@ def execute_job(
         raise TypeError('definition must be a JobDefinition')
     if not callable(iteration):
         raise TypeError('iteration must be callable')
+    if recovery is not None and not callable(recovery):
+        raise TypeError('recovery must be callable')
+    if drain is not None and not callable(drain):
+        raise TypeError('drain must be callable')
     if environ is not None and not isinstance(environ, Mapping):
         raise TypeError('environ must be a mapping')
 
@@ -164,6 +170,11 @@ def execute_job(
         context.set_execution_fact('lease_recovered', acquisition.recovered is not None)
         if acquisition.generation is not None:
             context.set_execution_fact('lease_generation', acquisition.generation)
+        if acquisition.acquired and acquisition.generation is not None:
+            context._bind_lease_authority(
+                generation=acquisition.generation,
+                checker=lease.assert_current,
+            )
         context.set_execution_fact('execution_mode', context.execution_mode)
         if context.scheduled_at_utc is not None:
             context.set_execution_fact('scheduled_at_utc', context.scheduled_at_utc.isoformat())
@@ -193,6 +204,8 @@ def execute_job(
                     options=options,
                     context=context,
                     iteration=iteration,
+                    recovery=recovery,
+                    drain=drain,
                     lease=lease,
                 )
                 return execution_result
@@ -224,6 +237,8 @@ def _run_iterations(
     options: RuntimeOptions,
     context: JobRuntimeContext,
     iteration: Callable[[JobRuntimeContext], Any],
+    recovery: Callable[[JobRuntimeContext], Any] | None,
+    drain: Callable[[JobRuntimeContext], Any] | None,
     lease: ExecutionLease,
 ) -> RuntimeExecutionResult:
     started = context.started_monotonic
@@ -253,6 +268,8 @@ def _run_iterations(
         try:
             with trace_span('execution', attributes={'atlanticus.span_kind': 'execution'}):
                 try:
+                    if recovery is not None:
+                        _run_recovery(context=context, recovery=recovery, lease=lease)
                     while True:
                         lease.raise_if_unhealthy()
                         if context.should_stop:
@@ -349,10 +366,11 @@ def _run_iterations(
                     context.request_stop('interrupted')
                     cancellation_reason = 'interrupted'
                 lease.raise_if_unhealthy()
+                if drain is not None and context.remaining_seconds > 0:
+                    _run_drain(context=context, drain=drain, lease=lease)
+                lease.raise_if_unhealthy()
             _stop_resource_monitor(resources, resources_started, execution_context)
             resources_started = False
-            lease.stop_renewal()
-            lease.raise_if_unhealthy()
         except BaseException as error:
             _stop_resource_monitor(resources, resources_started, execution_context)
             duration_seconds = time.monotonic() - started
@@ -452,6 +470,30 @@ def _run_iterations(
         duration_seconds=round(context.clock() - started, 6),
         stop_reason=stop_reason,
     )
+
+
+def _run_recovery(
+    *,
+    context: JobRuntimeContext,
+    recovery: Callable[[JobRuntimeContext], Any],
+    lease: ExecutionLease,
+) -> None:
+    lease.assert_current()
+    with trace_span('recovery', attributes={'atlanticus.span_kind': 'recovery'}):
+        recovery(context)
+    lease.assert_current()
+
+
+def _run_drain(
+    *,
+    context: JobRuntimeContext,
+    drain: Callable[[JobRuntimeContext], Any],
+    lease: ExecutionLease,
+) -> None:
+    lease.assert_current()
+    with trace_span('drain', attributes={'atlanticus.span_kind': 'drain'}):
+        drain(context)
+    lease.assert_current()
 
 
 def _effective_lease_wait_seconds(
@@ -729,6 +771,7 @@ def _release_lease(
     *,
     completed: bool,
 ) -> AtlanticusRuntimeError | None:
+    lease.stop_renewal()
     if not lease.acquired:
         return lease.failure
     try:

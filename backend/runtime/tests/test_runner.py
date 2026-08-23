@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 from datetime import UTC, datetime, timedelta
 
@@ -418,9 +419,15 @@ def test_lost_lease_stops_business_and_fails_execution(tmp_path) -> None:
 
     def lose_lease(context) -> None:
         path = tmp_path / 'ada' / '.runtime' / 'leases' / 'lease-loss-job.json'
-        payload = json.loads(path.read_text())
-        payload['owner_token'] = 'different-owner'
-        path.write_text(json.dumps(payload))
+        guard_path = path.parent / '.lease-loss-job.recovery'
+        descriptor = os.open(guard_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            payload = json.loads(path.read_text())
+            payload['expires_at_utc'] = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
+            path.write_text(json.dumps(payload))
+        finally:
+            os.close(descriptor)
+            guard_path.unlink(missing_ok=True)
         assert not context.wait(1)
         context.raise_if_cancelled()
 

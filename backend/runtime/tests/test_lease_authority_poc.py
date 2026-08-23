@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -189,6 +192,49 @@ def test_poc_elapsed_authority_window_never_creates_a_lease(tmp_path) -> None:
     assert lease.acquired is False
     assert lease.path.exists() is False
     assert lease.authority_path.exists() is False
+
+
+def test_poc_expired_owner_cannot_renew_same_generation(tmp_path) -> None:
+    clock = MutableClock(datetime(2026, 8, 23, 21, 10, 0, tzinfo=UTC))
+    lease = _lease(
+        tmp_path,
+        run_id='run-1',
+        clock=clock,
+        lease_timeout_seconds=10,
+    )
+    assert lease.acquire().generation == 1
+
+    clock.value += timedelta(seconds=11)
+
+    assert lease.renew() is False
+    assert lease.acquired is False
+
+
+def test_poc_renewal_waits_for_short_coordination_guard(tmp_path) -> None:
+    clock = MutableClock(datetime(2026, 8, 23, 21, 10, 0, tzinfo=UTC))
+    lease = _lease(
+        tmp_path,
+        run_id='run-1',
+        clock=clock,
+        lease_timeout_seconds=10,
+    )
+    assert lease.acquire().generation == 1
+
+    guard_path = lease.path.parent / '.authority-job.recovery'
+    descriptor = os.open(guard_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+
+    def release_guard() -> None:
+        time.sleep(0.01)
+        os.close(descriptor)
+        guard_path.unlink(missing_ok=True)
+
+    thread = threading.Thread(target=release_guard)
+    thread.start()
+    try:
+        assert lease.renew() is True
+    finally:
+        thread.join()
+    assert lease.release()
 
 
 def test_poc_corrupt_authority_state_fails_closed(tmp_path) -> None:

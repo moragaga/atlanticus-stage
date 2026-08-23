@@ -1,5 +1,5 @@
-# El contexto deriva UTC actual desde el reloj monotónico de la misma invocación para evitar relojes divergentes.
-# Esto mantiene execution window y lease authority sobre una referencia temporal coherente.
+# El contexto expone una autoridad de lease sólo después de que el runner adquiere ownership.
+# La generación identifica la época de ownership y el checker permite fallar cerrado antes de un commit durable.
 
 """Contexto liviano entregado a cada iteración del job."""
 
@@ -19,7 +19,7 @@ from atlanticus.observability import ObservabilityLogger, get_observability_logg
 from atlanticus.runtime._window import build_execution_window
 from atlanticus.runtime.configuration import RuntimeConfiguration
 from atlanticus.runtime.definition import JobDefinition
-from atlanticus.runtime.errors import RuntimeCancellationRequested
+from atlanticus.runtime.errors import RuntimeCancellationRequested, RuntimeContractError
 from atlanticus.runtime.summary import OperationalSummary, OperationalValue
 
 T = TypeVar('T')
@@ -55,6 +55,8 @@ class JobRuntimeContext:
     _iteration_summary: OperationalSummary = field(default_factory=OperationalSummary, repr=False)
     _iteration_has_work: bool = field(default=False, repr=False)
     _next_iteration_delay_seconds: float | None = field(default=None, repr=False)
+    _lease_generation: int | None = field(default=None, repr=False)
+    _lease_authority_check: Callable[[], None] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.definition, JobDefinition):
@@ -166,6 +168,36 @@ class JobRuntimeContext:
     @property
     def should_stop(self) -> bool:
         return self._stop.is_set() or self.safe_remaining_seconds <= 0
+
+    # La generación es metadata técnica del runtime; el dominio puede registrarla sin gobernar el lease.
+    @property
+    def lease_generation(self) -> int | None:
+        return self._lease_generation
+
+    # Antes de una escritura autoritativa, el consumidor puede exigir que esta adquisición siga vigente.
+    def assert_lease_current(self) -> None:
+        checker = self._lease_authority_check
+        if self._lease_generation is None or checker is None:
+            raise RuntimeContractError('lease authority is not available in this context')
+        checker()
+
+    # Sólo el runner enlaza el contexto con la lease ya adquirida; no se acepta rebinding silencioso.
+    def _bind_lease_authority(
+        self,
+        *,
+        generation: int,
+        checker: Callable[[], None],
+    ) -> None:
+        if isinstance(generation, bool) or not isinstance(generation, int):
+            raise TypeError('generation must be an int')
+        if generation <= 0:
+            raise ValueError('generation must be greater than zero')
+        if not callable(checker):
+            raise TypeError('checker must be callable')
+        if self._lease_generation is not None or self._lease_authority_check is not None:
+            raise RuntimeContractError('lease authority is already bound')
+        self._lease_generation = generation
+        self._lease_authority_check = checker
 
     def request_stop(self, reason: str = 'requested') -> None:
         normalized_reason = _validate_stop_reason(reason)

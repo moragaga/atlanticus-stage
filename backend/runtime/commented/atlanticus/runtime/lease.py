@@ -1,5 +1,5 @@
-# La lease efímera sigue protegiendo al escritor activo y ahora se enlaza con una generación durable.
-# El deadline de autoridad limita renovaciones opt-in y un slot completado puede deduplicar reinicios.
+# La comprobación de autoridad comparte el mismo guard físico usado por acquire/renew/release.
+# Así un stale writer no puede confirmar ownership observando un lease que ya fue reemplazado por otra generación.
 
 """Lease de archivo renovable para evitar solapamientos accidentales del mismo job."""
 
@@ -259,12 +259,12 @@ class ExecutionLease:
 
         if not self._acquired or self._generation is None:
             return False
-        guard_descriptor = self._try_acquire_recovery_guard()
+        guard_descriptor = self._acquire_authority_check_guard()
         if guard_descriptor is None:
             raise LeaseRenewalError('Lease renewal guard is unavailable')
         try:
             existing = self._read_payload()
-            if not self._owns_payload(existing):
+            if not self._owns_payload(existing) or self._is_expired(existing or {}):
                 self._acquired = False
                 return False
             now = self._now()
@@ -414,6 +414,32 @@ class ExecutionLease:
                 )
                 return
 
+    # Verifica token, generación, expiración y estado durable; cualquier incertidumbre falla cerrado.
+    def assert_current(self) -> None:
+        self.raise_if_unhealthy()
+        if not self._acquired or self._generation is None:
+            raise LeaseOwnershipLostError('Lease ownership was lost')
+        guard_descriptor = self._acquire_authority_check_guard()
+        if guard_descriptor is None:
+            error = LeaseRenewalError('Lease authority could not be confirmed')
+            self._mark_failure(error, 'lease_authority_unconfirmed')
+            raise error
+        try:
+            existing = self._read_payload()
+            state = self._authority_store.read()
+            if (
+                not self._owns_payload(existing)
+                or self._is_expired(existing or {})
+                or state.generation != self._generation
+            ):
+                self._acquired = False
+                error = LeaseOwnershipLostError('Lease ownership was lost')
+                self._mark_failure(error, 'lease_ownership_lost')
+                raise error
+        finally:
+            os.close(guard_descriptor)
+            self._recovery_guard.unlink(missing_ok=True)
+
     def raise_if_unhealthy(self) -> None:
         failure = self.failure
         if failure is not None:
@@ -517,6 +543,19 @@ class ExecutionLease:
         else:
             _fsync_directory(self._directory)
         return recovered
+
+    # La verificación tolera una contención brevísima con el heartbeat, pero nunca espera indefinidamente.
+    def _acquire_authority_check_guard(self) -> int | None:
+        wait_seconds = min(1.0, max(0.05, self._poll_seconds))
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            descriptor = self._try_acquire_recovery_guard()
+            if descriptor is not None:
+                return descriptor
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            time.sleep(min(0.01, remaining))
 
     def _try_acquire_recovery_guard(self) -> int | None:
         try:
