@@ -1,6 +1,5 @@
-# El contexto comparte presupuesto temporal, cancelación cooperativa y memoria efímera por ejecución.
-# Además expone los límites UTC calculados para que un consumidor pueda entender la ventana que realmente obtuvo.
-# Los deadlines monotónicos siguen gobernando esperas y cancelación para no depender de saltos del reloj de pared.
+# El contexto deriva UTC actual desde el reloj monotónico de la misma invocación para evitar relojes divergentes.
+# Esto mantiene execution window y lease authority sobre una referencia temporal coherente.
 
 """Contexto liviano entregado a cada iteración del job."""
 
@@ -11,7 +10,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
 from typing import TypeVar, cast
@@ -151,6 +150,10 @@ class JobRuntimeContext:
     @property
     def application_root(self) -> Path:
         return self.configuration.application_root
+
+    def _utc_now(self) -> datetime:
+        elapsed = max(0.0, self.clock() - self.started_monotonic)
+        return self.started_at_utc + timedelta(seconds=elapsed)
 
     @property
     def remaining_seconds(self) -> float:

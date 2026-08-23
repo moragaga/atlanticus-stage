@@ -7,7 +7,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
 from typing import TypeVar, cast
@@ -147,6 +147,10 @@ class JobRuntimeContext:
     @property
     def application_root(self) -> Path:
         return self.configuration.application_root
+
+    def _utc_now(self) -> datetime:
+        elapsed = max(0.0, self.clock() - self.started_monotonic)
+        return self.started_at_utc + timedelta(seconds=elapsed)
 
     @property
     def remaining_seconds(self) -> float:

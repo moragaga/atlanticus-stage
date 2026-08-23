@@ -112,7 +112,7 @@ def test_lease_wait_consumes_execution_budget(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(runner_module.time, 'monotonic', fake_monotonic)
     monkeypatch.setattr(ExecutionLease, 'acquire', fake_acquire)
     monkeypatch.setattr(ExecutionLease, 'start_renewal', lambda self, on_lost=None: None)
-    monkeypatch.setattr(ExecutionLease, 'release', lambda self: True)
+    monkeypatch.setattr(ExecutionLease, 'release', lambda self, completed=False: True)
 
     definition = JobDefinition(
         module_name='job',
@@ -450,7 +450,7 @@ def test_release_failure_does_not_hide_business_error(tmp_path, monkeypatch) -> 
     def fail(context) -> None:
         raise ValueError('business failure')
 
-    def fail_release(self) -> bool:
+    def fail_release(self, *, completed: bool = False) -> bool:
         raise OSError('lease cleanup failed')
 
     monkeypatch.setattr(ExecutionLease, 'release', fail_release)
@@ -639,3 +639,78 @@ def test_scheduled_run_once_skips_business_work_when_effective_window_is_too_sho
     assert calls == []
     assert result.iteration_count == 0
     assert result.stop_reason == 'insufficient_remaining_time'
+
+
+def test_scheduled_lease_wait_uses_the_full_safe_window(tmp_path) -> None:
+    definition = JobDefinition(
+        module_name='job',
+        service_name='scheduled-wait-job',
+        execution_timeout_seconds=600,
+        shutdown_grace_seconds=20,
+        iteration_timeout_seconds=60,
+        lease_wait_seconds=None,
+    )
+    environment = _environment(tmp_path)
+    environment['ATLANTICUS_JOB_SCHEDULE_CRON'] = '*/10 * * * *'
+    configuration = RuntimeConfiguration.from_sources(environ=environment)
+    context = JobRuntimeContext.create(
+        definition=definition,
+        configuration=configuration,
+        run_id='11111111-1111-1111-1111-111111111111',
+        correlation_id='22222222-2222-2222-2222-222222222222',
+        clock=lambda: 100.0,
+        wall_clock=lambda: datetime(2026, 8, 23, 21, 10, 0, tzinfo=UTC),
+    )
+
+    assert context.safe_remaining_seconds == 580
+    assert _effective_lease_wait_seconds(definition, context) == 580
+
+
+def test_scheduled_slot_is_deduplicated_after_successful_execution(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import atlanticus.runtime.context as context_module
+
+    fixed_now = datetime(2026, 8, 23, 21, 10, 5, tzinfo=UTC)
+    monkeypatch.setattr(context_module, '_utc_now', lambda: fixed_now)
+    definition = JobDefinition(
+        module_name='scheduled_job',
+        service_name='scheduled-job',
+        run_once=True,
+        iteration_timeout_seconds=5,
+        execution_timeout_seconds=600,
+        shutdown_grace_seconds=20,
+        lease_timeout_seconds=30,
+        lease_wait_seconds=0,
+        resource_sample_seconds=0.01,
+    )
+    environment = _environment(tmp_path)
+    environment['ATLANTICUS_JOB_SCHEDULE_CRON'] = '*/10 * * * *'
+    calls = []
+
+    def iteration(context) -> None:
+        calls.append(context.iteration)
+
+    first = execute_job(
+        definition=definition,
+        iteration=iteration,
+        argv=[],
+        environ=environment,
+    )
+    second = execute_job(
+        definition=definition,
+        iteration=iteration,
+        argv=[],
+        environ=environment,
+    )
+
+    assert first.stop_reason == 'run_once'
+    assert first.iteration_count == 1
+    assert second.stop_reason == 'scheduled_slot_completed'
+    assert second.iteration_count == 0
+    assert calls == [1]
+    authority_path = tmp_path / 'ada' / '.runtime' / 'authority' / 'scheduled-job.json'
+    authority = json.loads(authority_path.read_text(encoding='utf-8'))
+    assert authority['generation'] == 1
+    assert authority['last_completed_scheduled_at_utc'] == '2026-08-23T21:10:00+00:00'

@@ -1,6 +1,5 @@
-# El runner compone configuración, lease, observabilidad, recursos y ciclo de iteraciones.
-# R20C.1 no cambia todavía el protocolo del lease: sólo incorpora la ventana temporal efectiva al contexto.
-# Los datos scheduled se agregan a la telemetría como hechos operacionales, sin conocimiento de plataforma.
+# El runner mantiene intacto el modo relative y activa autoridad temporal adicional sólo con metadata efectiva.
+# En scheduled_external la espera puede consumir toda la ventana segura y los slots completados se omiten.
 
 """Composición oficial de lease, observabilidad y ciclo de iteraciones."""
 
@@ -15,6 +14,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from types import FrameType
 from typing import Any
 from uuid import UUID, uuid4
@@ -135,10 +135,14 @@ def execute_job(
         renewal_seconds=definition.lease_renew_seconds,
         wait_seconds=_effective_lease_wait_seconds(definition, context),
         poll_seconds=definition.lease_poll_seconds,
+        scheduled_at_utc=context.scheduled_at_utc,
+        authority_deadline_utc=_effective_authority_deadline(configuration, context),
+        wall_clock=context._utc_now,
     )
     acquisition = lease.acquire()
     observability_configured = False
     primary_error: BaseException | None = None
+    execution_result: RuntimeExecutionResult | None = None
     try:
         settings = ObservabilitySettings.build(
             application=configuration.application,
@@ -154,12 +158,15 @@ def execute_job(
             environ=_project_azure_observability_environ(source_environ),
         )
         observability_configured = True
-        _emit_lease_acquired(settings, acquisition, run_id, correlation_id)
+        if acquisition.acquired:
+            _emit_lease_acquired(settings, acquisition, run_id, correlation_id)
         if acquisition.recovered is not None:
             _emit_recovered_timeout(settings, acquisition.recovered)
 
         context.set_execution_fact('lease_wait_seconds', acquisition.waited_seconds)
         context.set_execution_fact('lease_recovered', acquisition.recovered is not None)
+        if acquisition.generation is not None:
+            context.set_execution_fact('lease_generation', acquisition.generation)
         context.set_execution_fact('execution_mode', context.execution_mode)
         if context.scheduled_at_utc is not None:
             context.set_execution_fact('scheduled_at_utc', context.scheduled_at_utc.isoformat())
@@ -174,23 +181,36 @@ def execute_job(
                 context.platform_deadline_utc.isoformat(),
             )
         context.set_execution_fact('execution_deadline_utc', context.deadline_utc.isoformat())
+        if acquisition.skipped_reason is not None:
+            execution_result = _skipped_execution_result(
+                context=context,
+                stop_reason=acquisition.skipped_reason,
+            )
+            return execution_result
+
         lease.start_renewal(on_lost=context.request_stop)
         try:
             with _cooperative_sigterm(context):
-                return _run_iterations(
+                execution_result = _run_iterations(
                     definition=definition,
                     options=options,
                     context=context,
                     iteration=iteration,
                     lease=lease,
                 )
+                return execution_result
         finally:
             context.clear_memory()
     except BaseException as error:
         primary_error = error
         raise
     finally:
-        cleanup_error = _release_lease(lease)
+        cleanup_error = _release_lease(
+            lease,
+            completed=(
+                execution_result is not None and execution_result.status is OperationStatus.SUCCESS
+            ),
+        )
         if cleanup_error is not None and observability_configured:
             _safe_emit_cleanup_failure(cleanup_error)
         close_error = _close_runtime_observability(observability_configured)
@@ -441,14 +461,68 @@ def _effective_lease_wait_seconds(
     definition: JobDefinition,
     context: JobRuntimeContext,
 ) -> float:
-    available_for_wait = max(
-        0.0,
-        context.safe_remaining_seconds - definition.iteration_timeout_seconds,
-    )
+    if context.execution_mode == 'scheduled_external':
+        available_for_wait = context.safe_remaining_seconds
+    else:
+        available_for_wait = max(
+            0.0,
+            context.safe_remaining_seconds - definition.iteration_timeout_seconds,
+        )
     configured = definition.lease_wait_seconds
     if configured is None:
         return available_for_wait
     return min(configured, available_for_wait)
+
+
+def _effective_authority_deadline(
+    configuration: RuntimeConfiguration,
+    context: JobRuntimeContext,
+) -> datetime | None:
+    if (
+        context.execution_mode == 'scheduled_external'
+        or configuration.job_platform_timeout_seconds is not None
+    ):
+        return context.deadline_utc
+    return None
+
+
+def _skipped_execution_result(
+    *,
+    context: JobRuntimeContext,
+    stop_reason: str,
+) -> RuntimeExecutionResult:
+    duration_seconds = max(0.0, context.clock() - context.started_monotonic)
+    with execution_scope(
+        run_id=context.run_id,
+        correlation_id=context.correlation_id,
+    ) as execution_context:
+        emit_event(
+            ObservabilityEvent(
+                name='runtime.execution.summary',
+                category=EventCategory.LIFECYCLE,
+                audience=EventAudience.OPERATIONS,
+                status=OperationStatus.SUCCESS,
+                context=execution_context,
+                duration_ms=duration_seconds * 1000,
+                metrics={
+                    'iterations': 0,
+                    'work_iterations': 0,
+                    'empty_iterations': 0,
+                },
+                attributes={
+                    'stop_reason': stop_reason,
+                    **context._execution_facts(),
+                },
+            )
+        )
+    return RuntimeExecutionResult(
+        run_id=context.run_id,
+        correlation_id=context.correlation_id,
+        status=OperationStatus.SUCCESS,
+        iteration_count=0,
+        duration_seconds=round(duration_seconds, 6),
+        stop_reason=stop_reason,
+    )
 
 
 def _execution_metrics(
@@ -653,9 +727,15 @@ def _cooperative_sigterm(context: JobRuntimeContext) -> Iterator[None]:
         signal.signal(signal.SIGTERM, previous_handler)
 
 
-def _release_lease(lease: ExecutionLease) -> AtlanticusRuntimeError | None:
+def _release_lease(
+    lease: ExecutionLease,
+    *,
+    completed: bool,
+) -> AtlanticusRuntimeError | None:
+    if not lease.acquired:
+        return lease.failure
     try:
-        released = lease.release()
+        released = lease.release(completed=completed)
     except Exception:
         return LeaseOwnershipLostError('Lease release failed')
     if lease.failure is not None:
