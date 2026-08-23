@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import threading
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
@@ -13,13 +12,10 @@ from uuid import uuid4
 
 import pyarrow as pa
 import pyarrow.compute as pc
-import pyarrow.parquet as pq
 
 from atlanticus.datasets.layouts import FileSetLayout, SingleArtifactLayout
 from atlanticus.datasets.models import DatasetDefinition, DatasetPartKey, DatasetTarget
 from atlanticus.datasets.parquet._filesystem import (
-    _file_signature,
-    _fsync_directory,
     _is_owned_part_filename,
     _is_temporary_filename,
 )
@@ -41,8 +37,12 @@ from atlanticus.datasets.parquet._validation import (
     _validate_schema as _validate_schema_impl,
     _validate_table as _validate_table_impl,
 )
+from atlanticus.datasets.parquet._write import (
+    _replace_manifest,
+    _replace_single_artifact,
+    _write_content_part,
+)
 from atlanticus.datasets.parquet.errors import (
-    ParquetCorruptionError,
     ParquetLayoutError,
     ParquetPublicationNotFoundError,
     ParquetSchemaError,
@@ -50,9 +50,7 @@ from atlanticus.datasets.parquet.errors import (
     ParquetWriteError,
 )
 from atlanticus.datasets.parquet.manifest import (
-    _encode_manifest,
     _Manifest,
-    _ManifestPart,
     _publication_signature,
     _schema_signature,
 )
@@ -316,11 +314,12 @@ class ParquetDatasetStore:
                 next_parts.pop(value, None)
             try:
                 for value, part in incoming.items():
-                    manifest_part, _ = self._write_content_part(
+                    manifest_part, _ = _write_content_part(
                         target_path=target_path,
                         part_dimension=layout.part_dimension,
                         part_value=value,
                         table=part.table,
+                        write_options=self._write_options,
                     )
                     next_parts[value] = manifest_part
                 if not next_parts:
@@ -360,7 +359,7 @@ class ParquetDatasetStore:
                     schema_signature=schema_signature,
                     parts=parts,
                 )
-                self._replace_manifest(target_path=target_path, manifest=manifest)
+                _replace_manifest(target_path=target_path, manifest=manifest)
             except ParquetValidationError:
                 raise
             except (OSError, pa.ArrowException) as error:
@@ -473,9 +472,8 @@ class ParquetDatasetStore:
         target: DatasetTarget,
         table: pa.Table,
     ) -> _Artifact:
+        # El Store conserva lock y cleanup porque coordinan la operación completa, no la escritura física.
         target_path = self.path_for(definition=definition, target=target)
-        final_path = target_path / 'data.parquet'
-        temporary_path: Path | None = None
         with self._write_lock:
             self._cleanup_locked(
                 target_path=target_path,
@@ -483,124 +481,14 @@ class ParquetDatasetStore:
                 part_dimension=None,
                 current=None,
             )
-            try:
-                target_path.mkdir(parents=True, exist_ok=True)
-                temporary_path = target_path / f'.data.parquet.{uuid4().hex}.tmp'
-                self._write_and_validate_table(path=temporary_path, table=table)
-                size_bytes = temporary_path.stat().st_size
-                content_signature = _file_signature(temporary_path)
-                os.replace(temporary_path, final_path)
-                _fsync_directory(target_path)
-            except ParquetValidationError:
-                raise
-            except (OSError, pa.ArrowException) as error:
-                raise ParquetWriteError(
-                    f'could not replace parquet publication {target.identifier}'
-                ) from error
-            finally:
-                if temporary_path is not None:
-                    try:
-                        temporary_path.unlink(missing_ok=True)
-                    except OSError:
-                        pass
-        return _Artifact(
-            path=final_path,
-            schema=table.schema,
-            item_count=table.num_rows,
-            size_bytes=size_bytes,
-            content_signature=content_signature,
-        )
-
-    def _write_content_part(
-        self,
-        *,
-        target_path: Path,
-        part_dimension: str,
-        part_value: str,
-        table: pa.Table,
-    ) -> tuple[_ManifestPart, bool]:
-        name_template = f'{part_dimension}={part_value}--{"0" * 64}.parquet'
-        if len(os.fsencode(name_template)) > 255:
-            raise ParquetValidationError('part identity produces a filename longer than 255 bytes')
-        target_path.mkdir(parents=True, exist_ok=True)
-        temporary_path = target_path / (f'.{part_dimension}={part_value}.{uuid4().hex}.tmp')
-        try:
-            self._write_and_validate_table(path=temporary_path, table=table)
-            size_bytes = temporary_path.stat().st_size
-            content_signature = _file_signature(temporary_path)
-            digest = content_signature.removeprefix('sha256:')
-            file_name = f'{part_dimension}={part_value}--{digest}.parquet'
-            final_path = target_path / file_name
-            was_created = False
-            if final_path.exists():
-                if _file_signature(final_path) != content_signature:
-                    raise ParquetCorruptionError(
-                        f'content-addressed parquet part is inconsistent: {file_name}'
-                    )
-                temporary_path.unlink()
-            else:
-                os.replace(temporary_path, final_path)
-                _fsync_directory(target_path)
-                was_created = True
-            return (
-                _ManifestPart(
-                    value=part_value,
-                    path=file_name,
-                    item_count=table.num_rows,
-                    size_bytes=size_bytes,
-                    content_signature=content_signature,
-                ),
-                was_created,
+            # El writer recibe sólo datos físicos explícitos y no conoce lifecycle ni configuración del Store.
+            artifact = _replace_single_artifact(
+                target_path=target_path,
+                target_identifier=target.identifier,
+                table=table,
+                write_options=self._write_options,
             )
-        finally:
-            try:
-                temporary_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-
-    def _write_and_validate_table(self, *, path: Path, table: pa.Table) -> None:
-        options = self._write_options
-        pq.write_table(
-            table,
-            path,
-            compression=options.compression,
-            compression_level=options.compression_level,
-            use_dictionary=options.use_dictionary,
-            write_statistics=options.write_statistics,
-            row_group_size=options.row_group_size,
-        )
-        with path.open('rb') as file_handle:
-            os.fsync(file_handle.fileno())
-        parquet_file = pq.ParquetFile(path)
-        if parquet_file.metadata.num_rows != table.num_rows:
-            raise ParquetWriteError('written parquet row count does not match the source table')
-        if not parquet_file.schema_arrow.equals(table.schema, check_metadata=True):
-            raise ParquetSchemaError('written parquet schema does not match the source table')
-
-    def _replace_manifest(self, *, target_path: Path, manifest: _Manifest) -> None:
-        target_path.mkdir(parents=True, exist_ok=True)
-        final_path = target_path / 'current.json'
-        temporary_path = target_path / f'.current.json.{uuid4().hex}.tmp'
-        content = _encode_manifest(manifest)
-        try:
-            descriptor = os.open(
-                temporary_path,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                0o666,
-            )
-            with os.fdopen(descriptor, 'wb') as file_handle:
-                file_handle.write(content)
-                file_handle.flush()
-                os.fsync(file_handle.fileno())
-            os.replace(temporary_path, final_path)
-            _fsync_directory(target_path)
-        except OSError as error:
-            raise ParquetWriteError('could not replace parquet current manifest') from error
-        finally:
-            try:
-                temporary_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        return artifact
 
     def _resolve_incoming_schema(
         self,

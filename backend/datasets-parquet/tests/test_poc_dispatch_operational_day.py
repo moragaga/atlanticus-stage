@@ -9,7 +9,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import atlanticus.datasets.parquet._publication as publication_module
-import atlanticus.datasets.parquet.store as store_module
+import atlanticus.datasets.parquet._write as write_module
 from atlanticus.datasets import DatasetDefinition, PublicationStatus
 from atlanticus.datasets.parquet import (
     ColumnFilter,
@@ -385,14 +385,14 @@ def test_failed_manifest_commit_preserves_previous_part_set(
             ),
         ),
     )
-    original_replace = store_module.os.replace
+    original_replace = write_module.os.replace
 
     def fail_manifest(source: Path, destination: Path) -> None:
         if Path(destination).name == 'current.json':
             raise OSError('controlled manifest failure')
         original_replace(source, destination)
 
-    monkeypatch.setattr(store_module.os, 'replace', fail_manifest)
+    monkeypatch.setattr(write_module.os, 'replace', fail_manifest)
 
     with pytest.raises(ParquetWriteError):
         store.publish_parts(

@@ -102,6 +102,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 CACHE_ARG=""
+LOCAL_REINSTALL_ARGS=()
 if [[ "$CLEAN" -eq 1 ]]; then
   export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
   CACHE_ARG="--no-cache"
@@ -109,6 +110,10 @@ if [[ "$CLEAN" -eq 1 ]]; then
   for package in $PACKAGES; do
     rm -rf "$package/build" "$package/.pytest_cache" "$package/.ruff_cache"
     find "$package" -maxdepth 2 -type d -name '*.egg-info' -prune -exec rm -rf {} + 2>/dev/null || true
+  done
+else
+  for package in $PACKAGES; do
+    LOCAL_REINSTALL_ARGS+=(--reinstall-package "$(distribution_name "$package")")
   done
 fi
 
@@ -135,6 +140,7 @@ if [[ "$ALL" -eq 1 ]]; then
     $CACHE_ARG \
     --all-packages \
     --group dev \
+    "${LOCAL_REINSTALL_ARGS[@]}" \
     --frozen \
     --no-editable
 else
@@ -158,6 +164,7 @@ else
     --no-python-downloads \
     $CACHE_ARG \
     $SYNC_PACKAGE_ARGS \
+    "${LOCAL_REINSTALL_ARGS[@]}" \
     --no-default-groups \
     --inexact \
     --frozen \

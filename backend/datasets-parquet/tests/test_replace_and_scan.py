@@ -9,7 +9,7 @@ from parquet_test_helpers import timestamp_array
 
 import atlanticus.datasets.parquet._publication as publication_module
 import atlanticus.datasets.parquet._scan as scan_module
-import atlanticus.datasets.parquet.store as store_module
+import atlanticus.datasets.parquet._write as write_module
 from atlanticus.datasets import DatasetDefinition, PublicationSkipReason, PublicationStatus
 from atlanticus.datasets.parquet import (
     ColumnFilter,
@@ -151,14 +151,14 @@ def test_failed_atomic_replace_preserves_the_previous_parquet(
     initial = pa.table({'timestamp': timestamp_array('2026-07-21T10:00:00Z'), 'value': [1]})
     replacement = pa.table({'timestamp': timestamp_array('2026-07-21T11:00:00Z'), 'value': [2]})
     store.replace(definition=pi_definition, target=target, table=initial)
-    original_replace = store_module.os.replace
+    original_replace = write_module.os.replace
 
     def fail_data_replace(source: Path, destination: Path) -> None:
         if Path(destination).name == 'data.parquet':
             raise OSError('controlled replace failure')
         original_replace(source, destination)
 
-    monkeypatch.setattr(store_module.os, 'replace', fail_data_replace)
+    monkeypatch.setattr(write_module.os, 'replace', fail_data_replace)
 
     with pytest.raises(ParquetWriteError):
         store.replace(definition=pi_definition, target=target, table=replacement)
@@ -180,7 +180,7 @@ def test_replace_does_not_override_filesystem_permissions(
     def reject_chmod(*_args: object, **_kwargs: object) -> None:
         raise AssertionError('the parquet store must not call chmod')
 
-    monkeypatch.setattr(store_module.os, 'chmod', reject_chmod)
+    monkeypatch.setattr(write_module.os, 'chmod', reject_chmod)
 
     store.replace(
         definition=pi_definition,
