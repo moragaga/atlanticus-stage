@@ -1,5 +1,10 @@
-# WAL append-only del Runtime de alarmas. Los bytes sólo son verdad cuando JournalHead.durable los alcanza.
-# Los segmentos se agrupan por hora UTC y se sellan únicamente después de reconciliar su materialización.
+# Espejo pedagógico del WAL físico del Alarm Engine.
+# El journal escribe registros JSONL append-only, fuerza flush y fsync antes de confirmar durable.
+# Las posiciones físicas identifican segmento y byte_offset; sólo los bytes alcanzados por JournalHead.durable están confirmados.
+# Las colas posteriores al durable pueden descartarse durante recovery porque nunca cruzaron la frontera de confirmación.
+# Los segmentos se organizan por hora UTC y sólo se sellan cuando su contenido durable/materialized es consistente.
+# Los comentarios se dejan en este bloque para no alterar las decisiones de formato de Ruff dentro de expresiones complejas.
+
 from __future__ import annotations
 
 import os
@@ -91,7 +96,9 @@ class EngineJournal:
         entries: list[JournalEntry] = []
         for segment_id in selected_ids:
             path = segments[segment_id]
-            start_offset = after.byte_offset if after is not None and segment_id == after.segment_id else 0
+            start_offset = (
+                after.byte_offset if after is not None and segment_id == after.segment_id else 0
+            )
             limit = through.byte_offset if segment_id == through.segment_id else path.stat().st_size
             entries.extend(
                 self._read_segment(
@@ -104,9 +111,13 @@ class EngineJournal:
         if not entries:
             if after == through:
                 return ()
-            raise AlarmPersistenceCorruptionError('journal range does not contain the expected record')
+            raise AlarmPersistenceCorruptionError(
+                'journal range does not contain the expected record'
+            )
         if entries[-1].end != through:
-            raise AlarmPersistenceCorruptionError('durable journal position is not a record boundary')
+            raise AlarmPersistenceCorruptionError(
+                'durable journal position is not a record boundary'
+            )
         return tuple(entries)
 
     def validate_durable_region(self, durable: JournalPosition | None) -> tuple[JournalEntry, ...]:
@@ -157,13 +168,17 @@ class EngineJournal:
         try:
             durable_size = durable_path.stat().st_size
         except OSError as error:
-            raise AlarmPersistenceCorruptionError('could not inspect durable journal segment') from error
+            raise AlarmPersistenceCorruptionError(
+                'could not inspect durable journal segment'
+            ) from error
         if durable_size < durable.byte_offset:
             raise AlarmPersistenceCorruptionError('durable journal position exceeds segment size')
         removed = 0
         if durable_size > durable.byte_offset:
             if durable.segment_id in sealed_segments:
-                raise AlarmPersistenceCorruptionError('sealed journal contains bytes beyond durable position')
+                raise AlarmPersistenceCorruptionError(
+                    'sealed journal contains bytes beyond durable position'
+                )
             try:
                 with durable_path.open('r+b') as file_handle:
                     file_handle.truncate(durable.byte_offset)
@@ -195,7 +210,9 @@ class EngineJournal:
                 continue
             destination = self._paths.journal_segment_path(candidate, sealed=True)
             if destination.exists():
-                raise AlarmPersistenceCorruptionError('journal segment exists in open and sealed trees')
+                raise AlarmPersistenceCorruptionError(
+                    'journal segment exists in open and sealed trees'
+                )
             try:
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(source, destination)
@@ -238,7 +255,9 @@ class EngineJournal:
         segments = self._discover_sealed_segments()
         for segment_id, path in self._discover_open_segments().items():
             if segment_id in segments:
-                raise AlarmPersistenceCorruptionError('journal segment exists in open and sealed trees')
+                raise AlarmPersistenceCorruptionError(
+                    'journal segment exists in open and sealed trees'
+                )
             segments[segment_id] = path
         return segments
 
@@ -375,7 +394,9 @@ def _validate_batch(records: Sequence[EngineCommitRecord]) -> tuple[EngineCommit
                 'all records in a batch must belong to the same UTC hour'
             )
         normalized.append(record)
-    return tuple(sorted(normalized, key=lambda item: (item.commit.priority_group, item.commit.commit_id)))
+    return tuple(
+        sorted(normalized, key=lambda item: (item.commit.priority_group, item.commit.commit_id))
+    )
 
 
 def _position_key(value: JournalPosition) -> tuple[str, int]:
@@ -390,4 +411,3 @@ def _fsync_directory(directory: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-

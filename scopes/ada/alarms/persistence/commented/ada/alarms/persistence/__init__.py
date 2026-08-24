@@ -1,4 +1,8 @@
-# API pública de la capability de persistencia. Los tipos de autoridad se exportan para composición sin dependencia directa a Job Runtime.
+# Espejo pedagógico de la API pública de Alarm Persistence.
+# Este archivo conserva exactamente los mismos tokens ejecutables que producción.
+# Las notas se mantienen fuera del código para que Ruff pueda formatear ambos árboles de forma idéntica.
+# La API publicada expone contratos de persistencia, modelos, errores y la versión del paquete.
+
 from ada.alarms.persistence.errors import (
     AlarmPersistenceConflictError,
     AlarmPersistenceCorruptionError,

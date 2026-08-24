@@ -1,4 +1,8 @@
-# Serialización central del record WAL: JSON determinístico y SHA-256 sin duplicar canonicalizadores.
+# Espejo pedagógico de la serialización determinista usada por el WAL.
+# La representación canónica UTF-8 permite calcular record_hash SHA-256 de manera reproducible.
+# El hash excluye su propio campo y protege integridad de cada registro, mientras previous_commit_id protege continuidad funcional por grupo.
+# La decodificación rechaza estructuras inválidas en vez de reinterpretarlas silenciosamente.
+
 from __future__ import annotations
 
 import hashlib

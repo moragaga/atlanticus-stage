@@ -1,5 +1,10 @@
-# Orquestador durable del Alarm Engine.
-# Mantiene separadas la comprobación lógica de autoridad y la exclusión física de cada mutación.
+# Espejo pedagógico de la orquestación durable/materialized y recovery.
+# AlarmPersistence compone AtomicJsonStore para documentos reemplazables y mantiene el WAL como responsabilidad del dominio.
+# La confirmación sigue el orden WAL fsync -> JournalHead.durable -> snapshots -> JournalHead.materialized.
+# Las mutaciones físicas irreversibles se ejecutan dentro del MutationFence inyectado por el consumidor.
+# Recovery reproduce snapshot_after de commits durable no materializados y nunca vuelve a evaluar la decisión del Engine.
+# La autoridad lógica y el fencing físico se inyectan para evitar acoplar este paquete directamente a Job Runtime.
+
 from __future__ import annotations
 
 import threading
@@ -27,7 +32,6 @@ from ada.alarms.persistence.models import (
 from ada.alarms.persistence.paths import AlarmPersistencePaths
 from atlanticus.state import AtomicJsonStore, StateError
 
-# El consumidor inyecta estos contratos. Persistence no importa Job Runtime y conserva su frontera de dominio.
 AuthorityCheck = Callable[[], None]
 MutationFence = Callable[[], AbstractContextManager[None]]
 
@@ -39,14 +43,12 @@ class AlarmPersistence:
         shared_volume_path: str | Path,
         max_state_document_bytes: int | None = None,
     ) -> None:
-        # AtomicJsonStore resuelve reemplazos JSON atómicos; el WAL mantiene su protocolo append-only propio.
         self._paths = AlarmPersistencePaths(shared_volume_path=shared_volume_path)
         self._state = AtomicJsonStore(
             root_path=self._paths.alarms_root,
             max_document_bytes=max_state_document_bytes,
         )
         self._journal = EngineJournal(paths=self._paths)
-        # Este lock serializa llamadas dentro de una instancia. El fence inyectado coordina procesos/contenedores.
         self._write_lock = threading.RLock()
 
     @property
@@ -57,7 +59,9 @@ class AlarmPersistence:
         try:
             document = self._state.read(self._paths.journal_head_relative)
         except StateError as error:
-            raise AlarmPersistenceCorruptionError('could not read Alarm Engine journal head') from error
+            raise AlarmPersistenceCorruptionError(
+                'could not read Alarm Engine journal head'
+            ) from error
         if document is None:
             return JournalHead()
         return JournalHead.from_document(document)
@@ -87,7 +91,6 @@ class AlarmPersistence:
         *,
         after: JournalPosition | None = None,
     ) -> tuple[JournalEntry, ...]:
-        # Los lectores nunca cruzan journal-head.durable aunque existan bytes posteriores físicamente visibles.
         head = self.read_head()
         if head.durable is None or after == head.durable:
             return ()
@@ -104,7 +107,6 @@ class AlarmPersistence:
     ) -> CommitBatchResult:
         authority = _require_authority(assert_authority)
         mutation = _require_mutation_fence(fenced_mutation)
-        # Validar antes de cualquier I/O evita crear archivos para un batch inválido o vacío.
         ordered = _ordered_records(records)
         with self._write_lock:
             authority()
@@ -115,9 +117,6 @@ class AlarmPersistence:
                 )
             self._validate_previous_state(ordered)
             segment_id = segment_id_for_evaluated_at(ordered[0].commit.evaluated_at)
-
-            # Primera frontera irreversible: limpiar cola no confirmada, sellar si corresponde y fsync del WAL.
-            # Todo ocurre bajo el mismo fence físico para impedir append de un owner stale durante takeover.
             with mutation():
                 _require_unchanged_head(self.read_head(), head, stage='WAL append')
                 self._journal.discard_unconfirmed_tail(head.durable)
@@ -126,28 +125,25 @@ class AlarmPersistence:
                     sealed_count = self._journal.seal_before(segment_id)
                 self._journal.verify_append_position(durable=head.durable, segment_id=segment_id)
                 entries = self._journal.append_batch(ordered)
-
-            # Soltar el fence después del fsync es intencional. Si ocurre takeover aquí, la cola todavía no es durable
-            # y el nuevo owner puede descartarla. El owner anterior no podrá entrar al siguiente fence.
             final_position = entries[-1].end
             durable_head = JournalHead(durable=final_position, materialized=head.materialized)
             with mutation():
                 _require_unchanged_head(self.read_head(), head, stage='durable publication')
                 self._replace_head(durable_head)
-
-            # Sólo después de publicar durable se materializan los after-images exactos de cada grupo.
             for entry in entries:
                 with mutation():
-                    _require_durable_head(self.read_head(), durable_head, stage='snapshot materialization')
+                    _require_durable_head(
+                        self.read_head(), durable_head, stage='snapshot materialization'
+                    )
                     self._materialize_entry(entry)
-
-            # materialized avanza únicamente cuando todos los snapshots del batch quedaron reflejados.
             completed_head = JournalHead(
                 durable=final_position,
                 materialized=final_position,
             )
             with mutation():
-                _require_durable_head(self.read_head(), durable_head, stage='materialized publication')
+                _require_durable_head(
+                    self.read_head(), durable_head, stage='materialized publication'
+                )
                 self._replace_head(completed_head)
             return CommitBatchResult(
                 record_count=len(entries),
@@ -172,13 +168,9 @@ class AlarmPersistence:
                 raise AlarmPersistenceCorruptionError(
                     'Alarm Engine snapshots exist without a durable journal head'
                 )
-
-            # La cola posterior a durable nunca es verdad confirmada y puede truncarse bajo fence.
             with mutation():
                 _require_unchanged_head(self.read_head(), head, stage='recovery tail discard')
                 discarded = self._journal.discard_unconfirmed_tail(head.durable)
-
-            # La validación durable es de lectura. Ante corrupción se detiene; nunca se inventa continuidad.
             authority()
             self._journal.validate_durable_region(head.durable)
             if head.durable is None:
@@ -191,7 +183,6 @@ class AlarmPersistence:
                     sealed_segment_count=0,
                 )
             if head.materialized == head.durable:
-                # Un segmento reconciliado anterior puede sellarse sin tocar decisiones funcionales.
                 with mutation():
                     _require_unchanged_head(self.read_head(), head, stage='recovery sealing')
                     sealed_count = self._journal.seal_before(head.durable.segment_id)
@@ -203,8 +194,6 @@ class AlarmPersistence:
                     discarded_tail_bytes=discarded,
                     sealed_segment_count=sealed_count,
                 )
-
-            # Recovery recorre exclusivamente materialized -> durable y reaplica snapshot_after; no reevalúa alarmas.
             entries = self._journal.read_entries(after=head.materialized, through=head.durable)
             applied = 0
             skipped = 0
@@ -232,7 +221,6 @@ class AlarmPersistence:
                     skipped += 1
                 current_materialized = entry.end
                 current_head = next_head
-
             with mutation():
                 _require_unchanged_head(self.read_head(), current_head, stage='recovery sealing')
                 sealed_count = self._journal.seal_before(head.durable.segment_id)
@@ -246,7 +234,6 @@ class AlarmPersistence:
             )
 
     def _validate_previous_state(self, records: Sequence[EngineCommitRecord]) -> None:
-        # Un commit nuevo sólo puede avanzar desde el HEAD materializado real de su priority_group.
         for record in records:
             current = self.read_snapshot(record.commit.priority_group)
             if current is None:
@@ -263,7 +250,6 @@ class AlarmPersistence:
                 )
 
     def _materialize_entry(self, entry: JournalEntry) -> bool:
-        # Idempotencia: el after-image ya aplicado se reconoce por last_commit_id y no se vuelve a escribir.
         record = entry.record
         current = self.read_snapshot(record.commit.priority_group)
         if current is not None and current.last_commit_id == record.commit.commit_id:
@@ -284,14 +270,18 @@ class AlarmPersistence:
                 record.snapshot_after.as_document(),
             )
         except StateError as error:
-            raise AlarmPersistenceWriteError('could not materialize Alarm Engine snapshot') from error
+            raise AlarmPersistenceWriteError(
+                'could not materialize Alarm Engine snapshot'
+            ) from error
         return True
 
     def _replace_head(self, head: JournalHead) -> None:
         try:
             self._state.replace(self._paths.journal_head_relative, head.as_document())
         except StateError as error:
-            raise AlarmPersistenceWriteError('could not publish Alarm Engine journal head') from error
+            raise AlarmPersistenceWriteError(
+                'could not publish Alarm Engine journal head'
+            ) from error
 
     def _read_snapshot_path(self, path: Path) -> GroupRuntimeSnapshot:
         try:
@@ -321,7 +311,6 @@ def _require_mutation_fence(value: MutationFence) -> MutationFence:
 
 
 def _require_unchanged_head(current: JournalHead, expected: JournalHead, *, stage: str) -> None:
-    # Detecta una mutación inesperada de HEAD incluso si el caller compuso incorrectamente la exclusión física.
     if current != expected:
         raise AlarmPersistenceConflictError(f'Alarm Engine journal head changed before {stage}')
 
@@ -332,7 +321,6 @@ def _require_durable_head(current: JournalHead, expected: JournalHead, *, stage:
 
 
 def _ordered_records(records: Sequence[EngineCommitRecord]) -> tuple[EngineCommitRecord, ...]:
-    # Un batch físico comparte cycle y hora UTC, pero conserva un EngineCommit independiente por priority_group.
     if isinstance(records, str | bytes) or not isinstance(records, Sequence):
         raise TypeError('records must be a sequence')
     if not records:
@@ -357,7 +345,9 @@ def _ordered_records(records: Sequence[EngineCommitRecord]) -> tuple[EngineCommi
         elif current_segment != segment_id:
             raise ValueError('all records in a batch must belong to the same UTC hour')
         normalized.append(record)
-    return tuple(sorted(normalized, key=lambda item: (item.commit.priority_group, item.commit.commit_id)))
+    return tuple(
+        sorted(normalized, key=lambda item: (item.commit.priority_group, item.commit.commit_id))
+    )
 
 
 def _position_key(value: JournalPosition) -> tuple[str, int]:

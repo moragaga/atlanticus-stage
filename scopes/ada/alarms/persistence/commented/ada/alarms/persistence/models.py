@@ -1,5 +1,9 @@
-# Contratos físicos versionados del WAL, JournalHead y GroupRuntimeSnapshot.
-# El snapshot conserva sólo memoria operacional decision-complete; el WAL conserva la decisión durable.
+# Espejo pedagógico de los modelos físicos de Alarm Persistence.
+# EngineCommitRecord representa una decisión completa persistible y verificable mediante hash canónico.
+# GroupRuntimeSnapshot conserva el after-image operativo de un priority_group y su last_commit_id.
+# JournalHead separa durable de materialized para permitir recovery determinista sin reevaluar decisiones ya confirmadas.
+# Los modelos validan invariantes antes de que los datos crucen una frontera física.
+
 from __future__ import annotations
 
 import copy
@@ -310,7 +314,9 @@ class EngineCommitRecord:
             label='engine commit record',
         )
         if document['record_schema_version'] != ENGINE_COMMIT_RECORD_SCHEMA_VERSION:
-            raise AlarmPersistenceCorruptionError('engine commit record schema version is unsupported')
+            raise AlarmPersistenceCorruptionError(
+                'engine commit record schema version is unsupported'
+            )
         if not isinstance(document['commit'], Mapping):
             raise AlarmPersistenceCorruptionError('engine commit record commit must be an object')
         if not isinstance(document['snapshot_after'], Mapping):
@@ -337,7 +343,9 @@ class EngineCommitRecord:
         from ada.alarms.persistence.serialization import build_record_hash
 
         if build_record_hash(record.unsigned_document()) != record.record_hash:
-            raise AlarmPersistenceCorruptionError('engine commit record hash does not match payload')
+            raise AlarmPersistenceCorruptionError(
+                'engine commit record hash does not match payload'
+            )
         return record
 
 
@@ -673,4 +681,3 @@ def _require_utc_timestamp(value: Any, name: str) -> datetime:
     if parsed.utcoffset() != timedelta(0):
         raise ValueError(f'{name} must use UTC timezone')
     return parsed.astimezone(UTC)
-

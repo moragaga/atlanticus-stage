@@ -1,4 +1,8 @@
-# Layout físico acordado bajo <shared-volume>/ada/alarms sin decidir la ruta absoluta desde ADA.
+# Espejo pedagógico del layout físico de Alarm Persistence.
+# Las rutas se resuelven bajo el namespace ada/alarms/runtime acordado y nunca inventan raíces alternativas.
+# El módulo separa state, journal open/sealed y snapshots por priority_group.
+# Las validaciones de nombres evitan traversal y mantienen determinismo entre procesos/contenedores.
+
 from __future__ import annotations
 
 from pathlib import Path
