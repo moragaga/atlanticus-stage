@@ -1,3 +1,18 @@
+from ada.alarms.core.commit import (
+    AssignmentChangeRecord,
+    DeactivationEffectRecord,
+    EngineCommit,
+    EngineCommitRecords,
+    EpisodeChangeReference,
+    GroupCommitMaterialization,
+    InputKind,
+    InputReceipt,
+    ManagementEffectRecord,
+    OccurrenceChangeReference,
+    commit_id_for,
+    cycle_id_for,
+    materialize_group_commit,
+)
 from ada.alarms.core.deactivation import (
     DeactivationEffectIdFactory,
     DeactivationRequestIdFactory,
@@ -5,6 +20,12 @@ from ada.alarms.core.deactivation import (
 )
 from ada.alarms.core.errors import AlarmContractError, AlarmCoreError, AlarmLifecycleError
 from ada.alarms.core.evaluation import Evaluator, execute_evaluator
+from ada.alarms.core.evidence import (
+    DEFAULT_EVIDENCE_SAMPLING_INTERVAL_SECONDS,
+    EvidenceContractRef,
+    EvidenceRecord,
+)
+from ada.alarms.core.journey import JourneyEvent
 from ada.alarms.core.lifecycle import (
     EpisodeIdFactory,
     OccurrenceIdFactory,
@@ -82,9 +103,26 @@ from ada.alarms.core.routing import (
     resolve_group_routing,
 )
 
-__version__ = '0.4.0'
+__version__ = '0.5.0'
 
 __all__ = [
+    'AssignmentChangeRecord',
+    'DEFAULT_EVIDENCE_SAMPLING_INTERVAL_SECONDS',
+    'DeactivationEffectRecord',
+    'EngineCommit',
+    'EngineCommitRecords',
+    'EpisodeChangeReference',
+    'EvidenceContractRef',
+    'EvidenceRecord',
+    'GroupCommitMaterialization',
+    'InputKind',
+    'InputReceipt',
+    'JourneyEvent',
+    'ManagementEffectRecord',
+    'OccurrenceChangeReference',
+    'commit_id_for',
+    'cycle_id_for',
+    'materialize_group_commit',
     'TECHNICAL_HOLD_GRACE_SECONDS',
     'AffectedInputIssue',
     'AlarmContractError',

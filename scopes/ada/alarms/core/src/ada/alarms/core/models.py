@@ -592,6 +592,7 @@ class AlarmRuntimeState:
     deactivation_effect: DeactivationEffect | None = None
     assignments: tuple[ToolAssignment, ...] = ()
     pending_assignments: tuple[PendingToolAssignment, ...] = ()
+    next_evidence_due_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.alarm_identity, AlarmIdentity):
@@ -666,6 +667,12 @@ class AlarmRuntimeState:
             normalized_pending.append(pending)
         if self.occurrence is None and (normalized_assignments or normalized_pending):
             raise ValueError('assignments require an open occurrence')
+        if self.next_evidence_due_at is not None:
+            _require_utc_datetime(self.next_evidence_due_at, 'next_evidence_due_at')
+            if self.occurrence is None:
+                raise ValueError('next_evidence_due_at requires an open occurrence')
+            if self.technical_hold is not None:
+                raise ValueError('technical_hold suspends next_evidence_due_at')
         object.__setattr__(self, 'assignments', tuple(sorted(normalized_assignments)))
         object.__setattr__(self, 'pending_assignments', tuple(sorted(normalized_pending)))
 

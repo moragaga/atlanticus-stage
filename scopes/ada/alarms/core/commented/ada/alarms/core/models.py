@@ -1,7 +1,5 @@
-# Espejo pedagógico de los contratos puros del Alarm Core 0.4.0.
-# Deactivation agrega Policy, Intent, Request, Decision, Effect y outcomes sin convertir AlarmRuntimeState en historial.
-# El hot state conserva sólo el DeactivationEffect vigente porque su pérdida sí cambiaría decisiones futuras tras restart.
-# Request y Decision conservan causalidad y trazabilidad; receipts, actoría histórica completa y persistencia quedan fuera del hot state.
+# Espejo pedagógico: concentra los contratos funcionales y su estado caliente mínimo.
+# next_evidence_due_at guarda sólo el próximo deadline válido; la historia queda fuera del hot state.
 
 from __future__ import annotations
 
@@ -17,23 +15,27 @@ from ada.alarms.core.errors import AlarmContractError
 TECHNICAL_HOLD_GRACE_SECONDS = 300
 
 
+# Clase AlarmKind: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmKind(StrEnum):
     RISK = 'RISK'
     IMPACT = 'IMPACT'
 
 
+# Clase Criticality: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class Criticality(StrEnum):
     C1 = 'C1'
     C2 = 'C2'
     C3 = 'C3'
 
 
+# Clase AlarmStatus: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmStatus(StrEnum):
     ACTIVE = 'ACTIVE'
     INACTIVE = 'INACTIVE'
     ERROR = 'ERROR'
 
 
+# Clase PriorityDisposition: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class PriorityDisposition(StrEnum):
     PREDOMINANT = 'PREDOMINANT'
     ECLIPSED = 'ECLIPSED'
@@ -42,6 +44,7 @@ class PriorityDisposition(StrEnum):
     SHADOW = 'SHADOW'
 
 
+# Clase AssignmentChangeKind: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AssignmentChangeKind(StrEnum):
     ASSIGNED = 'ASSIGNED'
     REMOVED = 'REMOVED'
@@ -49,12 +52,14 @@ class AssignmentChangeKind(StrEnum):
     RESCHEDULED = 'RESCHEDULED'
 
 
+# Clase EvaluationErrorOrigin: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class EvaluationErrorOrigin(StrEnum):
     QUALITY = 'QUALITY'
     EVALUATOR = 'EVALUATOR'
     RUNTIME = 'RUNTIME'
 
 
+# Clase OccurrenceClosureReason: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class OccurrenceClosureReason(StrEnum):
     CONDITION_NORMALIZED = 'condition_normalized'
     TECHNICAL_HOLD_EXPIRED = 'technical_hold_expired'
@@ -63,38 +68,45 @@ class OccurrenceClosureReason(StrEnum):
     CONFIGURATION_RECONFIGURED = 'configuration_reconfigured'
 
 
+# Clase EpisodeClosureReason: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class EpisodeClosureReason(StrEnum):
     CONDITION_NORMALIZED = 'condition_normalized'
     TECHNICAL_UNCERTAINTY = 'technical_uncertainty'
     CONFIGURATION_TERMINATED = 'configuration_terminated'
 
 
+# Clase OccurrenceChangeKind: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class OccurrenceChangeKind(StrEnum):
     STARTED = 'STARTED'
     CLOSED = 'CLOSED'
 
 
+# Clase EpisodeChangeKind: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class EpisodeChangeKind(StrEnum):
     STARTED = 'STARTED'
     CLOSED = 'CLOSED'
 
 
+# Clase TechnicalHoldChangeKind: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class TechnicalHoldChangeKind(StrEnum):
     STARTED = 'STARTED'
     CLEARED = 'CLEARED'
 
 
+# Clase ManagementActionOutcome: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class ManagementActionOutcome(StrEnum):
     EFFECTIVE = 'EFFECTIVE'
     ADDITIONAL = 'ADDITIONAL'
     LATE = 'LATE'
 
 
+# Clase ManagementEffectChangeKind: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class ManagementEffectChangeKind(StrEnum):
     STARTED = 'STARTED'
     CLEARED = 'CLEARED'
 
 
+# Clase DeactivationRequestOutcome: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationRequestOutcome(StrEnum):
     DIRECT = 'DIRECT'
     PENDING_APPROVAL = 'PENDING_APPROVAL'
@@ -103,6 +115,7 @@ class DeactivationRequestOutcome(StrEnum):
     LATE = 'LATE'
 
 
+# Clase DeactivationDecisionKind: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationDecisionKind(StrEnum):
     APPROVED = 'APPROVED'
     REJECTED = 'REJECTED'
@@ -110,6 +123,7 @@ class DeactivationDecisionKind(StrEnum):
     INVALIDATED = 'INVALIDATED'
 
 
+# Clase DeactivationDecisionOutcome: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationDecisionOutcome(StrEnum):
     APPLIED = 'APPLIED'
     REJECTED = 'REJECTED'
@@ -120,12 +134,14 @@ class DeactivationDecisionOutcome(StrEnum):
     PENDING_DEPENDENCY = 'PENDING_DEPENDENCY'
 
 
+# Clase DeactivationEffectChangeKind: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationEffectChangeKind(StrEnum):
     STARTED = 'STARTED'
     CLEARED = 'CLEARED'
 
 
 @dataclass(frozen=True, slots=True, order=True)
+# Clase RoutingDestination: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class RoutingDestination:
     tool_key: str
     delay_seconds: int | None = None
@@ -141,6 +157,7 @@ class RoutingDestination:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase AlarmRouting: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmRouting:
     origin_tool_key: str
     destinations: tuple[RoutingDestination, ...] = ()
@@ -162,6 +179,7 @@ class AlarmRouting:
 
 
 @dataclass(frozen=True, slots=True, order=True)
+# Clase AlarmIdentity: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmIdentity:
     family_key: str
     alarm_key: str
@@ -176,6 +194,7 @@ class AlarmIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase DeactivationPolicy: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationPolicy:
     approval_required: bool
 
@@ -185,6 +204,7 @@ class DeactivationPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase PlannedAlarm: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class PlannedAlarm:
     identity: AlarmIdentity
     kind: AlarmKind
@@ -237,6 +257,7 @@ class PlannedAlarm:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase EvaluationContext: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class EvaluationContext:
     alarm_identity: AlarmIdentity
     now: datetime
@@ -260,6 +281,7 @@ class EvaluationContext:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase EvidenceSnapshot: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class EvidenceSnapshot:
     contract_key: str
     contract_version: str
@@ -274,6 +296,7 @@ class EvidenceSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase AffectedInputIssue: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AffectedInputIssue:
     reason_key: str
     source_key: str | None = None
@@ -298,6 +321,7 @@ class AffectedInputIssue:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase EvaluationError: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class EvaluationError:
     origin: EvaluationErrorOrigin
     error_key: str
@@ -317,6 +341,7 @@ class EvaluationError:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase AlarmEvaluation: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmEvaluation:
     alarm_identity: AlarmIdentity
     status: AlarmStatus
@@ -347,6 +372,7 @@ class AlarmEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase AlarmOccurrence: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmOccurrence:
     occurrence_id: str
     alarm_identity: AlarmIdentity
@@ -403,6 +429,7 @@ class AlarmOccurrence:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase AlarmEpisode: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmEpisode:
     episode_id: str
     priority_group: str
@@ -441,6 +468,7 @@ class AlarmEpisode:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase TechnicalHold: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class TechnicalHold:
     started_at: datetime
     due_at: datetime
@@ -453,6 +481,7 @@ class TechnicalHold:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase DeactivationIntent: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationIntent:
     effective_until: datetime
 
@@ -461,6 +490,7 @@ class DeactivationIntent:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase ManagementAction: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class ManagementAction:
     input_id: str
     alarm_identity: AlarmIdentity
@@ -496,6 +526,7 @@ class ManagementAction:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase ManagementEffect: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class ManagementEffect:
     effect_id: str
     source_occurrence_id: str
@@ -512,6 +543,7 @@ class ManagementEffect:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase DeactivationRequest: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationRequest:
     request_id: str
     alarm_identity: AlarmIdentity
@@ -536,6 +568,7 @@ class DeactivationRequest:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase DeactivationDecision: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationDecision:
     decision_id: str
     request_id: str
@@ -553,6 +586,7 @@ class DeactivationDecision:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase DeactivationEffect: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationEffect:
     effect_id: str
     effective_from: datetime
@@ -567,6 +601,7 @@ class DeactivationEffect:
 
 
 @dataclass(frozen=True, slots=True, order=True)
+# Clase ToolAssignment: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class ToolAssignment:
     tool_key: str
     assigned_at: datetime
@@ -577,6 +612,7 @@ class ToolAssignment:
 
 
 @dataclass(frozen=True, slots=True, order=True)
+# Clase PendingToolAssignment: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class PendingToolAssignment:
     tool_key: str
     due_at: datetime
@@ -587,6 +623,7 @@ class PendingToolAssignment:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase AlarmRuntimeState: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmRuntimeState:
     alarm_identity: AlarmIdentity
     occurrence: AlarmOccurrence | None = None
@@ -597,6 +634,7 @@ class AlarmRuntimeState:
     deactivation_effect: DeactivationEffect | None = None
     assignments: tuple[ToolAssignment, ...] = ()
     pending_assignments: tuple[PendingToolAssignment, ...] = ()
+    next_evidence_due_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.alarm_identity, AlarmIdentity):
@@ -671,11 +709,18 @@ class AlarmRuntimeState:
             normalized_pending.append(pending)
         if self.occurrence is None and (normalized_assignments or normalized_pending):
             raise ValueError('assignments require an open occurrence')
+        if self.next_evidence_due_at is not None:
+            _require_utc_datetime(self.next_evidence_due_at, 'next_evidence_due_at')
+            if self.occurrence is None:
+                raise ValueError('next_evidence_due_at requires an open occurrence')
+            if self.technical_hold is not None:
+                raise ValueError('technical_hold suspends next_evidence_due_at')
         object.__setattr__(self, 'assignments', tuple(sorted(normalized_assignments)))
         object.__setattr__(self, 'pending_assignments', tuple(sorted(normalized_pending)))
 
 
 @dataclass(frozen=True, slots=True)
+# Clase GroupLifecycleState: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class GroupLifecycleState:
     priority_group: str
     episode: AlarmEpisode | None = None
@@ -719,6 +764,7 @@ class GroupLifecycleState:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase ConfigurationClosure: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class ConfigurationClosure:
     alarm_identity: AlarmIdentity
     reason: OccurrenceClosureReason
@@ -738,6 +784,7 @@ class ConfigurationClosure:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase OccurrenceChange: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class OccurrenceChange:
     kind: OccurrenceChangeKind
     occurrence: AlarmOccurrence
@@ -754,6 +801,7 @@ class OccurrenceChange:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase EpisodeChange: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class EpisodeChange:
     kind: EpisodeChangeKind
     episode: AlarmEpisode
@@ -770,6 +818,7 @@ class EpisodeChange:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase TechnicalHoldChange: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class TechnicalHoldChange:
     kind: TechnicalHoldChangeKind
     alarm_identity: AlarmIdentity
@@ -794,6 +843,7 @@ class TechnicalHoldChange:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase ManagementActionResult: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class ManagementActionResult:
     action: ManagementAction
     outcome: ManagementActionOutcome
@@ -822,6 +872,7 @@ class ManagementActionResult:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase ManagementEffectChange: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class ManagementEffectChange:
     kind: ManagementEffectChangeKind
     alarm_identity: AlarmIdentity
@@ -844,6 +895,7 @@ class ManagementEffectChange:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase DeactivationRequestResult: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationRequestResult:
     action: ManagementAction
     outcome: DeactivationRequestOutcome
@@ -876,6 +928,7 @@ class DeactivationRequestResult:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase DeactivationDecisionResult: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationDecisionResult:
     decision: DeactivationDecision
     outcome: DeactivationDecisionOutcome
@@ -901,6 +954,7 @@ class DeactivationDecisionResult:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase DeactivationEffectChange: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class DeactivationEffectChange:
     kind: DeactivationEffectChangeKind
     alarm_identity: AlarmIdentity
@@ -925,6 +979,7 @@ class DeactivationEffectChange:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase ReappearanceChange: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class ReappearanceChange:
     alarm_identity: AlarmIdentity
     occurrence_id: str
@@ -943,6 +998,7 @@ class ReappearanceChange:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase CascadeSuppression: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class CascadeSuppression:
     source_alarm_identity: AlarmIdentity
     source_occurrence_id: str
@@ -961,6 +1017,7 @@ class CascadeSuppression:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase AssignmentChange: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AssignmentChange:
     kind: AssignmentChangeKind
     alarm_identity: AlarmIdentity
@@ -986,6 +1043,7 @@ class AssignmentChange:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase AlarmPriorityDecision: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmPriorityDecision:
     alarm_identity: AlarmIdentity
     disposition: PriorityDisposition
@@ -1022,6 +1080,7 @@ class AlarmPriorityDecision:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase GroupPriorityResolution: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class GroupPriorityResolution:
     priority_group: str
     predominant_alarm_identity: AlarmIdentity | None
@@ -1058,6 +1117,7 @@ class GroupPriorityResolution:
 
 
 @dataclass(frozen=True, slots=True)
+# Clase GroupLifecycleDecision: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class GroupLifecycleDecision:
     state: GroupLifecycleState
     occurrence_changes: tuple[OccurrenceChange, ...] = ()
@@ -1160,6 +1220,7 @@ class GroupLifecycleDecision:
         )
 
 
+# Función _require_non_empty_string: transformación determinística; sus efectos externos se componen fuera del Core.
 def _require_non_empty_string(value: object, name: str) -> None:
     if not isinstance(value, str):
         raise TypeError(f'{name} must be a string')
@@ -1167,6 +1228,7 @@ def _require_non_empty_string(value: object, name: str) -> None:
         raise ValueError(f'{name} must not be empty')
 
 
+# Función _require_utc_datetime: transformación determinística; sus efectos externos se componen fuera del Core.
 def _require_utc_datetime(value: object, name: str) -> None:
     if not isinstance(value, datetime):
         raise TypeError(f'{name} must be a datetime')

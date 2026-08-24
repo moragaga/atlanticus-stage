@@ -2,12 +2,25 @@ import ada.alarms.core as core
 
 
 def test_version() -> None:
-    assert core.__version__ == '0.4.0'
+    assert core.__version__ == '0.5.0'
 
 
 def test_public_api_contains_lifecycle_foundation() -> None:
     expected = {
         'AlarmEvaluation',
+        'EngineCommit',
+        'EngineCommitRecords',
+        'EvidenceContractRef',
+        'EvidenceRecord',
+        'JourneyEvent',
+        'AssignmentChangeRecord',
+        'ManagementEffectRecord',
+        'DeactivationEffectRecord',
+        'InputReceipt',
+        'GroupCommitMaterialization',
+        'materialize_group_commit',
+        'cycle_id_for',
+        'commit_id_for',
         'AlarmIdentity',
         'AlarmOccurrence',
         'AlarmEpisode',
