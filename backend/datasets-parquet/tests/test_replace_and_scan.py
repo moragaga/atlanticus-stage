@@ -415,6 +415,173 @@ def test_columns_and_typed_projection_are_mutually_exclusive(
         )
 
 
+def test_multiple_targets_align_column_removed_from_newer_publication(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    day_20 = _target(pi_definition, day='20')
+    day_21 = _target(pi_definition, day='21')
+    store.replace(
+        definition=pi_definition,
+        target=day_20,
+        table=pa.table(
+            {
+                'timestamp': timestamp_array('2026-07-20T23:00:00Z'),
+                'old_tag': pa.array([10.0], type=pa.float64()),
+            }
+        ),
+    )
+    store.replace(
+        definition=pi_definition,
+        target=day_21,
+        table=pa.table(
+            {
+                'timestamp': timestamp_array('2026-07-21T01:00:00Z'),
+                'other': pa.array([20.0], type=pa.float64()),
+            }
+        ),
+    )
+
+    result = store.scan(
+        definition=pi_definition,
+        targets=(day_20, day_21),
+        columns=('timestamp', 'old_tag'),
+    )
+
+    assert result.table['old_tag'].to_pylist() == [10.0, None]
+    assert result.target_count == 2
+    assert result.artifact_count == 2
+    assert len(result.warnings) == 1
+
+
+def test_multiple_targets_align_column_across_present_missing_present_publications(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    day_20 = _target(pi_definition, day='20')
+    day_21 = _target(pi_definition, day='21')
+    day_22 = _target(pi_definition, day='22')
+    store.replace(
+        definition=pi_definition,
+        target=day_20,
+        table=pa.table(
+            {
+                'timestamp': timestamp_array('2026-07-20T23:00:00Z'),
+                'cycling_tag': pa.array([10.0], type=pa.float64()),
+            }
+        ),
+    )
+    store.replace(
+        definition=pi_definition,
+        target=day_21,
+        table=pa.table(
+            {
+                'timestamp': timestamp_array('2026-07-21T01:00:00Z'),
+                'other': pa.array([20.0], type=pa.float64()),
+            }
+        ),
+    )
+    store.replace(
+        definition=pi_definition,
+        target=day_22,
+        table=pa.table(
+            {
+                'timestamp': timestamp_array('2026-07-22T01:00:00Z'),
+                'cycling_tag': pa.array([30.0], type=pa.float64()),
+            }
+        ),
+    )
+
+    result = store.scan(
+        definition=pi_definition,
+        targets=(day_20, day_21, day_22),
+        columns=('timestamp', 'cycling_tag'),
+    )
+
+    assert result.table['cycling_tag'].to_pylist() == [10.0, None, 30.0]
+    assert result.target_count == 3
+    assert result.artifact_count == 3
+    assert len(result.warnings) == 1
+
+
+def test_typed_projection_synthesizes_column_when_selected_newer_publication_no_longer_has_it(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    day_20 = _target(pi_definition, day='20')
+    day_21 = _target(pi_definition, day='21')
+    store.replace(
+        definition=pi_definition,
+        target=day_20,
+        table=pa.table(
+            {
+                'timestamp': timestamp_array('2026-07-20T23:00:00Z'),
+                'removed_tag': pa.array([10.0], type=pa.float64()),
+            }
+        ),
+    )
+    day_21_table = pa.table(
+        {
+            'timestamp': timestamp_array('2026-07-21T01:00:00Z'),
+            'other': pa.array([20.0], type=pa.float64()),
+        }
+    )
+    store.replace(
+        definition=pi_definition,
+        target=day_21,
+        table=day_21_table,
+    )
+
+    result = store.scan(
+        definition=pi_definition,
+        targets=(day_21,),
+        projection_schema=pa.schema(
+            [
+                day_21_table.schema.field('timestamp'),
+                pa.field('removed_tag', pa.float64()),
+            ]
+        ),
+    )
+
+    assert result.table.column_names == ['timestamp', 'removed_tag']
+    assert result.table['removed_tag'].type == pa.float64()
+    assert result.table['removed_tag'].to_pylist() == [None]
+    assert len(result.warnings) == 1
+
+
+def test_typed_projection_rejects_type_change_between_publications(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    day_20 = _target(pi_definition, day='20')
+    day_21 = _target(pi_definition, day='21')
+    store.replace(
+        definition=pi_definition,
+        target=day_20,
+        table=pa.table({'value': pa.array([1.0], type=pa.float64())}),
+    )
+    store.replace(
+        definition=pi_definition,
+        target=day_21,
+        table=pa.table({'value': pa.array(['1.0'], type=pa.string())}),
+    )
+
+    with pytest.raises(ParquetSchemaError, match='incompatible type for projected column value'):
+        store.scan(
+            definition=pi_definition,
+            targets=(day_20, day_21),
+            projection_schema=pa.schema([pa.field('value', pa.float64())]),
+        )
+
+
 def test_multiple_targets_reject_incompatible_types(
     tmp_path: Path,
     clock: datetime,
