@@ -372,6 +372,38 @@ class AlarmEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
+# RuntimeEvaluationState conserva sólo la memoria compacta documentada para recovery; nunca duplica Evidence ni el error completo.
+class RuntimeEvaluationState:
+    status: AlarmStatus
+    evaluated_at: datetime
+    error_key: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, AlarmStatus):
+            raise TypeError('status must be an AlarmStatus')
+        _require_utc_datetime(self.evaluated_at, 'evaluated_at')
+        if self.status is AlarmStatus.ERROR:
+            _require_non_empty_string(self.error_key, 'error_key')
+        elif self.error_key is not None:
+            raise ValueError('ACTIVE and INACTIVE runtime evaluation must not contain error_key')
+
+    # La conversión descarta deliberadamente payloads físicos/técnicos y retiene sólo status, tiempo y error_key cuando aplica.
+    @classmethod
+    def from_evaluation(cls, evaluation: AlarmEvaluation) -> RuntimeEvaluationState:
+        if not isinstance(evaluation, AlarmEvaluation):
+            raise TypeError('evaluation must be an AlarmEvaluation')
+        return cls(
+            status=evaluation.status,
+            evaluated_at=evaluation.evaluated_at,
+            error_key=(
+                evaluation.error.error_key
+                if evaluation.status is AlarmStatus.ERROR and evaluation.error is not None
+                else None
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 # Clase AlarmOccurrence: contrato tipado con invariantes explícitas para evitar estados ambiguos.
 class AlarmOccurrence:
     occurrence_id: str
@@ -627,7 +659,7 @@ class PendingToolAssignment:
 class AlarmRuntimeState:
     alarm_identity: AlarmIdentity
     occurrence: AlarmOccurrence | None = None
-    last_evaluation: AlarmEvaluation | None = None
+    last_evaluation: RuntimeEvaluationState | None = None
     technical_hold: TechnicalHold | None = None
     management_cycle: int | None = None
     management_effect: ManagementEffect | None = None
@@ -646,11 +678,10 @@ class AlarmRuntimeState:
                 raise ValueError('occurrence identity must match runtime state')
             if not self.occurrence.is_open:
                 raise ValueError('runtime state must not retain a closed occurrence')
-        if self.last_evaluation is not None:
-            if not isinstance(self.last_evaluation, AlarmEvaluation):
-                raise TypeError('last_evaluation must be an AlarmEvaluation')
-            if self.last_evaluation.alarm_identity != self.alarm_identity:
-                raise ValueError('last_evaluation identity must match runtime state')
+        if self.last_evaluation is not None and not isinstance(
+            self.last_evaluation, RuntimeEvaluationState
+        ):
+            raise TypeError('last_evaluation must be a RuntimeEvaluationState')
         if self.occurrence is not None:
             if self.last_evaluation is None:
                 raise ValueError('open occurrence requires last_evaluation')
@@ -922,9 +953,7 @@ class DeactivationRequestResult:
             if self.deactivation_request is None or self.deactivation_effect_id is not None:
                 raise ValueError('PENDING_APPROVAL result requires request without effect')
         elif self.deactivation_request is not None or self.deactivation_effect_id is not None:
-            raise ValueError(
-                'non-effective deactivation request result must not contain request/effect'
-            )
+            raise ValueError('non-effective deactivation request result must not contain request/effect')
 
 
 @dataclass(frozen=True, slots=True)
@@ -973,9 +1002,7 @@ class DeactivationEffectChange:
             if self.effective_at != self.deactivation_effect.effective_from:
                 raise ValueError('STARTED deactivation effect effective_at must match effect')
         elif self.deactivation_effect is not None:
-            raise ValueError(
-                'CLEARED deactivation effect change must not contain deactivation_effect'
-            )
+            raise ValueError('CLEARED deactivation effect change must not contain deactivation_effect')
 
 
 @dataclass(frozen=True, slots=True)
@@ -1111,9 +1138,7 @@ class GroupPriorityResolution:
         expected = predominant[0] if predominant else None
         if self.predominant_alarm_identity != expected:
             raise ValueError('predominant_alarm_identity must match PREDOMINANT decision')
-        object.__setattr__(
-            self, 'alarms', tuple(sorted(normalized, key=lambda item: item.alarm_identity))
-        )
+        object.__setattr__(self, 'alarms', tuple(sorted(normalized, key=lambda item: item.alarm_identity)))
 
 
 @dataclass(frozen=True, slots=True)

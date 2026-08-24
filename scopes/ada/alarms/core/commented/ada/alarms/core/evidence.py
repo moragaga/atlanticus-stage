@@ -17,6 +17,7 @@ from ada.alarms.core.models import (
     GroupLifecycleDecision,
     GroupLifecycleState,
     OccurrenceChangeKind,
+    RuntimeEvaluationState,
     TechnicalHoldChangeKind,
 )
 
@@ -70,9 +71,7 @@ class EvidenceRecord:
         else:
             error = self.evaluation.error
             if error is None or self.technical_contract is None:
-                raise AlarmContractError(
-                    'technical Evidence requires evaluation error and contract'
-                )
+                raise AlarmContractError('technical Evidence requires evaluation error and contract')
             contract_key = self.technical_contract.contract_key
             contract_version = self.technical_contract.contract_version
             payload = {
@@ -277,7 +276,7 @@ def materialize_evidence(
             )
             working[identity] = replace(
                 current,
-                last_evaluation=evaluation,
+                last_evaluation=RuntimeEvaluationState.from_evaluation(evaluation),
                 next_evidence_due_at=evaluation.evaluated_at + interval,
             )
     state = GroupLifecycleState(

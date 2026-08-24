@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-
 from ada.alarms.core.deactivation import (
     DeactivationEffectIdFactory,
     DeactivationRequestIdFactory,
@@ -41,12 +40,14 @@ from ada.alarms.core.models import (
     OccurrenceChangeKind,
     OccurrenceClosureReason,
     PlannedAlarm,
+    RuntimeEvaluationState,
     TechnicalHold,
     TechnicalHoldChange,
     TechnicalHoldChangeKind,
 )
 from ada.alarms.core.priority import resolve_group_priority
 from ada.alarms.core.routing import resolve_group_routing
+
 
 OccurrenceIdFactory = Callable[[AlarmIdentity, datetime], str]
 EpisodeIdFactory = Callable[[str, datetime], str]
@@ -109,7 +110,9 @@ def reduce_group_cycle(
         if alarm.occurrence is not None
     }
     used_episode_ids = (
-        {management.state.episode.episode_id} if management.state.episode is not None else set()
+        {management.state.episode.episode_id}
+        if management.state.episode is not None
+        else set()
     )
 
     overdue_due_times = sorted(
@@ -239,10 +242,14 @@ def reduce_group_cycle(
             retained[plan.identity] = AlarmRuntimeState(
                 alarm_identity=plan.identity,
                 occurrence=occurrence,
-                last_evaluation=evaluation,
+                last_evaluation=RuntimeEvaluationState.from_evaluation(evaluation),
                 management_cycle=1,
-                management_effect=(None if previous is None else previous.management_effect),
-                deactivation_effect=(None if previous is None else previous.deactivation_effect),
+                management_effect=(
+                    None if previous is None else previous.management_effect
+                ),
+                deactivation_effect=(
+                    None if previous is None else previous.deactivation_effect
+                ),
             )
             occurrence_changes.append(
                 OccurrenceChange(kind=OccurrenceChangeKind.STARTED, occurrence=occurrence)
@@ -251,7 +258,9 @@ def reduce_group_cycle(
     if episode is not None and not _has_open_occurrence(retained):
         reason = _episode_closure_reason(cycle_closure_reasons)
         closed_episode = episode.close(ended_at=cycle_at, reason=reason)
-        episode_changes.append(EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode))
+        episode_changes.append(
+            EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode)
+        )
         _clear_management_only_states(
             retained,
             effective_at=cycle_at,
@@ -264,7 +273,9 @@ def reduce_group_cycle(
         episode=episode,
         alarms=tuple(retained[identity] for identity in sorted(retained)),
     )
-    sorted_occurrence_changes = tuple(sorted(occurrence_changes, key=_occurrence_change_sort_key))
+    sorted_occurrence_changes = tuple(
+        sorted(occurrence_changes, key=_occurrence_change_sort_key)
+    )
     sorted_episode_changes = tuple(sorted(episode_changes, key=_episode_change_sort_key))
     finalized_management = _finalize_management_state(
         next_state,
@@ -377,7 +388,9 @@ def reset_group_for_reconfiguration(
             ended_at=effective_at,
             reason=EpisodeClosureReason.CONFIGURATION_TERMINATED,
         )
-        episode_changes = (EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode),)
+        episode_changes = (
+            EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode),
+        )
     return GroupLifecycleDecision(
         state=GroupLifecycleState(priority_group=state.priority_group),
         occurrence_changes=tuple(occurrence_changes),
@@ -438,7 +451,7 @@ def _resolve_cycle_alarm(
             retained_state=AlarmRuntimeState(
                 alarm_identity=current.alarm_identity,
                 occurrence=occurrence,
-                last_evaluation=evaluation,
+                last_evaluation=RuntimeEvaluationState.from_evaluation(evaluation),
                 management_cycle=current.management_cycle,
                 management_effect=current.management_effect,
                 deactivation_effect=current.deactivation_effect,
@@ -463,7 +476,7 @@ def _resolve_cycle_alarm(
             retained_state=AlarmRuntimeState(
                 alarm_identity=current.alarm_identity,
                 occurrence=occurrence,
-                last_evaluation=evaluation,
+                last_evaluation=RuntimeEvaluationState.from_evaluation(evaluation),
                 technical_hold=hold,
                 management_cycle=current.management_cycle,
                 management_effect=current.management_effect,
@@ -618,7 +631,9 @@ def _validate_evaluation_cardinality(
     if missing:
         raise AlarmContractError('missing_evaluation')
     allowed_extra = {
-        alarm.alarm_identity for alarm in state.alarms if alarm.alarm_identity in closures
+        alarm.alarm_identity
+        for alarm in state.alarms
+        if alarm.alarm_identity in closures
     }
     unexpected = set(evaluations) - set(plans) - allowed_extra
     if unexpected:

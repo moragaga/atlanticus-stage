@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-# Esta clase une la autoridad del JobRuntimeContext con las fronteras durables del AlarmPersistence.
-# Toda escritura autoritativa sigue usando assert_lease_current y fenced_mutation provistos por Runtime.
+# Esta clase mantiene la frontera de escritura durable bajo la autoridad de JobRuntimeContext.
+# La composición superior entrega EngineCommitRecord ya construido; aquí sólo se ejecuta recovery/commit con fencing.
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 

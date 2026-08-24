@@ -25,6 +25,7 @@ from ada.alarms.core import (
     PendingToolAssignment,
     PlannedAlarm,
     RoutingDestination,
+    RuntimeEvaluationState,
     TechnicalHold,
     TechnicalHoldChange,
     TechnicalHoldChangeKind,
@@ -181,7 +182,9 @@ def test_runtime_state_requires_error_evaluation_for_technical_hold() -> None:
         AlarmRuntimeState(
             alarm_identity=identity(),
             occurrence=occurrence,
-            last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+            last_evaluation=RuntimeEvaluationState.from_evaluation(
+                physical('risk', AlarmStatus.ACTIVE)
+            ),
             management_cycle=1,
             technical_hold=TechnicalHold(
                 started_at=NOW,
@@ -206,7 +209,9 @@ def test_group_state_requires_episode_for_open_occurrence() -> None:
                 AlarmRuntimeState(
                     alarm_identity=identity(),
                     occurrence=occurrence,
-                    last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+                    last_evaluation=RuntimeEvaluationState.from_evaluation(
+                physical('risk', AlarmStatus.ACTIVE)
+            ),
                     management_cycle=1,
                 ),
             ),
@@ -252,6 +257,68 @@ def test_error_evaluation_requires_structured_error_contract_type() -> None:
         )
 
 
+def test_runtime_evaluation_state_compacts_physical_evaluation() -> None:
+    evaluation = physical('risk', AlarmStatus.ACTIVE)
+    compact = RuntimeEvaluationState.from_evaluation(evaluation)
+    assert compact.status is AlarmStatus.ACTIVE
+    assert compact.evaluated_at == evaluation.evaluated_at
+    assert compact.error_key is None
+    assert not hasattr(compact, 'alarm_identity')
+    assert not hasattr(compact, 'evidence_snapshot')
+    assert not hasattr(compact, 'error')
+
+
+def test_runtime_evaluation_state_compacts_error_to_error_key() -> None:
+    evaluation = AlarmEvaluation(
+        alarm_identity=identity(),
+        status=AlarmStatus.ERROR,
+        evaluated_at=NOW,
+        error=EvaluationError(
+            origin=EvaluationErrorOrigin.EVALUATOR,
+            error_key='source_unavailable',
+            message='Source unavailable with diagnostic payload',
+            affected_inputs=(AffectedInputIssue(reason_key='missing'),),
+        ),
+    )
+    compact = RuntimeEvaluationState.from_evaluation(evaluation)
+    assert compact.status is AlarmStatus.ERROR
+    assert compact.evaluated_at == NOW
+    assert compact.error_key == 'source_unavailable'
+    assert not hasattr(compact, 'error')
+
+
+def test_runtime_evaluation_state_rejects_error_without_error_key() -> None:
+    with pytest.raises(TypeError, match='error_key'):
+        RuntimeEvaluationState(status=AlarmStatus.ERROR, evaluated_at=NOW)
+
+
+def test_runtime_evaluation_state_rejects_error_key_for_non_error_status() -> None:
+    with pytest.raises(ValueError, match='must not contain error_key'):
+        RuntimeEvaluationState(
+            status=AlarmStatus.ACTIVE,
+            evaluated_at=NOW,
+            error_key='unexpected',
+        )
+
+
+def test_runtime_state_rejects_full_alarm_evaluation() -> None:
+    occurrence = AlarmOccurrence(
+        occurrence_id='O1',
+        alarm_identity=identity(),
+        episode_id='E1',
+        started_at=NOW,
+        alarm_configuration_revision='R1',
+        tool_registry_revision='T1',
+    )
+    with pytest.raises(TypeError, match='RuntimeEvaluationState'):
+        AlarmRuntimeState(
+            alarm_identity=identity(),
+            occurrence=occurrence,
+            last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+            management_cycle=1,
+        )
+
+
 def test_open_runtime_state_requires_non_inactive_last_evaluation() -> None:
     occurrence = AlarmOccurrence(
         occurrence_id='O1',
@@ -267,7 +334,9 @@ def test_open_runtime_state_requires_non_inactive_last_evaluation() -> None:
         AlarmRuntimeState(
             alarm_identity=identity(),
             occurrence=occurrence,
-            last_evaluation=physical('risk', AlarmStatus.INACTIVE),
+            last_evaluation=RuntimeEvaluationState.from_evaluation(
+                physical('risk', AlarmStatus.INACTIVE)
+            ),
             management_cycle=1,
         )
 
@@ -276,7 +345,9 @@ def test_last_evaluation_does_not_persist_without_open_occurrence() -> None:
     with pytest.raises(ValueError, match='last_evaluation requires an open occurrence'):
         AlarmRuntimeState(
             alarm_identity=identity(),
-            last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+            last_evaluation=RuntimeEvaluationState.from_evaluation(
+                physical('risk', AlarmStatus.ACTIVE)
+            ),
         )
 
 
@@ -315,6 +386,7 @@ def test_group_lifecycle_decision_validates_all_change_collections() -> None:
             state=GroupLifecycleState(priority_group='mill-feed'),
             technical_hold_changes=(object(),),
         )
+
 
 
 def test_routing_contract_matches_criticality_semantics() -> None:
@@ -370,20 +442,28 @@ def test_runtime_assignments_are_decision_complete_and_mutually_exclusive() -> N
     state = AlarmRuntimeState(
         alarm_identity=identity(),
         occurrence=occurrence,
-        last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+        last_evaluation=RuntimeEvaluationState.from_evaluation(
+                physical('risk', AlarmStatus.ACTIVE)
+            ),
         management_cycle=1,
         assignments=(ToolAssignment('tool-a', NOW),),
-        pending_assignments=(PendingToolAssignment('tool-b', NOW + timedelta(minutes=15)),),
+        pending_assignments=(
+            PendingToolAssignment('tool-b', NOW + timedelta(minutes=15)),
+        ),
     )
     assert state.assignments[0].tool_key == 'tool-a'
     with pytest.raises(ValueError, match='both assigned and pending'):
         AlarmRuntimeState(
             alarm_identity=identity(),
             occurrence=occurrence,
-            last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+            last_evaluation=RuntimeEvaluationState.from_evaluation(
+                physical('risk', AlarmStatus.ACTIVE)
+            ),
             management_cycle=1,
             assignments=(ToolAssignment('tool-a', NOW),),
-            pending_assignments=(PendingToolAssignment('tool-a', NOW + timedelta(minutes=15)),),
+            pending_assignments=(
+                PendingToolAssignment('tool-a', NOW + timedelta(minutes=15)),
+            ),
         )
 
 

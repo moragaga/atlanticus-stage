@@ -94,19 +94,17 @@ from ada.alarms.core.models import (
     PriorityDisposition,
     ReappearanceChange,
     RoutingDestination,
+    RuntimeEvaluationState,
     TechnicalHold,
     TechnicalHoldChange,
     TechnicalHoldChangeKind,
     ToolAssignment,
 )
 from ada.alarms.core.priority import resolve_group_priority
-from ada.alarms.core.routing import (
-    GroupRoutingDecision,
-    resolve_alarm_routing,
-    resolve_group_routing,
-)
+from ada.alarms.core.routing import GroupRoutingDecision, resolve_alarm_routing, resolve_group_routing
 
-__version__ = '0.5.0'
+
+__version__ = '0.5.1'
 
 __all__ = [
     'AssignmentChangeRecord',
@@ -187,6 +185,7 @@ __all__ = [
     'PlannedAlarm',
     'PriorityDisposition',
     'RoutingDestination',
+    'RuntimeEvaluationState',
     'ReappearanceChange',
     'ReappearanceDueAtResolver',
     'TechnicalHold',

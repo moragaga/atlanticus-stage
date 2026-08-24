@@ -5,6 +5,30 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Iterator
 
+from ada.alarms.core import (
+    AlarmEpisode,
+    AlarmIdentity,
+    AlarmKind,
+    AlarmOccurrence,
+    AlarmRouting,
+    AlarmRuntimeState,
+    AlarmStatus,
+    Criticality,
+    EngineCommit,
+    EngineCommitRecords,
+    EpisodeChangeReference,
+    GroupCommitMaterialization,
+    GroupLifecycleState,
+    InputKind,
+    InputReceipt,
+    PendingToolAssignment,
+    PlannedAlarm,
+    RuntimeEvaluationState,
+    TechnicalHold,
+    ToolAssignment,
+    commit_id_for,
+    cycle_id_for,
+)
 from ada.alarms.persistence import (
     GROUP_RUNTIME_SNAPSHOT_SCHEMA_VERSION,
     EngineCommitMetadata,
@@ -12,6 +36,8 @@ from ada.alarms.persistence import (
     GroupRuntimeSnapshot,
 )
 from atlanticus.runtime import JobDefinition, JobRuntimeContext, RuntimeConfiguration
+
+NOW = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 
 
 @contextmanager
@@ -69,7 +95,7 @@ def build_record(
         committed_at=evaluated_at,
         alarm_configuration_revision='R42',
         tool_registry_revision='T18',
-        runtime_artifact_version='ada-alarms-runtime/0.1.0',
+        runtime_artifact_version='ada-alarms-runtime/0.2.0',
         affected_alarms=('crusher_pressure_risk',),
     )
     return EngineCommitRecord.create(
@@ -92,7 +118,7 @@ def build_snapshot(
     priority_group: str,
     commit_id: str,
 ) -> GroupRuntimeSnapshot:
-    evaluated_at = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+    evaluated_at = NOW
     return GroupRuntimeSnapshot(
         {
             'snapshot_schema_version': GROUP_RUNTIME_SNAPSHOT_SCHEMA_VERSION,
@@ -131,6 +157,155 @@ def build_snapshot(
             },
         }
     )
+
+
+def identity(alarm_key: str = 'risk') -> AlarmIdentity:
+    return AlarmIdentity(family_key='mill', alarm_key=alarm_key)
+
+
+def plan(alarm_key: str = 'risk', *, priority_order: int = 1) -> PlannedAlarm:
+    return PlannedAlarm(
+        identity=identity(alarm_key),
+        kind=AlarmKind.RISK,
+        criticality=Criticality.C3,
+        priority_group='mill-feed',
+        priority_order=priority_order,
+        delivery_enabled=True,
+        evaluator_key='threshold',
+        alarm_configuration_revision='R42',
+        tool_registry_revision='T18',
+        routing=AlarmRouting(origin_tool_key='io'),
+    )
+
+
+def active_runtime_state(
+    alarm_key: str = 'risk',
+    *,
+    at: datetime = NOW,
+) -> AlarmRuntimeState:
+    alarm_identity = identity(alarm_key)
+    occurrence = AlarmOccurrence(
+        occurrence_id=f'O-{alarm_key}',
+        alarm_identity=alarm_identity,
+        episode_id='E1',
+        started_at=at,
+        alarm_configuration_revision='R42',
+        tool_registry_revision='T18',
+    )
+    return AlarmRuntimeState(
+        alarm_identity=alarm_identity,
+        occurrence=occurrence,
+        last_evaluation=RuntimeEvaluationState(
+            status=AlarmStatus.ACTIVE,
+            evaluated_at=at,
+        ),
+        management_cycle=1,
+        assignments=(ToolAssignment(tool_key='io', assigned_at=at),),
+        pending_assignments=(
+            PendingToolAssignment(tool_key='strategic', due_at=at + timedelta(minutes=30)),
+        ),
+        next_evidence_due_at=at + timedelta(minutes=5),
+    )
+
+
+def error_runtime_state(
+    alarm_key: str = 'risk',
+    *,
+    at: datetime = NOW,
+) -> AlarmRuntimeState:
+    alarm_identity = identity(alarm_key)
+    occurrence = AlarmOccurrence(
+        occurrence_id=f'O-{alarm_key}',
+        alarm_identity=alarm_identity,
+        episode_id='E1',
+        started_at=at - timedelta(minutes=1),
+        alarm_configuration_revision='R42',
+        tool_registry_revision='T18',
+    )
+    return AlarmRuntimeState(
+        alarm_identity=alarm_identity,
+        occurrence=occurrence,
+        last_evaluation=RuntimeEvaluationState(
+            status=AlarmStatus.ERROR,
+            evaluated_at=at,
+            error_key='pi-quality',
+        ),
+        technical_hold=TechnicalHold(
+            started_at=at,
+            due_at=at + timedelta(minutes=5),
+        ),
+        management_cycle=1,
+        assignments=(ToolAssignment(tool_key='io', assigned_at=occurrence.started_at),),
+    )
+
+
+def group_state(*alarms: AlarmRuntimeState, started_at: datetime = NOW) -> GroupLifecycleState:
+    return GroupLifecycleState(
+        priority_group='mill-feed',
+        episode=AlarmEpisode(
+            episode_id='E1',
+            priority_group='mill-feed',
+            started_at=started_at,
+        ),
+        alarms=tuple(sorted(alarms, key=lambda item: item.alarm_identity)),
+    )
+
+
+def materialization(
+    state: GroupLifecycleState,
+    *,
+    at: datetime = NOW,
+    previous_commit_id: str | None = None,
+    runtime_state_updates: tuple[AlarmIdentity, ...] | None = None,
+    affected_alarms: tuple[AlarmIdentity, ...] | None = None,
+    alarm_configuration_revision: str = 'R42',
+    tool_registry_revision: str = 'T18',
+    receipt_input_id: str | None = None,
+) -> GroupCommitMaterialization:
+    cycle_id = cycle_id_for(at)
+    commit_id = commit_id_for(cycle_id, state.priority_group)
+    updates = runtime_state_updates or ()
+    affected = affected_alarms or updates
+    records = EngineCommitRecords()
+    receipt_ids: tuple[str, ...] = ()
+    if receipt_input_id is not None:
+        receipt = InputReceipt(
+            input_id=receipt_input_id,
+            input_kind=InputKind.MANAGEMENT,
+            commit_id=commit_id,
+            applied_at=at + timedelta(seconds=1),
+            outcome='LATE',
+        )
+        records = EngineCommitRecords(input_receipts=(receipt,))
+        receipt_ids = (receipt.receipt_id,)
+        if not affected:
+            raise ValueError('receipt materialization requires affected_alarms')
+    commit = EngineCommit(
+        commit_id=commit_id,
+        cycle_id=cycle_id,
+        priority_group=state.priority_group,
+        previous_commit_id=previous_commit_id,
+        evaluated_at=at,
+        committed_at=at + timedelta(seconds=1),
+        alarm_configuration_revision=alarm_configuration_revision,
+        tool_registry_revision=tool_registry_revision,
+        runtime_artifact_version='ada-alarms-runtime/0.2.0',
+        affected_alarms=affected,
+        runtime_state_updates=updates,
+        occurrence_changes=(),
+        episode_change=(
+            EpisodeChangeReference(episode_id=state.episode.episode_id, kind='STARTED')
+            if previous_commit_id is None and state.episode is not None
+            else None
+        ),
+        journey_event_ids=(),
+        evidence_record_ids=(),
+        management_effect_ids=(),
+        deactivation_effect_ids=(),
+        assignment_change_ids=(),
+        receipt_ids=receipt_ids,
+    )
+    return GroupCommitMaterialization(state=state, commit=commit, records=records)
 
 
 def _utc_text(value: datetime) -> str:

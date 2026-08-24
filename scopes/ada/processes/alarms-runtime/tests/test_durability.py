@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from ada.alarms.persistence import AlarmPersistence
-from ada.processes.alarms_runtime import AlarmRuntimeDurability
+from ada.processes.alarms_runtime.durability import AlarmRuntimeDurability
 from atlanticus.runtime import JobRuntimeContext, RuntimeContractError
 from tests.support import build_context, build_record
 

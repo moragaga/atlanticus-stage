@@ -17,7 +17,7 @@ from ada.alarms.persistence import (
     EngineCommitRecord,
     GroupRuntimeSnapshot,
 )
-from ada.processes.alarms_runtime import AlarmRuntimeDurability
+from ada.processes.alarms_runtime.durability import AlarmRuntimeDurability
 from atlanticus.runtime import (
     JobDefinition,
     JobRuntimeContext,

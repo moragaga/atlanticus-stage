@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from ada.processes.alarms_runtime import build_persistence_composition
+from ada.processes.alarms_runtime import build_alarm_runtime_composition
 from atlanticus.runtime import RuntimeConfiguration
 
 
@@ -15,7 +15,7 @@ def test_composition_uses_shared_volume_root(tmp_path: Path) -> None:
         }
     )
 
-    composition = build_persistence_composition(runtime_configuration=configuration)
+    composition = build_alarm_runtime_composition(runtime_configuration=configuration)
 
     assert composition.runtime_configuration is configuration
     assert composition.durability.persistence.paths.shared_volume_path == tmp_path
@@ -24,4 +24,4 @@ def test_composition_uses_shared_volume_root(tmp_path: Path) -> None:
 
 def test_composition_rejects_wrong_configuration_type() -> None:
     with pytest.raises(TypeError, match='runtime_configuration'):
-        build_persistence_composition(runtime_configuration=object())  # type: ignore[arg-type]
+        build_alarm_runtime_composition(runtime_configuration=object())  # type: ignore[arg-type]

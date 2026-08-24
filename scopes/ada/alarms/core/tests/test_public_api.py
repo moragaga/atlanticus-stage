@@ -2,7 +2,7 @@ import ada.alarms.core as core
 
 
 def test_version() -> None:
-    assert core.__version__ == '0.5.0'
+    assert core.__version__ == '0.5.1'
 
 
 def test_public_api_contains_lifecycle_foundation() -> None:
@@ -25,6 +25,7 @@ def test_public_api_contains_lifecycle_foundation() -> None:
         'AlarmOccurrence',
         'AlarmEpisode',
         'AlarmRuntimeState',
+        'RuntimeEvaluationState',
         'DeactivationPolicy',
         'DeactivationIntent',
         'DeactivationRequest',

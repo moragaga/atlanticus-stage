@@ -8,15 +8,26 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "ada-alarms-core"
+version = "0.5.1"
+source = { editable = "../../alarms/core" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
+]
+
+[[package]]
 name = "ada-alarms-persistence"
 version = "0.1.0"
+source = { editable = "../../alarms/persistence" }
 dependencies = [
     { name = "atlanticus-json" },
     { name = "atlanticus-state" },
 ]
-
-[package.source]
-editable = "../../alarms/persistence"
 
 [package.metadata]
 requires-dist = [
@@ -24,41 +35,40 @@ requires-dist = [
     { name = "atlanticus-state", editable = "../../../../backend/state" },
 ]
 
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
+]
 
 [[package]]
 name = "ada-alarms-runtime-process"
-version = "0.1.0"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "ada-alarms-core" },
+    { name = "ada-alarms-persistence" },
+    { name = "atlanticus-job-runtime" },
+]
 
-[package.source]
-editable = "."
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
 
-[[package.dependencies]]
-name = "ada-alarms-persistence"
+[package.metadata]
+requires-dist = [
+    { name = "ada-alarms-core", editable = "../../alarms/core" },
+    { name = "ada-alarms-persistence", editable = "../../alarms/persistence" },
+    { name = "atlanticus-job-runtime", editable = "../../../../backend/runtime" },
+]
 
-[[package.dependencies]]
-name = "atlanticus-job-runtime"
-
-[[package.dev-dependencies.dev]]
-name = "pytest"
-
-[[package.dev-dependencies.dev]]
-name = "ruff"
-
-[[package.metadata.requires-dist]]
-name = "ada-alarms-persistence"
-editable = "../../alarms/persistence"
-
-[[package.metadata.requires-dist]]
-name = "atlanticus-job-runtime"
-editable = "../../../../backend/runtime"
-
-[[package.metadata.requires-dev.dev]]
-name = "pytest"
-specifier = "==9.1.1"
-
-[[package.metadata.requires-dev.dev]]
-name = "ruff"
-specifier = "==0.15.22"
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
+]
 
 [[package]]
 name = "atlanticus-job-runtime"
@@ -79,18 +89,15 @@ requires-dist = [
 ]
 provides-extras = ["azure"]
 
-
 [[package]]
 name = "atlanticus-json"
 version = "0.1.0"
 source = { editable = "../../../../backend/json" }
 
-
 [[package]]
 name = "atlanticus-kernel"
 version = "0.1.0"
 source = { editable = "../../../../backend/kernel" }
-
 
 [[package]]
 name = "atlanticus-observability"
@@ -103,7 +110,6 @@ dependencies = [
 [package.metadata]
 requires-dist = [{ name = "atlanticus-kernel", editable = "../../../../backend/kernel" }]
 
-
 [[package]]
 name = "atlanticus-state"
 version = "0.2.0"
@@ -115,7 +121,6 @@ dependencies = [
 [package.metadata]
 requires-dist = [{ name = "atlanticus-observability", editable = "../../../../backend/observability" }]
 
-
 [[package]]
 name = "colorama"
 version = "0.4.6"
@@ -124,7 +129,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
 ]
-
 
 [[package]]
 name = "iniconfig"
@@ -135,7 +139,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
 ]
 
-
 [[package]]
 name = "packaging"
 version = "26.3"
@@ -145,7 +148,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
 ]
 
-
 [[package]]
 name = "pluggy"
 version = "1.6.0"
@@ -154,7 +156,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
 ]
-
 
 [[package]]
 name = "psutil"
@@ -178,7 +179,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8c/c7/7bb2e321574b10df20cbde462a94e2b71d05f9bbda251ef27d104668306a/psutil-7.2.2-cp37-abi3-win_arm64.whl", hash = "sha256:8c233660f575a5a89e6d4cb65d9f938126312bca76d8fe087b947b3a1aaac9ee", size = 134617, upload-time = "2026-01-28T18:15:36.514Z" },
 ]
 
-
 [[package]]
 name = "pygments"
 version = "2.21.0"
@@ -187,7 +187,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/49/2e/ced460408999b33da
 wheels = [
     { url = "https://files.pythonhosted.org/packages/71/46/17f022dd3e953bf20a04a028a21ec746d942f8d2af30fa0f124fa0e6a684/pygments-2.21.0-py3-none-any.whl", hash = "sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9", size = 1250147, upload-time = "2026-08-17T08:02:44.912Z" },
 ]
-
 
 [[package]]
 name = "pytest"
@@ -204,7 +203,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa
 wheels = [
     { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
 ]
-
 
 [[package]]
 name = "ruff"
@@ -230,4 +228,3 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/46/4965251734c2b6fcdca1b1b187d20bcac3af0ee5b083b89c910bb961ce3a/ruff-0.15.22-py3-none-win_amd64.whl", hash = "sha256:9be63ba1eb936acd2d1342fb8337c356353706fce233b2a15a09a97037e6acde", size = 11938297, upload-time = "2026-07-16T15:14:07.316Z" },
     { url = "https://files.pythonhosted.org/packages/57/c9/e69b1ff4c8b69093ef08b8919ab767af0569666865b39c30a8795d88d3c6/ruff-0.15.22-py3-none-win_arm64.whl", hash = "sha256:e1168075b72158510839f250027659cdd78476f40507dd517892304c41318661", size = 11298172, upload-time = "2026-07-16T15:14:10.51Z" },
 ]
-
