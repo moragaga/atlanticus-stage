@@ -9,6 +9,7 @@ from ada.alarms.core import (
     AlarmIdentity,
     AlarmKind,
     AlarmOccurrence,
+    AlarmRouting,
     AlarmRuntimeState,
     AlarmStatus,
     ConfigurationClosure,
@@ -21,10 +22,13 @@ from ada.alarms.core import (
     GroupLifecycleDecision,
     GroupLifecycleState,
     OccurrenceClosureReason,
+    PendingToolAssignment,
     PlannedAlarm,
+    RoutingDestination,
     TechnicalHold,
     TechnicalHoldChange,
     TechnicalHoldChangeKind,
+    ToolAssignment,
 )
 
 from .support import NOW, identity, physical, plan
@@ -60,6 +64,10 @@ def test_planned_alarm_rejects_boolean_priority_order() -> None:
             evaluator_key='threshold',
             alarm_configuration_revision='R1',
             tool_registry_revision='T1',
+            routing=AlarmRouting(
+                origin_tool_key='tool-a',
+                destinations=(RoutingDestination('tool-b', 900),),
+            ),
         )
 
 
@@ -174,6 +182,7 @@ def test_runtime_state_requires_error_evaluation_for_technical_hold() -> None:
             alarm_identity=identity(),
             occurrence=occurrence,
             last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+            management_cycle=1,
             technical_hold=TechnicalHold(
                 started_at=NOW,
                 due_at=NOW + timedelta(minutes=5),
@@ -198,6 +207,7 @@ def test_group_state_requires_episode_for_open_occurrence() -> None:
                     alarm_identity=identity(),
                     occurrence=occurrence,
                     last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+                    management_cycle=1,
                 ),
             ),
         )
@@ -258,6 +268,7 @@ def test_open_runtime_state_requires_non_inactive_last_evaluation() -> None:
             alarm_identity=identity(),
             occurrence=occurrence,
             last_evaluation=physical('risk', AlarmStatus.INACTIVE),
+            management_cycle=1,
         )
 
 
@@ -297,9 +308,88 @@ def test_group_lifecycle_decision_validates_all_change_collections() -> None:
             occurrence_changes=(object(),),
         )
     with pytest.raises(
-        TypeError, match='technical_hold_changes must contain TechnicalHoldChange values'
+        TypeError,
+        match='technical_hold_changes must contain TechnicalHoldChange values',
     ):
         GroupLifecycleDecision(
             state=GroupLifecycleState(priority_group='mill-feed'),
             technical_hold_changes=(object(),),
+        )
+
+
+def test_routing_contract_matches_criticality_semantics() -> None:
+    c1 = plan(
+        'impact',
+        kind=AlarmKind.IMPACT,
+        criticality=Criticality.C1,
+        priority_order=1,
+        destinations=(RoutingDestination('tool-b'),),
+    )
+    assert c1.routing.origin_tool_key == 'tool-a'
+    c2 = plan(destinations=(RoutingDestination('tool-b', 300),))
+    assert c2.routing.destinations[0].delay_seconds == 300
+    c3 = plan(criticality=Criticality.C3)
+    assert c3.routing.destinations == ()
+
+
+def test_routing_contract_rejects_ambiguous_criticality_shapes() -> None:
+    with pytest.raises(ValueError, match='C1 routing destinations must be immediate'):
+        plan(
+            'impact',
+            kind=AlarmKind.IMPACT,
+            criticality=Criticality.C1,
+            priority_order=1,
+            destinations=(RoutingDestination('tool-b', 10),),
+        )
+    with pytest.raises(ValueError, match='C2 routing destinations require delay_seconds'):
+        plan(destinations=(RoutingDestination('tool-b'),))
+    with pytest.raises(ValueError, match='C3 routing must contain only the origin Tool'):
+        plan(
+            criticality=Criticality.C3,
+            destinations=(RoutingDestination('tool-b'),),
+        )
+
+
+def test_routing_rejects_duplicate_tools() -> None:
+    with pytest.raises(ValueError, match='routing tools must not contain duplicates'):
+        AlarmRouting(
+            origin_tool_key='tool-a',
+            destinations=(RoutingDestination('tool-a', 300),),
+        )
+
+
+def test_runtime_assignments_are_decision_complete_and_mutually_exclusive() -> None:
+    occurrence = AlarmOccurrence(
+        occurrence_id='O1',
+        alarm_identity=identity(),
+        episode_id='E1',
+        started_at=NOW,
+        alarm_configuration_revision='R1',
+        tool_registry_revision='T1',
+    )
+    state = AlarmRuntimeState(
+        alarm_identity=identity(),
+        occurrence=occurrence,
+        last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+        management_cycle=1,
+        assignments=(ToolAssignment('tool-a', NOW),),
+        pending_assignments=(PendingToolAssignment('tool-b', NOW + timedelta(minutes=15)),),
+    )
+    assert state.assignments[0].tool_key == 'tool-a'
+    with pytest.raises(ValueError, match='both assigned and pending'):
+        AlarmRuntimeState(
+            alarm_identity=identity(),
+            occurrence=occurrence,
+            last_evaluation=physical('risk', AlarmStatus.ACTIVE),
+            management_cycle=1,
+            assignments=(ToolAssignment('tool-a', NOW),),
+            pending_assignments=(PendingToolAssignment('tool-a', NOW + timedelta(minutes=15)),),
+        )
+
+
+def test_assignments_cannot_survive_without_open_occurrence() -> None:
+    with pytest.raises(ValueError, match='assignments require an open occurrence'):
+        AlarmRuntimeState(
+            alarm_identity=identity(),
+            assignments=(ToolAssignment('tool-a', NOW),),
         )

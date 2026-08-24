@@ -1,9 +1,5 @@
-# Espejo pedagógico de los contratos puros del primer Alarm Core.
-# AlarmStatus sólo admite ACTIVE, INACTIVE y ERROR; ERROR nunca afirma estado físico.
-# Occurrence representa una activación concreta y Episode correlaciona continuidad dentro del priority_group.
-# El hot state conserva sólo memoria necesaria para decisiones futuras; no es historia.
-# Una Occurrence abierta exige una última evaluación compacta ACTIVE o ERROR; INACTIVE implica cierre.
-# PlannedAlarm es una vista del execution plan y no reemplaza el contrato completo de AlarmDefinition.
+# Espejo pedagógico de los contratos inmutables del Core.
+# En 0.3.0 routing y assignments son memoria operacional; predominancia/eclipsado siguen siendo vistas derivadas.
 
 from __future__ import annotations
 
@@ -34,6 +30,20 @@ class AlarmStatus(StrEnum):
     ACTIVE = 'ACTIVE'
     INACTIVE = 'INACTIVE'
     ERROR = 'ERROR'
+
+
+class PriorityDisposition(StrEnum):
+    PREDOMINANT = 'PREDOMINANT'
+    ECLIPSED = 'ECLIPSED'
+    CASCADE_SUPPRESSED = 'CASCADE_SUPPRESSED'
+    SHADOW = 'SHADOW'
+
+
+class AssignmentChangeKind(StrEnum):
+    ASSIGNED = 'ASSIGNED'
+    REMOVED = 'REMOVED'
+    SCHEDULED = 'SCHEDULED'
+    RESCHEDULED = 'RESCHEDULED'
 
 
 class EvaluationErrorOrigin(StrEnum):
@@ -71,6 +81,53 @@ class TechnicalHoldChangeKind(StrEnum):
     CLEARED = 'CLEARED'
 
 
+class ManagementActionOutcome(StrEnum):
+    EFFECTIVE = 'EFFECTIVE'
+    ADDITIONAL = 'ADDITIONAL'
+    LATE = 'LATE'
+
+
+class ManagementEffectChangeKind(StrEnum):
+    STARTED = 'STARTED'
+    CLEARED = 'CLEARED'
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class RoutingDestination:
+    tool_key: str
+    delay_seconds: int | None = None
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.tool_key, 'tool_key')
+        if self.delay_seconds is None:
+            return
+        if isinstance(self.delay_seconds, bool) or not isinstance(self.delay_seconds, int):
+            raise TypeError('delay_seconds must be an int')
+        if self.delay_seconds < 0:
+            raise ValueError('delay_seconds must not be negative')
+
+
+@dataclass(frozen=True, slots=True)
+class AlarmRouting:
+    origin_tool_key: str
+    destinations: tuple[RoutingDestination, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.origin_tool_key, 'origin_tool_key')
+        if not isinstance(self.destinations, tuple):
+            raise TypeError('destinations must be a tuple')
+        seen = {self.origin_tool_key}
+        normalized: list[RoutingDestination] = []
+        for destination in self.destinations:
+            if not isinstance(destination, RoutingDestination):
+                raise TypeError('destinations must contain RoutingDestination values')
+            if destination.tool_key in seen:
+                raise ValueError('routing tools must not contain duplicates')
+            seen.add(destination.tool_key)
+            normalized.append(destination)
+        object.__setattr__(self, 'destinations', tuple(sorted(normalized)))
+
+
 @dataclass(frozen=True, slots=True, order=True)
 class AlarmIdentity:
     family_key: str
@@ -96,6 +153,7 @@ class PlannedAlarm:
     evaluator_key: str
     alarm_configuration_revision: str
     tool_registry_revision: str
+    routing: AlarmRouting
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, AlarmIdentity):
@@ -117,6 +175,18 @@ class PlannedAlarm:
             'alarm_configuration_revision',
         )
         _require_non_empty_string(self.tool_registry_revision, 'tool_registry_revision')
+        if not isinstance(self.routing, AlarmRouting):
+            raise TypeError('routing must be an AlarmRouting')
+        if self.criticality is Criticality.C1 and any(
+            destination.delay_seconds is not None for destination in self.routing.destinations
+        ):
+            raise ValueError('C1 routing destinations must be immediate')
+        if self.criticality is Criticality.C2 and any(
+            destination.delay_seconds is None for destination in self.routing.destinations
+        ):
+            raise ValueError('C2 routing destinations require delay_seconds')
+        if self.criticality is Criticality.C3 and self.routing.destinations:
+            raise ValueError('C3 routing must contain only the origin Tool')
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,11 +406,80 @@ class TechnicalHold:
 
 
 @dataclass(frozen=True, slots=True)
+class ManagementAction:
+    input_id: str
+    alarm_identity: AlarmIdentity
+    source_occurrence_id: str | None
+    tool_key: str
+    actor_key: str
+    source_created_at: datetime
+    context: Mapping[str, str] = MappingProxyType({})
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.input_id, 'input_id')
+        if not isinstance(self.alarm_identity, AlarmIdentity):
+            raise TypeError('alarm_identity must be an AlarmIdentity')
+        if self.source_occurrence_id is not None:
+            _require_non_empty_string(self.source_occurrence_id, 'source_occurrence_id')
+        _require_non_empty_string(self.tool_key, 'tool_key')
+        _require_non_empty_string(self.actor_key, 'actor_key')
+        _require_utc_datetime(self.source_created_at, 'source_created_at')
+        if not isinstance(self.context, Mapping):
+            raise TypeError('context must be a mapping')
+        normalized: dict[str, str] = {}
+        for key, value in self.context.items():
+            _require_non_empty_string(key, 'context key')
+            _require_non_empty_string(value, 'context value')
+            normalized[key] = value
+        object.__setattr__(self, 'context', MappingProxyType(normalized))
+
+
+@dataclass(frozen=True, slots=True)
+class ManagementEffect:
+    effect_id: str
+    source_occurrence_id: str
+    effective_at: datetime
+    reappearance_due_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.effect_id, 'effect_id')
+        _require_non_empty_string(self.source_occurrence_id, 'source_occurrence_id')
+        _require_utc_datetime(self.effective_at, 'effective_at')
+        _require_utc_datetime(self.reappearance_due_at, 'reappearance_due_at')
+        if self.reappearance_due_at <= self.effective_at:
+            raise ValueError('reappearance_due_at must be after effective_at')
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class ToolAssignment:
+    tool_key: str
+    assigned_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.tool_key, 'tool_key')
+        _require_utc_datetime(self.assigned_at, 'assigned_at')
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class PendingToolAssignment:
+    tool_key: str
+    due_at: datetime
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.tool_key, 'tool_key')
+        _require_utc_datetime(self.due_at, 'due_at')
+
+
+@dataclass(frozen=True, slots=True)
 class AlarmRuntimeState:
     alarm_identity: AlarmIdentity
     occurrence: AlarmOccurrence | None = None
     last_evaluation: AlarmEvaluation | None = None
     technical_hold: TechnicalHold | None = None
+    management_cycle: int | None = None
+    management_effect: ManagementEffect | None = None
+    assignments: tuple[ToolAssignment, ...] = ()
+    pending_assignments: tuple[PendingToolAssignment, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.alarm_identity, AlarmIdentity):
@@ -362,8 +501,17 @@ class AlarmRuntimeState:
                 raise ValueError('open occurrence requires last_evaluation')
             if self.last_evaluation.status is AlarmStatus.INACTIVE:
                 raise ValueError('open occurrence must not retain last_evaluation INACTIVE')
-        elif self.last_evaluation is not None:
-            raise ValueError('last_evaluation requires an open occurrence')
+            if isinstance(self.management_cycle, bool) or not isinstance(
+                self.management_cycle, int
+            ):
+                raise TypeError('open occurrence requires management_cycle int')
+            if self.management_cycle <= 0:
+                raise ValueError('management_cycle must be greater than zero')
+        else:
+            if self.last_evaluation is not None:
+                raise ValueError('last_evaluation requires an open occurrence')
+            if self.management_cycle is not None:
+                raise ValueError('management_cycle requires an open occurrence')
         if self.technical_hold is not None:
             if not isinstance(self.technical_hold, TechnicalHold):
                 raise TypeError('technical_hold must be a TechnicalHold')
@@ -371,6 +519,39 @@ class AlarmRuntimeState:
                 raise ValueError('technical_hold requires an open occurrence')
             if self.last_evaluation is None or self.last_evaluation.status is not AlarmStatus.ERROR:
                 raise ValueError('technical_hold requires last_evaluation ERROR')
+        if self.management_effect is not None:
+            if not isinstance(self.management_effect, ManagementEffect):
+                raise TypeError('management_effect must be a ManagementEffect')
+            if self.occurrence is None and self.technical_hold is not None:
+                raise ValueError('management-only state must not retain technical_hold')
+        if not isinstance(self.assignments, tuple):
+            raise TypeError('assignments must be a tuple')
+        if not isinstance(self.pending_assignments, tuple):
+            raise TypeError('pending_assignments must be a tuple')
+        assigned_tools: set[str] = set()
+        normalized_assignments: list[ToolAssignment] = []
+        for assignment in self.assignments:
+            if not isinstance(assignment, ToolAssignment):
+                raise TypeError('assignments must contain ToolAssignment values')
+            if assignment.tool_key in assigned_tools:
+                raise ValueError('assignments must not contain duplicate tool_key values')
+            assigned_tools.add(assignment.tool_key)
+            normalized_assignments.append(assignment)
+        pending_tools: set[str] = set()
+        normalized_pending: list[PendingToolAssignment] = []
+        for pending in self.pending_assignments:
+            if not isinstance(pending, PendingToolAssignment):
+                raise TypeError('pending_assignments must contain PendingToolAssignment values')
+            if pending.tool_key in pending_tools:
+                raise ValueError('pending_assignments must not contain duplicate tool_key values')
+            if pending.tool_key in assigned_tools:
+                raise ValueError('a Tool must not be both assigned and pending')
+            pending_tools.add(pending.tool_key)
+            normalized_pending.append(pending)
+        if self.occurrence is None and (normalized_assignments or normalized_pending):
+            raise ValueError('assignments require an open occurrence')
+        object.__setattr__(self, 'assignments', tuple(sorted(normalized_assignments)))
+        object.__setattr__(self, 'pending_assignments', tuple(sorted(normalized_pending)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -402,6 +583,8 @@ class GroupLifecycleState:
                     raise ValueError('open occurrence requires an open episode')
                 if alarm.occurrence.episode_id != self.episode.episode_id:
                     raise ValueError('occurrence episode_id must match group episode')
+            if alarm.management_effect is not None and self.episode is None:
+                raise ValueError('management_effect requires an open episode')
         if self.episode is not None and not any(
             alarm.occurrence is not None for alarm in self.alarms
         ):
@@ -490,11 +673,196 @@ class TechnicalHoldChange:
 
 
 @dataclass(frozen=True, slots=True)
+class ManagementActionResult:
+    action: ManagementAction
+    outcome: ManagementActionOutcome
+    management_cycle: int | None = None
+    management_effect_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.action, ManagementAction):
+            raise TypeError('action must be a ManagementAction')
+        if not isinstance(self.outcome, ManagementActionOutcome):
+            raise TypeError('outcome must be a ManagementActionOutcome')
+        if self.management_cycle is not None:
+            if isinstance(self.management_cycle, bool) or not isinstance(
+                self.management_cycle, int
+            ):
+                raise TypeError('management_cycle must be an int')
+            if self.management_cycle <= 0:
+                raise ValueError('management_cycle must be greater than zero')
+        if self.management_effect_id is not None:
+            _require_non_empty_string(self.management_effect_id, 'management_effect_id')
+        if (
+            self.outcome is ManagementActionOutcome.ADDITIONAL
+            and self.management_effect_id is not None
+        ):
+            raise ValueError('ADDITIONAL result must not create management_effect_id')
+
+
+@dataclass(frozen=True, slots=True)
+class ManagementEffectChange:
+    kind: ManagementEffectChangeKind
+    alarm_identity: AlarmIdentity
+    effective_at: datetime
+    management_effect: ManagementEffect | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, ManagementEffectChangeKind):
+            raise TypeError('kind must be a ManagementEffectChangeKind')
+        if not isinstance(self.alarm_identity, AlarmIdentity):
+            raise TypeError('alarm_identity must be an AlarmIdentity')
+        _require_utc_datetime(self.effective_at, 'effective_at')
+        if self.kind is ManagementEffectChangeKind.STARTED:
+            if not isinstance(self.management_effect, ManagementEffect):
+                raise ValueError('STARTED management effect change requires management_effect')
+            if self.effective_at != self.management_effect.effective_at:
+                raise ValueError('STARTED management effect effective_at must match effect')
+        elif self.management_effect is not None:
+            raise ValueError('CLEARED management effect change must not contain management_effect')
+
+
+@dataclass(frozen=True, slots=True)
+class ReappearanceChange:
+    alarm_identity: AlarmIdentity
+    occurrence_id: str
+    effective_at: datetime
+    management_cycle: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.alarm_identity, AlarmIdentity):
+            raise TypeError('alarm_identity must be an AlarmIdentity')
+        _require_non_empty_string(self.occurrence_id, 'occurrence_id')
+        _require_utc_datetime(self.effective_at, 'effective_at')
+        if isinstance(self.management_cycle, bool) or not isinstance(self.management_cycle, int):
+            raise TypeError('management_cycle must be an int')
+        if self.management_cycle <= 1:
+            raise ValueError('reappearance management_cycle must be greater than one')
+
+
+@dataclass(frozen=True, slots=True)
+class CascadeSuppression:
+    source_alarm_identity: AlarmIdentity
+    source_occurrence_id: str
+    management_effect_id: str
+    target_alarm_identity: AlarmIdentity
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source_alarm_identity, AlarmIdentity):
+            raise TypeError('source_alarm_identity must be an AlarmIdentity')
+        _require_non_empty_string(self.source_occurrence_id, 'source_occurrence_id')
+        _require_non_empty_string(self.management_effect_id, 'management_effect_id')
+        if not isinstance(self.target_alarm_identity, AlarmIdentity):
+            raise TypeError('target_alarm_identity must be an AlarmIdentity')
+        if self.source_alarm_identity == self.target_alarm_identity:
+            raise ValueError('cascade source and target must be different alarms')
+
+
+@dataclass(frozen=True, slots=True)
+class AssignmentChange:
+    kind: AssignmentChangeKind
+    alarm_identity: AlarmIdentity
+    tool_key: str
+    effective_at: datetime
+    due_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, AssignmentChangeKind):
+            raise TypeError('kind must be an AssignmentChangeKind')
+        if not isinstance(self.alarm_identity, AlarmIdentity):
+            raise TypeError('alarm_identity must be an AlarmIdentity')
+        _require_non_empty_string(self.tool_key, 'tool_key')
+        _require_utc_datetime(self.effective_at, 'effective_at')
+        if self.kind in {AssignmentChangeKind.SCHEDULED, AssignmentChangeKind.RESCHEDULED}:
+            if self.due_at is None:
+                raise ValueError('pending assignment change requires due_at')
+            _require_utc_datetime(self.due_at, 'due_at')
+            if self.due_at <= self.effective_at:
+                raise ValueError('pending assignment due_at must be after effective_at')
+        elif self.due_at is not None:
+            raise ValueError('ASSIGNED and REMOVED changes must not contain due_at')
+
+
+@dataclass(frozen=True, slots=True)
+class AlarmPriorityDecision:
+    alarm_identity: AlarmIdentity
+    disposition: PriorityDisposition
+    blocking_alarm_identities: tuple[AlarmIdentity, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.alarm_identity, AlarmIdentity):
+            raise TypeError('alarm_identity must be an AlarmIdentity')
+        if not isinstance(self.disposition, PriorityDisposition):
+            raise TypeError('disposition must be a PriorityDisposition')
+        if not isinstance(self.blocking_alarm_identities, tuple):
+            raise TypeError('blocking_alarm_identities must be a tuple')
+        normalized: list[AlarmIdentity] = []
+        seen: set[AlarmIdentity] = set()
+        for identity in self.blocking_alarm_identities:
+            if not isinstance(identity, AlarmIdentity):
+                raise TypeError('blocking_alarm_identities must contain AlarmIdentity values')
+            if identity == self.alarm_identity:
+                raise ValueError('priority blocker must be a different alarm')
+            if identity in seen:
+                raise ValueError('blocking_alarm_identities must not contain duplicates')
+            seen.add(identity)
+            normalized.append(identity)
+        object.__setattr__(self, 'blocking_alarm_identities', tuple(sorted(normalized)))
+        if self.disposition in {PriorityDisposition.PREDOMINANT, PriorityDisposition.SHADOW}:
+            if self.blocking_alarm_identities:
+                raise ValueError('PREDOMINANT and SHADOW decisions must not contain blockers')
+        elif not self.blocking_alarm_identities:
+            raise ValueError('blocked priority decisions require blocking alarms')
+
+
+@dataclass(frozen=True, slots=True)
+class GroupPriorityResolution:
+    priority_group: str
+    predominant_alarm_identity: AlarmIdentity | None
+    alarms: tuple[AlarmPriorityDecision, ...]
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.priority_group, 'priority_group')
+        if self.predominant_alarm_identity is not None and not isinstance(
+            self.predominant_alarm_identity, AlarmIdentity
+        ):
+            raise TypeError('predominant_alarm_identity must be an AlarmIdentity')
+        if not isinstance(self.alarms, tuple):
+            raise TypeError('alarms must be a tuple')
+        seen: set[AlarmIdentity] = set()
+        predominant: list[AlarmIdentity] = []
+        normalized: list[AlarmPriorityDecision] = []
+        for decision in self.alarms:
+            if not isinstance(decision, AlarmPriorityDecision):
+                raise TypeError('alarms must contain AlarmPriorityDecision values')
+            if decision.alarm_identity in seen:
+                raise ValueError('priority resolution must not contain duplicate identities')
+            seen.add(decision.alarm_identity)
+            normalized.append(decision)
+            if decision.disposition is PriorityDisposition.PREDOMINANT:
+                predominant.append(decision.alarm_identity)
+        if len(predominant) > 1:
+            raise ValueError('priority resolution must contain at most one predominant alarm')
+        expected = predominant[0] if predominant else None
+        if self.predominant_alarm_identity != expected:
+            raise ValueError('predominant_alarm_identity must match PREDOMINANT decision')
+        object.__setattr__(
+            self, 'alarms', tuple(sorted(normalized, key=lambda item: item.alarm_identity))
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class GroupLifecycleDecision:
     state: GroupLifecycleState
     occurrence_changes: tuple[OccurrenceChange, ...] = ()
     episode_changes: tuple[EpisodeChange, ...] = ()
     technical_hold_changes: tuple[TechnicalHoldChange, ...] = ()
+    management_action_results: tuple[ManagementActionResult, ...] = ()
+    management_effect_changes: tuple[ManagementEffectChange, ...] = ()
+    reappearance_changes: tuple[ReappearanceChange, ...] = ()
+    cascade_suppressions: tuple[CascadeSuppression, ...] = ()
+    assignment_changes: tuple[AssignmentChange, ...] = ()
+    priority_resolution: GroupPriorityResolution | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.state, GroupLifecycleState):
@@ -505,6 +873,21 @@ class GroupLifecycleDecision:
             raise TypeError('episode_changes must be a tuple')
         if not isinstance(self.technical_hold_changes, tuple):
             raise TypeError('technical_hold_changes must be a tuple')
+        if not isinstance(self.management_action_results, tuple):
+            raise TypeError('management_action_results must be a tuple')
+        if not isinstance(self.management_effect_changes, tuple):
+            raise TypeError('management_effect_changes must be a tuple')
+        if not isinstance(self.reappearance_changes, tuple):
+            raise TypeError('reappearance_changes must be a tuple')
+        if not isinstance(self.cascade_suppressions, tuple):
+            raise TypeError('cascade_suppressions must be a tuple')
+        if not isinstance(self.assignment_changes, tuple):
+            raise TypeError('assignment_changes must be a tuple')
+        if self.priority_resolution is not None:
+            if not isinstance(self.priority_resolution, GroupPriorityResolution):
+                raise TypeError('priority_resolution must be a GroupPriorityResolution')
+            if self.priority_resolution.priority_group != self.state.priority_group:
+                raise ValueError('priority_resolution priority_group must match decision state')
         for change in self.occurrence_changes:
             if not isinstance(change, OccurrenceChange):
                 raise TypeError('occurrence_changes must contain OccurrenceChange values')
@@ -514,10 +897,36 @@ class GroupLifecycleDecision:
         for change in self.technical_hold_changes:
             if not isinstance(change, TechnicalHoldChange):
                 raise TypeError('technical_hold_changes must contain TechnicalHoldChange values')
+        for result in self.management_action_results:
+            if not isinstance(result, ManagementActionResult):
+                raise TypeError(
+                    'management_action_results must contain ManagementActionResult values'
+                )
+        for change in self.management_effect_changes:
+            if not isinstance(change, ManagementEffectChange):
+                raise TypeError(
+                    'management_effect_changes must contain ManagementEffectChange values'
+                )
+        for change in self.reappearance_changes:
+            if not isinstance(change, ReappearanceChange):
+                raise TypeError('reappearance_changes must contain ReappearanceChange values')
+        for suppression in self.cascade_suppressions:
+            if not isinstance(suppression, CascadeSuppression):
+                raise TypeError('cascade_suppressions must contain CascadeSuppression values')
+        for change in self.assignment_changes:
+            if not isinstance(change, AssignmentChange):
+                raise TypeError('assignment_changes must contain AssignmentChange values')
 
     @property
     def has_lifecycle_change(self) -> bool:
-        return bool(self.occurrence_changes or self.episode_changes or self.technical_hold_changes)
+        return bool(
+            self.occurrence_changes
+            or self.episode_changes
+            or self.technical_hold_changes
+            or self.management_effect_changes
+            or self.reappearance_changes
+            or self.assignment_changes
+        )
 
 
 def _require_non_empty_string(value: object, name: str) -> None:

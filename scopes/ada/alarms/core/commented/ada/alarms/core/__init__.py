@@ -1,6 +1,5 @@
-# Espejo pedagógico del API público de Alarm Core.
-# Este módulo sólo reexporta contratos puros y no ejecuta I/O ni persistencia.
-# La versión 0.1.0 representa la primera base productiva de evaluación y lifecycle.
+# Espejo pedagógico de la API pública del Alarm Core.
+# La superficie exporta contratos puros y resoluciones determinísticas, sin infraestructura.
 
 from ada.alarms.core.errors import AlarmContractError, AlarmCoreError, AlarmLifecycleError
 from ada.alarms.core.evaluation import Evaluator, execute_evaluator
@@ -10,6 +9,12 @@ from ada.alarms.core.lifecycle import (
     reduce_group_cycle,
     reset_group_for_reconfiguration,
 )
+from ada.alarms.core.management import (
+    ManagementEffectIdFactory,
+    ReappearanceDueAtResolver,
+    is_directly_managed,
+    resolve_management_cascades,
+)
 from ada.alarms.core.models import (
     TECHNICAL_HOLD_GRACE_SECONDS,
     AffectedInputIssue,
@@ -18,8 +23,13 @@ from ada.alarms.core.models import (
     AlarmIdentity,
     AlarmKind,
     AlarmOccurrence,
+    AlarmPriorityDecision,
+    AlarmRouting,
     AlarmRuntimeState,
     AlarmStatus,
+    AssignmentChange,
+    AssignmentChangeKind,
+    CascadeSuppression,
     ConfigurationClosure,
     Criticality,
     EpisodeChange,
@@ -31,16 +41,34 @@ from ada.alarms.core.models import (
     EvidenceSnapshot,
     GroupLifecycleDecision,
     GroupLifecycleState,
+    GroupPriorityResolution,
+    ManagementAction,
+    ManagementActionOutcome,
+    ManagementActionResult,
+    ManagementEffect,
+    ManagementEffectChange,
+    ManagementEffectChangeKind,
     OccurrenceChange,
     OccurrenceChangeKind,
     OccurrenceClosureReason,
+    PendingToolAssignment,
     PlannedAlarm,
+    PriorityDisposition,
+    ReappearanceChange,
+    RoutingDestination,
     TechnicalHold,
     TechnicalHoldChange,
     TechnicalHoldChangeKind,
+    ToolAssignment,
+)
+from ada.alarms.core.priority import resolve_group_priority
+from ada.alarms.core.routing import (
+    GroupRoutingDecision,
+    resolve_alarm_routing,
+    resolve_group_routing,
 )
 
-__version__ = '0.1.0'
+__version__ = '0.3.0'
 
 __all__ = [
     'TECHNICAL_HOLD_GRACE_SECONDS',
@@ -55,6 +83,11 @@ __all__ = [
     'AlarmOccurrence',
     'AlarmRuntimeState',
     'AlarmStatus',
+    'AlarmPriorityDecision',
+    'AlarmRouting',
+    'AssignmentChange',
+    'AssignmentChangeKind',
+    'CascadeSuppression',
     'ConfigurationClosure',
     'Criticality',
     'EpisodeChange',
@@ -68,16 +101,36 @@ __all__ = [
     'EvidenceSnapshot',
     'GroupLifecycleDecision',
     'GroupLifecycleState',
+    'GroupPriorityResolution',
+    'GroupRoutingDecision',
+    'ManagementAction',
+    'ManagementActionOutcome',
+    'ManagementActionResult',
+    'ManagementEffect',
+    'ManagementEffectChange',
+    'ManagementEffectChangeKind',
+    'ManagementEffectIdFactory',
     'OccurrenceChange',
     'OccurrenceChangeKind',
     'OccurrenceClosureReason',
     'OccurrenceIdFactory',
+    'PendingToolAssignment',
     'PlannedAlarm',
+    'PriorityDisposition',
+    'RoutingDestination',
+    'ReappearanceChange',
+    'ReappearanceDueAtResolver',
     'TechnicalHold',
     'TechnicalHoldChange',
     'TechnicalHoldChangeKind',
+    'ToolAssignment',
     '__version__',
     'execute_evaluator',
+    'is_directly_managed',
     'reduce_group_cycle',
     'reset_group_for_reconfiguration',
+    'resolve_alarm_routing',
+    'resolve_group_priority',
+    'resolve_group_routing',
+    'resolve_management_cascades',
 ]

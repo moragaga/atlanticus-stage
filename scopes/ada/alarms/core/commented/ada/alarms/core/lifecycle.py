@@ -1,9 +1,6 @@
-# Espejo pedagógico del reducer puro por priority_group.
-# Los timers vencidos antes del now congelado se resuelven por su effective_at antes de la evaluación actual.
-# En empate exacto, una evaluación válida vence al Technical Hold expiry y la normalización vence al cierre de configuración.
-# Occurrence y Episode se crean con IDs inyectados; el core no depende de UUID, reloj global ni infraestructura.
-# El execution plan se valida defensivamente: prioridad única y todo IMPACT por encima de todo RISK.
-# El resultado contiene cambios de lifecycle, pero Evidence, Management, routing, Priority y EngineCommit se componen en incrementos posteriores.
+# Espejo pedagógico del reducer por priority_group.
+# El reducer aplica lifecycle/management y luego compone Routing y Priority como decisiones determinísticas.
+# Routing actualiza memoria de assignments; Priority permanece derivada y no se persiste como winner.
 
 from __future__ import annotations
 
@@ -12,6 +9,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from ada.alarms.core.errors import AlarmContractError, AlarmLifecycleError
+from ada.alarms.core.management import (
+    ManagementEffectIdFactory,
+    ReappearanceDueAtResolver,
+    _finalize_management_state,
+    _prepare_management_state,
+)
 from ada.alarms.core.models import (
     TECHNICAL_HOLD_GRACE_SECONDS,
     AlarmEpisode,
@@ -27,6 +30,9 @@ from ada.alarms.core.models import (
     EpisodeClosureReason,
     GroupLifecycleDecision,
     GroupLifecycleState,
+    ManagementAction,
+    ManagementEffectChange,
+    ManagementEffectChangeKind,
     OccurrenceChange,
     OccurrenceChangeKind,
     OccurrenceClosureReason,
@@ -35,6 +41,8 @@ from ada.alarms.core.models import (
     TechnicalHoldChange,
     TechnicalHoldChangeKind,
 )
+from ada.alarms.core.priority import resolve_group_priority
+from ada.alarms.core.routing import resolve_group_routing
 
 OccurrenceIdFactory = Callable[[AlarmIdentity, datetime], str]
 EpisodeIdFactory = Callable[[str, datetime], str]
@@ -57,6 +65,9 @@ def reduce_group_cycle(
     occurrence_id_factory: OccurrenceIdFactory,
     episode_id_factory: EpisodeIdFactory,
     configuration_closures: Sequence[ConfigurationClosure] = (),
+    management_actions: Sequence[ManagementAction] = (),
+    management_effect_id_factory: ManagementEffectIdFactory | None = None,
+    reappearance_due_at_resolver: ReappearanceDueAtResolver | None = None,
     technical_hold_grace_seconds: int = TECHNICAL_HOLD_GRACE_SECONDS,
 ) -> GroupLifecycleDecision:
     _validate_cycle_at(cycle_at)
@@ -65,18 +76,29 @@ def reduce_group_cycle(
     evaluation_map = _index_evaluations(cycle_at, evaluations)
     closures = _index_closures(cycle_at, configuration_closures)
     _validate_evaluation_cardinality(state, plans, evaluation_map, closures)
+    management = _prepare_management_state(
+        state,
+        cycle_at=cycle_at,
+        plans=plans,
+        actions=management_actions,
+        effect_id_factory=management_effect_id_factory,
+        due_at_resolver=reappearance_due_at_resolver,
+    )
 
-    working = {alarm.alarm_identity: alarm for alarm in state.alarms}
-    episode = state.episode
+    working = {alarm.alarm_identity: alarm for alarm in management.state.alarms}
+    episode = management.state.episode
     occurrence_changes: list[OccurrenceChange] = []
     episode_changes: list[EpisodeChange] = []
     technical_hold_changes: list[TechnicalHoldChange] = []
+    lifecycle_management_effect_changes: list[ManagementEffectChange] = []
     used_occurrence_ids = {
         alarm.occurrence.occurrence_id
-        for alarm in state.alarms
+        for alarm in management.state.alarms
         if alarm.occurrence is not None
     }
-    used_episode_ids = {state.episode.episode_id} if state.episode is not None else set()
+    used_episode_ids = (
+        {management.state.episode.episode_id} if management.state.episode is not None else set()
+    )
 
     overdue_due_times = sorted(
         {
@@ -96,7 +118,7 @@ def reduce_group_cycle(
             and alarm.technical_hold.due_at == due_at
         ]
         for identity in sorted(expiring):
-            current = working.pop(identity)
+            current = working[identity]
             occurrence = current.occurrence
             if occurrence is None:
                 raise AlarmLifecycleError('technical hold expiry requires an open occurrence')
@@ -115,6 +137,11 @@ def reduce_group_cycle(
                     effective_at=due_at,
                 )
             )
+            management_only = _management_only_state(current)
+            if management_only is None:
+                del working[identity]
+            else:
+                working[identity] = management_only
         if episode is not None and not _has_open_occurrence(working):
             closed_episode = episode.close(
                 ended_at=due_at,
@@ -122,6 +149,11 @@ def reduce_group_cycle(
             )
             episode_changes.append(
                 EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode)
+            )
+            _clear_management_only_states(
+                working,
+                effective_at=due_at,
+                changes=lifecycle_management_effect_changes,
             )
             episode = None
 
@@ -191,10 +223,13 @@ def reduce_group_cycle(
                 alarm_configuration_revision=plan.alarm_configuration_revision,
                 tool_registry_revision=plan.tool_registry_revision,
             )
+            previous = retained.get(plan.identity)
             retained[plan.identity] = AlarmRuntimeState(
                 alarm_identity=plan.identity,
                 occurrence=occurrence,
                 last_evaluation=evaluation,
+                management_cycle=1,
+                management_effect=(None if previous is None else previous.management_effect),
             )
             occurrence_changes.append(
                 OccurrenceChange(kind=OccurrenceChangeKind.STARTED, occurrence=occurrence)
@@ -203,8 +238,11 @@ def reduce_group_cycle(
     if episode is not None and not _has_open_occurrence(retained):
         reason = _episode_closure_reason(cycle_closure_reasons)
         closed_episode = episode.close(ended_at=cycle_at, reason=reason)
-        episode_changes.append(
-            EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode)
+        episode_changes.append(EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode))
+        _clear_management_only_states(
+            retained,
+            effective_at=cycle_at,
+            changes=lifecycle_management_effect_changes,
         )
         episode = None
 
@@ -213,16 +251,63 @@ def reduce_group_cycle(
         episode=episode,
         alarms=tuple(retained[identity] for identity in sorted(retained)),
     )
+    sorted_occurrence_changes = tuple(sorted(occurrence_changes, key=_occurrence_change_sort_key))
+    sorted_episode_changes = tuple(sorted(episode_changes, key=_episode_change_sort_key))
+    finalized_management = _finalize_management_state(
+        next_state,
+        cycle_at=cycle_at,
+        plans=plans,
+        occurrence_changes=sorted_occurrence_changes,
+        episode_changes=sorted_episode_changes,
+    )
+    routing = resolve_group_routing(
+        finalized_management.state,
+        planned_alarms=tuple(plans.values()),
+        cycle_at=cycle_at,
+    )
+    priority = resolve_group_priority(
+        routing.state,
+        planned_alarms=tuple(plans.values()),
+        cascade_suppressions=finalized_management.cascade_suppressions,
+    )
     return GroupLifecycleDecision(
-        state=next_state,
-        occurrence_changes=tuple(sorted(occurrence_changes, key=_occurrence_change_sort_key)),
-        episode_changes=tuple(sorted(episode_changes, key=_episode_change_sort_key)),
+        state=routing.state,
+        occurrence_changes=sorted_occurrence_changes,
+        episode_changes=sorted_episode_changes,
         technical_hold_changes=tuple(
             sorted(
                 technical_hold_changes,
                 key=lambda change: (change.effective_at, change.alarm_identity, change.kind.value),
             )
         ),
+        management_action_results=management.action_results,
+        management_effect_changes=tuple(
+            sorted(
+                (
+                    *management.effect_changes,
+                    *lifecycle_management_effect_changes,
+                    *finalized_management.effect_changes,
+                ),
+                key=lambda change: (
+                    change.effective_at,
+                    change.alarm_identity,
+                    change.kind.value,
+                ),
+            )
+        ),
+        reappearance_changes=tuple(
+            sorted(
+                (*management.reappearance_changes, *finalized_management.reappearance_changes),
+                key=lambda change: (
+                    change.effective_at,
+                    change.alarm_identity,
+                    change.occurrence_id,
+                ),
+            )
+        ),
+        cascade_suppressions=finalized_management.cascade_suppressions,
+        assignment_changes=routing.assignment_changes,
+        priority_resolution=priority,
     )
 
 
@@ -234,22 +319,30 @@ def reset_group_for_reconfiguration(
     _validate_cycle_at(effective_at)
     occurrence_changes: list[OccurrenceChange] = []
     technical_hold_changes: list[TechnicalHoldChange] = []
+    management_effect_changes: list[ManagementEffectChange] = []
     for alarm in sorted(state.alarms, key=lambda item: item.alarm_identity):
-        if alarm.occurrence is None:
-            continue
-        closed = alarm.occurrence.close(
-            ended_at=effective_at,
-            reason=OccurrenceClosureReason.CONFIGURATION_RECONFIGURED,
-        )
-        occurrence_changes.append(
-            OccurrenceChange(kind=OccurrenceChangeKind.CLOSED, occurrence=closed)
-        )
-        if alarm.technical_hold is not None:
-            technical_hold_changes.append(
-                TechnicalHoldChange(
-                    kind=TechnicalHoldChangeKind.CLEARED,
+        if alarm.occurrence is not None:
+            closed = alarm.occurrence.close(
+                ended_at=effective_at,
+                reason=OccurrenceClosureReason.CONFIGURATION_RECONFIGURED,
+            )
+            occurrence_changes.append(
+                OccurrenceChange(kind=OccurrenceChangeKind.CLOSED, occurrence=closed)
+            )
+            if alarm.technical_hold is not None:
+                technical_hold_changes.append(
+                    TechnicalHoldChange(
+                        kind=TechnicalHoldChangeKind.CLEARED,
+                        alarm_identity=alarm.alarm_identity,
+                        occurrence_id=alarm.occurrence.occurrence_id,
+                        effective_at=effective_at,
+                    )
+                )
+        if alarm.management_effect is not None:
+            management_effect_changes.append(
+                ManagementEffectChange(
+                    kind=ManagementEffectChangeKind.CLEARED,
                     alarm_identity=alarm.alarm_identity,
-                    occurrence_id=alarm.occurrence.occurrence_id,
                     effective_at=effective_at,
                 )
             )
@@ -259,14 +352,13 @@ def reset_group_for_reconfiguration(
             ended_at=effective_at,
             reason=EpisodeClosureReason.CONFIGURATION_TERMINATED,
         )
-        episode_changes = (
-            EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode),
-        )
+        episode_changes = (EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode),)
     return GroupLifecycleDecision(
         state=GroupLifecycleState(priority_group=state.priority_group),
         occurrence_changes=tuple(occurrence_changes),
         episode_changes=episode_changes,
         technical_hold_changes=tuple(technical_hold_changes),
+        management_effect_changes=tuple(management_effect_changes),
     )
 
 
@@ -291,7 +383,7 @@ def _resolve_cycle_alarm(
     ):
         closed = occurrence.close(ended_at=cycle_at, reason=closure.reason)
         return _AlarmResolution(
-            retained_state=None,
+            retained_state=_management_only_state(current),
             closed_occurrence=closed,
             technical_hold_changes=_clear_hold_if_needed(current, cycle_at),
         )
@@ -303,7 +395,7 @@ def _resolve_cycle_alarm(
             reason=OccurrenceClosureReason.CONDITION_NORMALIZED,
         )
         return _AlarmResolution(
-            retained_state=None,
+            retained_state=_management_only_state(current),
             closed_occurrence=closed,
             technical_hold_changes=_clear_hold_if_needed(current, cycle_at),
         )
@@ -321,6 +413,10 @@ def _resolve_cycle_alarm(
                 alarm_identity=current.alarm_identity,
                 occurrence=occurrence,
                 last_evaluation=evaluation,
+                management_cycle=current.management_cycle,
+                management_effect=current.management_effect,
+                assignments=current.assignments,
+                pending_assignments=current.pending_assignments,
             ),
             technical_hold_changes=(cleared,),
         )
@@ -342,6 +438,10 @@ def _resolve_cycle_alarm(
                 occurrence=occurrence,
                 last_evaluation=evaluation,
                 technical_hold=hold,
+                management_cycle=current.management_cycle,
+                management_effect=current.management_effect,
+                assignments=current.assignments,
+                pending_assignments=current.pending_assignments,
             ),
             technical_hold_changes=(started,),
         )
@@ -358,10 +458,39 @@ def _resolve_cycle_alarm(
         effective_at=current.technical_hold.due_at,
     )
     return _AlarmResolution(
-        retained_state=None,
+        retained_state=_management_only_state(current),
         closed_occurrence=closed,
         technical_hold_changes=(cleared,),
     )
+
+
+def _management_only_state(current: AlarmRuntimeState) -> AlarmRuntimeState | None:
+    if current.management_effect is None:
+        return None
+    return AlarmRuntimeState(
+        alarm_identity=current.alarm_identity,
+        management_effect=current.management_effect,
+    )
+
+
+def _clear_management_only_states(
+    states: dict[AlarmIdentity, AlarmRuntimeState],
+    *,
+    effective_at: datetime,
+    changes: list[ManagementEffectChange],
+) -> None:
+    for identity in sorted(tuple(states)):
+        current = states[identity]
+        if current.occurrence is not None or current.management_effect is None:
+            continue
+        changes.append(
+            ManagementEffectChange(
+                kind=ManagementEffectChangeKind.CLEARED,
+                alarm_identity=identity,
+                effective_at=effective_at,
+            )
+        )
+        del states[identity]
 
 
 def _clear_hold_if_needed(
@@ -454,9 +583,7 @@ def _validate_evaluation_cardinality(
     if missing:
         raise AlarmContractError('missing_evaluation')
     allowed_extra = {
-        alarm.alarm_identity
-        for alarm in state.alarms
-        if alarm.alarm_identity in closures
+        alarm.alarm_identity for alarm in state.alarms if alarm.alarm_identity in closures
     }
     unexpected = set(evaluations) - set(plans) - allowed_extra
     if unexpected:
@@ -466,7 +593,9 @@ def _validate_evaluation_cardinality(
 def _episode_closure_reason(
     reasons: Sequence[OccurrenceClosureReason],
 ) -> EpisodeClosureReason:
-    if reasons and all(reason is OccurrenceClosureReason.CONDITION_NORMALIZED for reason in reasons):
+    if reasons and all(
+        reason is OccurrenceClosureReason.CONDITION_NORMALIZED for reason in reasons
+    ):
         return EpisodeClosureReason.CONDITION_NORMALIZED
     if any(
         reason

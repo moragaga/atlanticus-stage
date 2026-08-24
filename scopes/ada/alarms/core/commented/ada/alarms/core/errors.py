@@ -2,6 +2,7 @@
 # AlarmContractError señala entradas que rompen contratos cerrados.
 # AlarmLifecycleError señala una imposibilidad al materializar una transición válida.
 
+
 class AlarmCoreError(Exception):
     pass
 

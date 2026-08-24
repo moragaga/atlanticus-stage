@@ -4,7 +4,7 @@ requires-python = "==3.14.2"
 
 [[package]]
 name = "ada-alarms-core"
-version = "0.1.0"
+version = "0.3.0"
 source = { editable = "." }
 
 [package.dev-dependencies]
