@@ -1,0 +1,14 @@
+ARG SAMBA_IMAGE=debian:bookworm-slim
+FROM ${SAMBA_IMAGE}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends samba \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/runtime/tests/smb/smb.conf /etc/samba/smb.conf
+RUN mkdir -p /srv/atlanticus \
+    && chown nobody:nogroup /srv/atlanticus \
+    && chmod 0777 /srv/atlanticus
+
+EXPOSE 445
+CMD ["smbd", "--foreground", "--no-process-group"]

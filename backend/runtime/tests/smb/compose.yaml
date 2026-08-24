@@ -1,0 +1,26 @@
+services:
+  samba:
+    build:
+      context: ${ATLANTICUS_REPOSITORY_ROOT}
+      dockerfile: backend/runtime/tests/smb/Dockerfile.samba
+    networks:
+      - fencing
+
+  probe:
+    build:
+      context: ${ATLANTICUS_REPOSITORY_ROOT}
+      dockerfile: backend/runtime/tests/smb/Dockerfile.probe
+    depends_on:
+      - samba
+    privileged: true
+    environment:
+      SMB_SERVER: samba
+      SMB_SHARE: atlanticus
+      SMB_MOUNT_PATH: /mnt/atlanticus-smb
+      SMB_MOUNT_OPTIONS: guest,vers=3.1.1,cache=none,actimeo=0,nosharesock,file_mode=0660,dir_mode=0770
+    networks:
+      - fencing
+
+networks:
+  fencing:
+    driver: bridge
