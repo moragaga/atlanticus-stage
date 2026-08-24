@@ -9,7 +9,9 @@ from ada.kpis.sources import (
 )
 
 
-def test_current_registry_covers_current_bound_sources_but_not_unmaterialized_fabrica_kpis() -> None:
+def test_current_registry_covers_current_bound_sources_but_not_unmaterialized_fabrica_kpis() -> (
+    None
+):
     registry = build_current_source_registry(pi_source=PiSourceProvider.PI_WEB_API)
 
     assert KpiSource.FABRICA_KPIS not in registry.sources

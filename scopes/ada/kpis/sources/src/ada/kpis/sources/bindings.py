@@ -121,7 +121,9 @@ class KpiSourceRegistry:
         try:
             return self.bindings[source]
         except KeyError as error:
-            raise KpiSourceBindingError(f'{source.value}: source has no registered binding') from error
+            raise KpiSourceBindingError(
+                f'{source.value}: source has no registered binding'
+            ) from error
 
     def get_view(self, view: KpiSourceView) -> tuple[KpiSourceBinding, KpiPartitionBinding]:
         if not isinstance(view, KpiSourceView):

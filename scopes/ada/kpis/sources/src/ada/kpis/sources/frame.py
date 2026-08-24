@@ -67,9 +67,9 @@ class PandasRuntimeFrameContext:
 def _is_missing(value: object) -> bool:
     try:
         result = pd.isna(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
     try:
         return bool(result)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False

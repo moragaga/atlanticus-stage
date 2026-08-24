@@ -128,7 +128,9 @@ class KpiSpec:
             )
         if has_requirements:
             if self.columns:
-                raise ValueError(f'{self.key}: custom with source_requirements must not declare columns')
+                raise ValueError(
+                    f'{self.key}: custom with source_requirements must not declare columns'
+                )
             if any(
                 value is not None
                 for value in (self.time_window, self.operational_scope, self.shift)

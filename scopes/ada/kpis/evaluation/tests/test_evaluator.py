@@ -126,10 +126,14 @@ def test_status_contract_violation_is_evaluation_error() -> None:
         )
     )
 
-    result = KpiEvaluator(source_loader=loader).evaluate(
-        catalog=catalog,
-        watermark=_watermark(),
-    ).results[0]
+    result = (
+        KpiEvaluator(source_loader=loader)
+        .evaluate(
+            catalog=catalog,
+            watermark=_watermark(),
+        )
+        .results[0]
+    )
 
     assert result.status is KpiStatus.ERROR
     assert result.error == 'KpiInvalidValueError: status value is invalid'
@@ -162,10 +166,14 @@ def test_over_kpi_runs_only_when_all_dependencies_are_ok() -> None:
         )
     )
 
-    ratio = KpiEvaluator(source_loader=loader).evaluate(
-        catalog=catalog,
-        watermark=_watermark(),
-    ).results[-1]
+    ratio = (
+        KpiEvaluator(source_loader=loader)
+        .evaluate(
+            catalog=catalog,
+            watermark=_watermark(),
+        )
+        .results[-1]
+    )
 
     assert ratio.status is KpiStatus.OK
     assert ratio.value == 80.0
@@ -208,10 +216,12 @@ def test_over_kpi_propagates_any_dependency_error_without_running_resolver() -> 
 
     results = {
         result.key: result
-        for result in KpiEvaluator(source_loader=loader).evaluate(
+        for result in KpiEvaluator(source_loader=loader)
+        .evaluate(
             catalog=catalog,
             watermark=_watermark(),
-        ).results
+        )
+        .results
     }
 
     assert results['source_error'].status is KpiStatus.ERROR
@@ -273,11 +283,7 @@ def test_over_kpi_gets_only_declared_native_values() -> None:
 def test_evaluation_source_traces_are_deduplicated_across_partitions() -> None:
     source = KpiSource.PI_INTERPOLATED
     source_watermark = KpiWatermark.parse('2026-08-19T18:15:10Z')
-    catalog = KpiCatalog(
-        specs=(
-            _latest_spec('value'),
-        )
-    )
+    catalog = KpiCatalog(specs=(_latest_spec('value'),))
     loader = FakeSourceLoader(
         FakeLoadedSources(
             contexts={'value': context(source, {'value': 1})},
@@ -328,10 +334,14 @@ def test_custom_resolver_contract_error_keeps_safe_context_in_evaluation() -> No
         )
     )
 
-    result = KpiEvaluator(source_loader=loader).evaluate(
-        catalog=catalog,
-        watermark=_watermark(),
-    ).results[0]
+    result = (
+        KpiEvaluator(source_loader=loader)
+        .evaluate(
+            catalog=catalog,
+            watermark=_watermark(),
+        )
+        .results[0]
+    )
 
     assert result.status is KpiStatus.ERROR
     assert result.error is not None

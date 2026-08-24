@@ -30,12 +30,8 @@ def test_builtin_calendars_keep_validated_plant_and_mine_boundaries() -> None:
 def test_plant_operational_day_changes_at_1900_local() -> None:
     timezone = ZoneInfo('America/Santiago')
 
-    before = PLANT_CALENDAR.resolve_operational_day(
-        datetime(2026, 8, 17, 18, 59, tzinfo=timezone)
-    )
-    boundary = PLANT_CALENDAR.resolve_operational_day(
-        datetime(2026, 8, 17, 19, 0, tzinfo=timezone)
-    )
+    before = PLANT_CALENDAR.resolve_operational_day(datetime(2026, 8, 17, 18, 59, tzinfo=timezone))
+    boundary = PLANT_CALENDAR.resolve_operational_day(datetime(2026, 8, 17, 19, 0, tzinfo=timezone))
 
     assert before.operational_date.isoformat() == '2026-08-17'
     assert before.start_local.isoformat() == '2026-08-16T19:00:00-04:00'
@@ -47,12 +43,8 @@ def test_plant_operational_day_changes_at_1900_local() -> None:
 def test_mine_operational_day_changes_at_2100_local() -> None:
     timezone = ZoneInfo('America/Santiago')
 
-    before = MINE_CALENDAR.resolve_operational_day(
-        datetime(2026, 8, 17, 20, 59, tzinfo=timezone)
-    )
-    boundary = MINE_CALENDAR.resolve_operational_day(
-        datetime(2026, 8, 17, 21, 0, tzinfo=timezone)
-    )
+    before = MINE_CALENDAR.resolve_operational_day(datetime(2026, 8, 17, 20, 59, tzinfo=timezone))
+    boundary = MINE_CALENDAR.resolve_operational_day(datetime(2026, 8, 17, 21, 0, tzinfo=timezone))
 
     assert before.operational_date.isoformat() == '2026-08-17'
     assert boundary.operational_date.isoformat() == '2026-08-18'
@@ -62,12 +54,8 @@ def test_mine_operational_day_changes_at_2100_local() -> None:
 def test_plant_resolves_1900_0700_and_0700_1900_shifts() -> None:
     timezone = ZoneInfo('America/Santiago')
 
-    night = PLANT_CALENDAR.resolve_work_shift(
-        datetime(2026, 8, 17, 22, 0, tzinfo=timezone)
-    )
-    day = PLANT_CALENDAR.resolve_work_shift(
-        datetime(2026, 8, 18, 10, 0, tzinfo=timezone)
-    )
+    night = PLANT_CALENDAR.resolve_work_shift(datetime(2026, 8, 17, 22, 0, tzinfo=timezone))
+    day = PLANT_CALENDAR.resolve_work_shift(datetime(2026, 8, 18, 10, 0, tzinfo=timezone))
 
     assert night.code is WorkShiftCode.NIGHT
     assert night.turn == '001'
@@ -82,12 +70,8 @@ def test_plant_resolves_1900_0700_and_0700_1900_shifts() -> None:
 def test_mine_resolves_2100_0900_and_0900_2100_shifts() -> None:
     timezone = ZoneInfo('America/Santiago')
 
-    night = MINE_CALENDAR.resolve_work_shift(
-        datetime(2026, 8, 17, 23, 0, tzinfo=timezone)
-    )
-    day = MINE_CALENDAR.resolve_work_shift(
-        datetime(2026, 8, 18, 12, 0, tzinfo=timezone)
-    )
+    night = MINE_CALENDAR.resolve_work_shift(datetime(2026, 8, 17, 23, 0, tzinfo=timezone))
+    day = MINE_CALENDAR.resolve_work_shift(datetime(2026, 8, 18, 12, 0, tzinfo=timezone))
 
     assert night.code is WorkShiftCode.NIGHT
     assert night.turn == '001'

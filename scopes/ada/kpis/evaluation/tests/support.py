@@ -27,7 +27,7 @@ class FakeFrame:
             return default
         try:
             return float(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return default
 
 

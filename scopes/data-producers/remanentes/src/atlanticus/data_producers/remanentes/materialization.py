@@ -267,4 +267,3 @@ def _build_latest_dataset_definition(
             ),
         ),
     )
-

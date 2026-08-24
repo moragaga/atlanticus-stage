@@ -48,12 +48,12 @@ def test_operational_day_uses_area_specific_boundary() -> None:
         watermark=watermark,
     )
 
-    assert mine.start_utc == MINE_CALENDAR.resolve_operational_day(
-        watermark.timestamp_utc
-    ).start_utc
-    assert plant.start_utc == PLANT_CALENDAR.resolve_operational_day(
-        watermark.timestamp_utc
-    ).start_utc
+    assert (
+        mine.start_utc == MINE_CALENDAR.resolve_operational_day(watermark.timestamp_utc).start_utc
+    )
+    assert (
+        plant.start_utc == PLANT_CALENDAR.resolve_operational_day(watermark.timestamp_utc).start_utc
+    )
 
 
 def test_operational_month_starts_day_before_first_operational_date_at_area_boundary() -> None:

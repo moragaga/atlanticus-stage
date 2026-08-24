@@ -39,7 +39,9 @@ class DataRuntimeContext:
             if not isinstance(view, KpiSourceView):
                 raise TypeError('data runtime context keys must be KpiSourceView values')
             if not isinstance(frame, RuntimeFrameContext):
-                raise TypeError(f'{view.source.value}/{view.partition.value}: invalid runtime frame')
+                raise TypeError(
+                    f'{view.source.value}/{view.partition.value}: invalid runtime frame'
+                )
             normalized[view] = frame
         object.__setattr__(self, 'frames', MappingProxyType(normalized))
 

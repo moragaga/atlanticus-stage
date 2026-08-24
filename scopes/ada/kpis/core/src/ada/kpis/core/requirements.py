@@ -162,14 +162,22 @@ def _validate_partition_selector(requirement: SourceRequirement) -> None:
             KpiPartition.DAILY,
             KpiPartition.MONTHLY,
         }:
-            raise ValueError(f'{requirement.source.value}: unsupported partition: {partition.value}')
-        if partition is not KpiPartition.LATEST and time_window is None and operational_scope is None:
+            raise ValueError(
+                f'{requirement.source.value}: unsupported partition: {partition.value}'
+            )
+        if (
+            partition is not KpiPartition.LATEST
+            and time_window is None
+            and operational_scope is None
+        ):
             raise ValueError(
                 f'{requirement.source.value}: {partition.value} partition requires a temporal selector'
             )
     elif requirement.source is KpiSource.PI_RECORDED:
         if partition not in {KpiPartition.DAILY, KpiPartition.MONTHLY}:
-            raise ValueError(f'{requirement.source.value}: unsupported partition: {partition.value}')
+            raise ValueError(
+                f'{requirement.source.value}: unsupported partition: {partition.value}'
+            )
         if time_window is None and operational_scope is None:
             raise ValueError(
                 f'{requirement.source.value}: {partition.value} partition requires a temporal selector'

@@ -104,7 +104,9 @@ def _pi_binding(
     materializations = []
     partitions: dict[KpiPartition, KpiPartitionBinding] = {}
     if include_latest:
-        materializations.append(MaterializationDefinition(name='latest', layout=SingleArtifactLayout()))
+        materializations.append(
+            MaterializationDefinition(name='latest', layout=SingleArtifactLayout())
+        )
         partitions[KpiPartition.LATEST] = KpiPartitionBinding(
             partition=KpiPartition.LATEST,
             materialization='latest',

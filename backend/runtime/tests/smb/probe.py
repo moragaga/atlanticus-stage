@@ -172,12 +172,8 @@ def _verify(probe_root: Path) -> None:
         raise RuntimeError(
             f'unexpected generations: owner-a={generation_a!r}, owner-b={generation_b!r}'
         )
-    first_mutation = (probe_root / 'authoritative-generation-1.txt').read_text(
-        encoding='utf-8'
-    )
-    second_mutation = (probe_root / 'authoritative-generation-2.txt').read_text(
-        encoding='utf-8'
-    )
+    first_mutation = (probe_root / 'authoritative-generation-1.txt').read_text(encoding='utf-8')
+    second_mutation = (probe_root / 'authoritative-generation-2.txt').read_text(encoding='utf-8')
     if first_mutation != 'generation=1\n' or second_mutation != 'generation=2\n':
         raise RuntimeError('authoritative mutations do not match their lease generations')
 
