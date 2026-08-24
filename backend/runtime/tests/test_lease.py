@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
@@ -340,16 +339,15 @@ def test_lease_context_manager_does_not_hide_business_error(tmp_path, monkeypatc
     lease.path.unlink(missing_ok=True)
 
 
-def test_stale_recovery_guard_without_lease_does_not_block_zero_wait_acquisition(tmp_path) -> None:
-    lease = _lease(tmp_path, run_id='run-1', wait_seconds=0)
-    lease.path.parent.mkdir(parents=True, exist_ok=True)
-    guard = lease.path.parent / f'.{lease.path.stem}.recovery'
-    guard.write_text('', encoding='utf-8')
-    stale_at = time.time() - 10
-    os.utime(guard, (stale_at, stale_at))
+def test_persistent_fence_file_does_not_block_after_release(tmp_path) -> None:
+    first = _lease(tmp_path, run_id='run-1', wait_seconds=0)
+    assert first.acquire().acquired is True
+    assert first.release() is True
+    assert first.fence_path.exists()
 
-    acquisition = lease.acquire()
+    second = _lease(tmp_path, run_id='run-2', wait_seconds=0)
+    acquisition = second.acquire()
 
     assert acquisition.waited_seconds >= 0
-    assert lease.acquired is True
-    assert lease.release()
+    assert second.acquired is True
+    assert second.release()

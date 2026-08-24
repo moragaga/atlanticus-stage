@@ -1,6 +1,3 @@
-# La comprobación de autoridad comparte el mismo guard físico usado por acquire/renew/release.
-# Así un stale writer no puede confirmar ownership observando un lease que ya fue reemplazado por otra generación.
-
 """Lease de archivo renovable para evitar solapamientos accidentales del mismo job."""
 
 from __future__ import annotations
@@ -11,7 +8,8 @@ import os
 import re
 import socket
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -20,6 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from atlanticus.runtime._authority import JobAuthorityStore
+from atlanticus.runtime._fence import PhysicalAuthorityFence
 from atlanticus.runtime.errors import (
     AtlanticusRuntimeError,
     ConcurrentExecutionError,
@@ -119,7 +118,12 @@ class ExecutionLease:
             raise TypeError('wall_clock must be callable')
         self._directory = resolve_runtime_root(volume_path, application=application) / 'leases'
         self._path = self._directory / f'{job_key_segment}.json'
-        self._recovery_guard = self._directory / f'.{job_key_segment}.recovery'
+        # Este lock vive en el volumen compartido y serializa autoridad entre procesos/contenedores.
+        self._physical_fence = PhysicalAuthorityFence(
+            volume_path=volume_path,
+            application=application,
+            job_key=normalized_job_key,
+        )
         self._authority_store = JobAuthorityStore(
             volume_path=volume_path,
             application=application,
@@ -172,6 +176,10 @@ class ExecutionLease:
         return self._authority_store.path
 
     @property
+    def fence_path(self) -> Path:
+        return self._physical_fence.path
+
+    @property
     def acquired(self) -> bool:
         return self._acquired
 
@@ -188,6 +196,7 @@ class ExecutionLease:
         with self._state_lock:
             return self._failure
 
+    # El takeover sólo puede avanzar generation después de entrar al mismo fence de mutaciones.
     def acquire(self) -> LeaseAcquisition:
         """Espera en intervalos cortos y recupera una lease expirada."""
 
@@ -195,24 +204,23 @@ class ExecutionLease:
         started = time.monotonic()
         recovered: RecoveredLease | None = None
         while True:
-            guard_descriptor = self._try_acquire_recovery_guard()
-            if guard_descriptor is not None:
+            fence_descriptor = self._physical_fence.try_acquire()
+            if fence_descriptor is not None:
                 try:
                     existing = self._read_payload()
                     if existing is None or self._is_expired(existing):
                         if existing is not None:
-                            recovered_now = self._recover_expired_under_guard(existing)
+                            recovered_now = self._recover_expired_under_fence(existing)
                             if recovered is None:
                                 recovered = recovered_now
-                        acquisition = self._acquire_under_guard(
+                        acquisition = self._acquire_under_fence(
                             started=started,
                             recovered=recovered,
                         )
                         if acquisition is not None:
                             return acquisition
                 finally:
-                    os.close(guard_descriptor)
-                    self._recovery_guard.unlink(missing_ok=True)
+                    self._physical_fence.release(fence_descriptor)
 
             elapsed = time.monotonic() - started
             remaining = self._wait_seconds - elapsed
@@ -254,14 +262,15 @@ class ExecutionLease:
             return
         self._renewal_thread = None
 
+    # Heartbeat y commit comparten fence para evitar que el lease cambie a mitad de una mutación protegida.
     def renew(self) -> bool:
         """Extiende la expiración sólo cuando el lease sigue perteneciendo al proceso."""
 
         if not self._acquired or self._generation is None:
             return False
-        guard_descriptor = self._acquire_authority_check_guard()
-        if guard_descriptor is None:
-            raise LeaseRenewalError('Lease renewal guard is unavailable')
+        fence_descriptor = self._acquire_authority_fence()
+        if fence_descriptor is None:
+            raise LeaseRenewalError('Lease authority fence is unavailable')
         try:
             existing = self._read_payload()
             if not self._owns_payload(existing) or self._is_expired(existing or {}):
@@ -277,9 +286,9 @@ class ExecutionLease:
             self._replace_payload(payload)
             return True
         finally:
-            os.close(guard_descriptor)
-            self._recovery_guard.unlink(missing_ok=True)
+            self._physical_fence.release(fence_descriptor)
 
+    # El cierre y el marcado de slot completado también quedan ordenados por la frontera física.
     def release(self, *, completed: bool = False) -> bool:
         """Elimina la lease sólo cuando todavía pertenece a este proceso."""
 
@@ -290,8 +299,8 @@ class ExecutionLease:
             return False
         if not self._acquired or self._generation is None:
             return False
-        guard_descriptor = self._try_acquire_recovery_guard()
-        if guard_descriptor is None:
+        fence_descriptor = self._acquire_authority_fence()
+        if fence_descriptor is None:
             return False
         try:
             existing = self._read_payload()
@@ -315,8 +324,7 @@ class ExecutionLease:
             self._acquired = False
             return released
         finally:
-            os.close(guard_descriptor)
-            self._recovery_guard.unlink(missing_ok=True)
+            self._physical_fence.release(fence_descriptor)
 
     def __enter__(self) -> ExecutionLease:
         acquisition = self.acquire()
@@ -336,7 +344,7 @@ class ExecutionLease:
         except Exception:
             return
 
-    def _acquire_under_guard(
+    def _acquire_under_fence(
         self,
         *,
         started: float,
@@ -383,7 +391,7 @@ class ExecutionLease:
             expires_at=expiration,
             generation=advanced.generation,
         )
-        if not self._try_create_under_guard(payload):
+        if not self._try_create_under_fence(payload):
             return None
         acquisition = LeaseAcquisition(
             waited_seconds=round(time.monotonic() - started, 6),
@@ -414,31 +422,51 @@ class ExecutionLease:
                 )
                 return
 
-    # Verifica token, generación, expiración y estado durable; cualquier incertidumbre falla cerrado.
+    # Este chequeo conserva la API lógica histórica: adquiere y libera el fence dentro de la llamada.
     def assert_current(self) -> None:
         self.raise_if_unhealthy()
         if not self._acquired or self._generation is None:
             raise LeaseOwnershipLostError('Lease ownership was lost')
-        guard_descriptor = self._acquire_authority_check_guard()
-        if guard_descriptor is None:
+        fence_descriptor = self._acquire_authority_fence()
+        if fence_descriptor is None:
             error = LeaseRenewalError('Lease authority could not be confirmed')
             self._mark_failure(error, 'lease_authority_unconfirmed')
             raise error
         try:
-            existing = self._read_payload()
-            state = self._authority_store.read()
-            if (
-                not self._owns_payload(existing)
-                or self._is_expired(existing or {})
-                or state.generation != self._generation
-            ):
-                self._acquired = False
-                error = LeaseOwnershipLostError('Lease ownership was lost')
-                self._mark_failure(error, 'lease_ownership_lost')
-                raise error
+            self._assert_current_under_fence()
         finally:
-            os.close(guard_descriptor)
-            self._recovery_guard.unlink(missing_ok=True)
+            self._physical_fence.release(fence_descriptor)
+
+    # La sección crítica mantiene el fence hasta que el consumidor termina el write físico inmediato.
+    @contextmanager
+    def fenced_mutation(self) -> Iterator[None]:
+        self.raise_if_unhealthy()
+        if not self._acquired or self._generation is None:
+            raise LeaseOwnershipLostError('Lease ownership was lost')
+        fence_descriptor = self._acquire_authority_fence()
+        if fence_descriptor is None:
+            error = LeaseRenewalError('Lease authority fence is unavailable')
+            self._mark_failure(error, 'lease_authority_unconfirmed')
+            raise error
+        try:
+            self._assert_current_under_fence()
+            yield
+        finally:
+            self._physical_fence.release(fence_descriptor)
+
+    # Se revalida owner + generation mientras ningún takeover puede publicar una nueva autoridad.
+    def _assert_current_under_fence(self) -> None:
+        existing = self._read_payload()
+        state = self._authority_store.read()
+        if (
+            not self._owns_payload(existing)
+            or self._is_expired(existing or {})
+            or state.generation != self._generation
+        ):
+            self._acquired = False
+            error = LeaseOwnershipLostError('Lease ownership was lost')
+            self._mark_failure(error, 'lease_ownership_lost')
+            raise error
 
     def raise_if_unhealthy(self) -> None:
         failure = self.failure
@@ -488,7 +516,7 @@ class ExecutionLease:
             'expires_at_utc': expires_at.isoformat(),
         }
 
-    def _try_create_under_guard(self, payload: dict[str, Any]) -> bool:
+    def _try_create_under_fence(self, payload: dict[str, Any]) -> bool:
         descriptor: int | None = None
         try:
             try:
@@ -534,7 +562,7 @@ class ExecutionLease:
                 os.close(descriptor)
             temporary_path.unlink(missing_ok=True)
 
-    def _recover_expired_under_guard(self, existing: dict[str, Any]) -> RecoveredLease:
+    def _recover_expired_under_fence(self, existing: dict[str, Any]) -> RecoveredLease:
         recovered = _recovered_lease(existing)
         try:
             self._path.unlink()
@@ -544,42 +572,13 @@ class ExecutionLease:
             _fsync_directory(self._directory)
         return recovered
 
-    # La verificación tolera una contención brevísima con el heartbeat, pero nunca espera indefinidamente.
-    def _acquire_authority_check_guard(self) -> int | None:
-        wait_seconds = min(1.0, max(0.05, self._poll_seconds))
-        deadline = time.monotonic() + wait_seconds
-        while True:
-            descriptor = self._try_acquire_recovery_guard()
-            if descriptor is not None:
-                return descriptor
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return None
-            time.sleep(min(0.01, remaining))
-
-    def _try_acquire_recovery_guard(self) -> int | None:
-        try:
-            return os.open(
-                self._recovery_guard,
-                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-                0o640,
-            )
-        except FileExistsError:
-            try:
-                age_seconds = time.time() - self._recovery_guard.stat().st_mtime
-            except FileNotFoundError:
-                return None
-            if age_seconds <= max(5.0, self._poll_seconds * 2):
-                return None
-            self._recovery_guard.unlink(missing_ok=True)
-            try:
-                return os.open(
-                    self._recovery_guard,
-                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-                    0o640,
-                )
-            except FileExistsError:
-                return None
+    # El timeout corto evita quedar bloqueado indefinidamente por una sección crítica defectuosa.
+    def _acquire_authority_fence(self) -> int | None:
+        wait_seconds = min(5.0, max(1.0, self._renewal_seconds / 2))
+        return self._physical_fence.acquire(
+            wait_seconds=wait_seconds,
+            poll_seconds=min(0.05, self._poll_seconds),
+        )
 
     def _read_payload(self) -> dict[str, Any] | None:
         try:

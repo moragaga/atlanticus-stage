@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlanticus-job-runtime"
-version = "0.6.0"
+version = "0.7.0"
 description = "Ejecución controlada y coordinación de jobs backend Atlanticus."
 readme = "README.md"
 requires-python = "==3.14.2"

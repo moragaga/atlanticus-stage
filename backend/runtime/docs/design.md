@@ -6,7 +6,7 @@ Runtime orquesta ejecución, coordinación temporal, lease, autoridad y cierre. 
 
 La API pública se limita a `JobDefinition`, `JobRuntimeContext`, `RuntimeConfiguration`, `RuntimeExecutionResult`, `execute_job` y los errores controlados. Lease, scheduling parser, authority store y resource monitor son detalles internos.
 
-R20C consolida `0.6.0` sin cambiar la regla de compatibilidad: un consumidor que no configura scheduling y no entrega hooks sigue usando el modelo histórico `RELATIVE`.
+R20C consolidó `0.6.0`; R20E consolida `0.7.0` sin cambiar la regla de compatibilidad: un consumidor que no configura scheduling y no entrega hooks sigue usando el modelo histórico `RELATIVE`.
 
 ## Fuentes de autoridad
 
@@ -40,7 +40,7 @@ Un late start conserva la frontera del slot real; no crea un slot artificial des
 
 ### SCHEDULED_RESIDENT
 
-Está aceptado como posibilidad arquitectónica, pero no está implementado ni declarado disponible en `0.6.0`.
+Está aceptado como posibilidad arquitectónica, pero no está implementado ni declarado disponible en `0.7.0`.
 
 ## Execution Window
 
@@ -106,7 +106,7 @@ La renovación del heartbeat requiere que el owner siga vigente y que su lease n
 
 Cuando existe scheduled/platform authority, la expiración renovada queda capped por la frontera efectiva. El heartbeat no puede convertir una invocación vencida en autoridad nueva.
 
-`renew()` y `assert_current()` comparten coordinación para evitar que una ocupación breve del guard interno sea interpretada como pérdida de ownership. Una pérdida real de owner, generation o expiración sigue fallando cerrado.
+`renew()`, `assert_current()`, takeover y `fenced_mutation()` comparten el mismo fence físico por `job_key`. Una ocupación breve se espera de forma acotada; una pérdida real de owner, generation o expiración sigue fallando cerrado.
 
 ## Lifecycle
 
@@ -157,18 +157,23 @@ Esto permite que el consumidor implemente recuperación y flush final sin transf
 
 ## Fencing authority
 
-`JobRuntimeContext` expone dos elementos públicos para el consumidor:
+`JobRuntimeContext` expone tres elementos públicos para el consumidor:
 
 ```text
 lease_generation
 assert_lease_current()
+fenced_mutation()
 ```
 
-`assert_lease_current()` valida la autoridad vigente contra la lease y el authority store. La comprobación incluye ownership, token, generation, existencia y expiración. Si la renovación es incierta o la autoridad cambió, el Runtime no autoriza continuar como owner vigente.
+`assert_lease_current()` conserva la comprobación lógica introducida en R20C. Valida ownership, token, generation, existencia y expiración contra la lease y el authority store.
 
-El Runtime no conoce el recurso externo que el consumidor escribe. Por eso `0.6.0` sólo garantiza fencing lógico `check-before-commit`.
+R20E agrega un lock físico por `job_key` bajo `.runtime/fences/`. Adquisición/takeover, renew, release, comprobación de autoridad y `fenced_mutation()` coordinan mediante el mismo lock. La linearization point del takeover queda después de adquirir ese fence: una generación nueva no puede publicarse mientras una mutación de la generación anterior conserve la sección protegida.
 
-No existe todavía un primitive transaccional que una `assert_lease_current()` con un commit en WAL, snapshot, Cosmos, SQL, Storage u otro backend. El Persistence POC debe probar físicamente stale writers y medir la ventana TOCTOU antes de introducir otra abstracción transversal.
+`fenced_mutation()` adquiere el fence, revalida la autoridad y entrega al consumidor una sección crítica corta. El consumidor sigue siendo dueño de la operación concreta y el Runtime continúa sin conocer WAL, snapshot, Cosmos, SQL, Storage u otro backend. La abstracción garantiza orden entre writers Atlanticus que usan el mismo `job_key`; no convierte un backend externo en una transacción distribuida ni reemplaza CAS/ETag nativo cuando un recurso lo ofrece.
+
+El hallazgo que origina R20E fue una carrera física reproducible entre `assert_lease_current()` y una mutación posterior: una generación antigua podía superar el check, ocurrir un takeover y luego ejecutar el write. Al hacer que takeover y mutación protegida compartan el mismo fence se elimina esa ventana para el volumen compartido sin introducir semántica de Alarm Engine en Runtime.
+
+En Linux, la implementación usa `flock()` sobre un archivo estable del runtime. En CIFS/SMB, Linux 5.5+ propaga `flock()` mediante locks SMB; el deployment no debe montar con `nobrl`. En filesystem local el lock es cooperativo entre procesos Atlanticus. La sección crítica debe ser breve para no degradar availability ni bloquear el heartbeat innecesariamente.
 
 ## Cancelación
 
@@ -182,9 +187,9 @@ El soporte de recursos permanece separado en modelos, sampler cgroup, detector d
 
 Observability y scheduling son ortogonales. La configuración proyectada a la extensión Azure sigue limitada a sus variables explícitas; Runtime no expone secretos ni serializa configuración de plataforma en logs.
 
-## Compatibilidad y no-alcance de `0.6.0`
+## Compatibilidad y no-alcance de `0.7.0`
 
-El cierre R20C no modifica automáticamente ningún proceso consumidor. En particular:
+R20E no modifica automáticamente la lógica de negocio de ningún proceso consumidor. En particular:
 
 - no agrega cron a procesos existentes;
 - no cambia `config.detail.json`, `secrets.detail.json`, `config.json` ni `.env`;
@@ -194,4 +199,4 @@ El cierre R20C no modifica automáticamente ningún proceso consumidor. En parti
 - no implementa WAL ni snapshot;
 - no declara `SCHEDULED_RESIDENT` disponible.
 
-El cambio coordinado de consumidores se limita a certificar `atlanticus-job-runtime==0.6.0`, regenerar locks con UV y reconstruir los artifacts que transportan el wheel.
+El cambio coordinado de consumidores se limita a certificar `atlanticus-job-runtime==0.7.0`, regenerar locks con UV y reconstruir los artifacts que transportan el wheel. Los consumidores existentes pueden seguir usando sólo `assert_lease_current()`; `fenced_mutation()` es opt-in para mutaciones que necesitan la frontera física.

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from atlanticus.runtime import AtlanticusRuntimeError
+from atlanticus.runtime import AtlanticusRuntimeError, LeaseOwnershipLostError
 from atlanticus.runtime.lease import ExecutionLease
 
 
@@ -28,6 +27,7 @@ def _lease(
     scheduled_at_utc: datetime | None = None,
     authority_deadline_utc: datetime | None = None,
     lease_timeout_seconds: float = 120,
+    wait_seconds: float = 0,
 ) -> ExecutionLease:
     return ExecutionLease(
         volume_path=tmp_path,
@@ -37,7 +37,7 @@ def _lease(
         run_id=run_id,
         lease_timeout_seconds=lease_timeout_seconds,
         renewal_seconds=min(10, lease_timeout_seconds / 2),
-        wait_seconds=0,
+        wait_seconds=wait_seconds,
         poll_seconds=0.01,
         instance_id=f'instance-{run_id}',
         process_id=101,
@@ -210,7 +210,7 @@ def test_poc_expired_owner_cannot_renew_same_generation(tmp_path) -> None:
     assert lease.acquired is False
 
 
-def test_poc_renewal_waits_for_short_coordination_guard(tmp_path) -> None:
+def test_poc_renewal_waits_for_short_physical_fence(tmp_path) -> None:
     clock = MutableClock(datetime(2026, 8, 23, 21, 10, 0, tzinfo=UTC))
     lease = _lease(
         tmp_path,
@@ -219,17 +219,16 @@ def test_poc_renewal_waits_for_short_coordination_guard(tmp_path) -> None:
         lease_timeout_seconds=10,
     )
     assert lease.acquire().generation == 1
+    entered = threading.Event()
 
-    guard_path = lease.path.parent / '.authority-job.recovery'
-    descriptor = os.open(guard_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    def hold_fence() -> None:
+        with lease.fenced_mutation():
+            entered.set()
+            time.sleep(0.05)
 
-    def release_guard() -> None:
-        time.sleep(0.01)
-        os.close(descriptor)
-        guard_path.unlink(missing_ok=True)
-
-    thread = threading.Thread(target=release_guard)
+    thread = threading.Thread(target=hold_fence)
     thread.start()
+    assert entered.wait(1)
     try:
         assert lease.renew() is True
     finally:
@@ -245,3 +244,71 @@ def test_poc_corrupt_authority_state_fails_closed(tmp_path) -> None:
 
     with pytest.raises(AtlanticusRuntimeError, match='authority state is invalid'):
         lease.acquire()
+
+
+def test_poc_physical_fence_linearizes_commit_before_takeover(tmp_path) -> None:
+    clock = MutableClock(datetime(2026, 8, 23, 21, 10, 0, tzinfo=UTC))
+    first = _lease(
+        tmp_path,
+        run_id='run-1',
+        clock=clock,
+        lease_timeout_seconds=10,
+    )
+    assert first.acquire().generation == 1
+    entered = threading.Event()
+    allow_commit = threading.Event()
+    takeover_done = threading.Event()
+    sequence: list[str] = []
+    errors: list[BaseException] = []
+
+    def generation_one_commit() -> None:
+        try:
+            with first.fenced_mutation():
+                entered.set()
+                if not allow_commit.wait(1):
+                    raise TimeoutError('test commit barrier timed out')
+                sequence.append('generation_1_commit')
+        except BaseException as error:
+            errors.append(error)
+
+    first_thread = threading.Thread(target=generation_one_commit)
+    first_thread.start()
+    assert entered.wait(1)
+
+    clock.value += timedelta(seconds=11)
+    second = _lease(
+        tmp_path,
+        run_id='run-2',
+        clock=clock,
+        lease_timeout_seconds=10,
+        wait_seconds=1,
+    )
+
+    def takeover() -> None:
+        try:
+            acquisition = second.acquire()
+            sequence.append(f'generation_{acquisition.generation}_takeover')
+            takeover_done.set()
+        except BaseException as error:
+            errors.append(error)
+
+    second_thread = threading.Thread(target=takeover)
+    second_thread.start()
+    time.sleep(0.05)
+
+    assert takeover_done.is_set() is False
+    allow_commit.set()
+    first_thread.join(timeout=1)
+    assert first_thread.is_alive() is False
+    assert takeover_done.wait(1)
+    second_thread.join(timeout=1)
+
+    assert errors == []
+    assert sequence == ['generation_1_commit', 'generation_2_takeover']
+
+    with pytest.raises(LeaseOwnershipLostError, match='ownership'):
+        with first.fenced_mutation():
+            sequence.append('stale_generation_1_commit')
+
+    assert sequence == ['generation_1_commit', 'generation_2_takeover']
+    assert second.release()

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import signal
 from datetime import UTC, datetime, timedelta
 
@@ -15,6 +14,7 @@ from atlanticus.runtime import (
     RuntimeConfiguration,
     execute_job,
 )
+from atlanticus.runtime._fence import PhysicalAuthorityFence
 from atlanticus.runtime._resource_sampler import CgroupResourceSampler
 from atlanticus.runtime.lease import ExecutionLease, LeaseAcquisition
 from atlanticus.runtime.runner import (
@@ -419,15 +419,19 @@ def test_lost_lease_stops_business_and_fails_execution(tmp_path) -> None:
 
     def lose_lease(context) -> None:
         path = tmp_path / 'ada' / '.runtime' / 'leases' / 'lease-loss-job.json'
-        guard_path = path.parent / '.lease-loss-job.recovery'
-        descriptor = os.open(guard_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fence = PhysicalAuthorityFence(
+            volume_path=tmp_path,
+            application='ada',
+            job_key='lease-loss-job',
+        )
+        descriptor = fence.acquire(wait_seconds=1, poll_seconds=0.01)
+        assert descriptor is not None
         try:
             payload = json.loads(path.read_text())
             payload['expires_at_utc'] = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
             path.write_text(json.dumps(payload))
         finally:
-            os.close(descriptor)
-            guard_path.unlink(missing_ok=True)
+            fence.release(descriptor)
         assert not context.wait(1)
         context.raise_if_cancelled()
 

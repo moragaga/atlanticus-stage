@@ -6,6 +6,7 @@ import math
 import re
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -54,6 +55,9 @@ class JobRuntimeContext:
     _next_iteration_delay_seconds: float | None = field(default=None, repr=False)
     _lease_generation: int | None = field(default=None, repr=False)
     _lease_authority_check: Callable[[], None] | None = field(default=None, repr=False)
+    _lease_authority_fence: Callable[[], AbstractContextManager[None]] | None = field(
+        default=None, repr=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.definition, JobDefinition):
@@ -176,11 +180,18 @@ class JobRuntimeContext:
             raise RuntimeContractError('lease authority is not available in this context')
         checker()
 
+    def fenced_mutation(self) -> AbstractContextManager[None]:
+        fence = self._lease_authority_fence
+        if self._lease_generation is None or fence is None:
+            raise RuntimeContractError('lease authority is not available in this context')
+        return fence()
+
     def _bind_lease_authority(
         self,
         *,
         generation: int,
         checker: Callable[[], None],
+        fence: Callable[[], AbstractContextManager[None]],
     ) -> None:
         if isinstance(generation, bool) or not isinstance(generation, int):
             raise TypeError('generation must be an int')
@@ -188,10 +199,17 @@ class JobRuntimeContext:
             raise ValueError('generation must be greater than zero')
         if not callable(checker):
             raise TypeError('checker must be callable')
-        if self._lease_generation is not None or self._lease_authority_check is not None:
+        if not callable(fence):
+            raise TypeError('fence must be callable')
+        if (
+            self._lease_generation is not None
+            or self._lease_authority_check is not None
+            or self._lease_authority_fence is not None
+        ):
             raise RuntimeContractError('lease authority is already bound')
         self._lease_generation = generation
         self._lease_authority_check = checker
+        self._lease_authority_fence = fence
 
     def request_stop(self, reason: str = 'requested') -> None:
         normalized_reason = _validate_stop_reason(reason)

@@ -174,6 +174,7 @@ def execute_job(
             context._bind_lease_authority(
                 generation=acquisition.generation,
                 checker=lease.assert_current,
+                fence=lease.fenced_mutation,
             )
         context.set_execution_fact('execution_mode', context.execution_mode)
         if context.scheduled_at_utc is not None:

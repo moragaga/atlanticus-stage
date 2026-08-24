@@ -186,6 +186,7 @@ def test_poc_stale_writer_cannot_commit_after_takeover(tmp_path) -> None:
     context._bind_lease_authority(
         generation=first_acquisition.generation,
         checker=first.assert_current,
+        fence=first.fenced_mutation,
     )
 
     wall_clock.value += timedelta(seconds=11)
@@ -194,8 +195,8 @@ def test_poc_stale_writer_cannot_commit_after_takeover(tmp_path) -> None:
     commits: list[str] = []
 
     def stale_commit() -> None:
-        context.assert_lease_current()
-        commits.append('committed')
+        with context.fenced_mutation():
+            commits.append('committed')
 
     with pytest.raises(LeaseOwnershipLostError, match='ownership'):
         stale_commit()
@@ -221,6 +222,7 @@ def test_poc_uncertain_renewal_blocks_new_commit(tmp_path, monkeypatch) -> None:
     context._bind_lease_authority(
         generation=acquisition.generation,
         checker=lease.assert_current,
+        fence=lease.fenced_mutation,
     )
 
     def fail_renew(self) -> bool:
@@ -237,8 +239,8 @@ def test_poc_uncertain_renewal_blocks_new_commit(tmp_path, monkeypatch) -> None:
     commits: list[str] = []
 
     def commit() -> None:
-        context.assert_lease_current()
-        commits.append('committed')
+        with context.fenced_mutation():
+            commits.append('committed')
 
     with pytest.raises(LeaseRenewalError, match='renewal failed'):
         commit()
@@ -259,6 +261,8 @@ def test_poc_context_fails_closed_without_bound_authority(tmp_path) -> None:
     assert context.lease_generation is None
     with pytest.raises(RuntimeContractError, match='authority is not available'):
         context.assert_lease_current()
+    with pytest.raises(RuntimeContractError, match='authority is not available'):
+        context.fenced_mutation()
 
 
 def test_poc_failed_drain_does_not_complete_scheduled_slot(tmp_path, monkeypatch) -> None:

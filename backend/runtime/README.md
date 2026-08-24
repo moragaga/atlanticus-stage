@@ -1,8 +1,8 @@
 # Atlanticus Job Runtime
 
-`atlanticus-job-runtime==0.6.0` coordina ejecución, ventana temporal, lease, autoridad y cierre de jobs backend Atlanticus sin conocer conectores, datasets, State ni reglas de ADA.
+`atlanticus-job-runtime==0.7.0` coordina ejecución, ventana temporal, lease, autoridad y cierre de jobs backend Atlanticus sin conocer conectores, datasets, State ni reglas de ADA.
 
-## Contrato estable R20C
+## Contrato estable R20C + R20E
 
 Runtime mantiene `RELATIVE` como modo por defecto y agrega `SCHEDULED_EXTERNAL` de forma opt-in. La presencia de cron efectivo no cambia la lógica de negocio del proceso: sólo delimita la autoridad temporal de la invocación.
 
@@ -13,7 +13,7 @@ Responsabilidades principales:
 - impide dos escritores para un mismo `job_key` mediante una lease renovable;
 - conserva una `generation` monotónica durable para el ownership;
 - deduplica slots scheduled completados y permite reintentar slots incompletos;
-- expone `lease_generation` y `assert_lease_current()` al consumidor para fencing lógico antes de commits protegidos;
+- expone `lease_generation`, `assert_lease_current()` y `fenced_mutation()` para autoridad lógica y mutaciones físicas serializadas;
 - admite hooks opcionales `recovery` y `drain` bajo la misma autoridad de lease;
 - mantiene heartbeat durante recovery, ejecución y drain;
 - convierte `SIGTERM` y `RuntimeCancellationRequested` en cierres cooperativos;
@@ -22,7 +22,7 @@ Responsabilidades principales:
 
 Runtime no crea clientes, no resuelve secretos, no administra pools de negocio, no lee archivos de deployment y no implementa persistencia transaccional del consumidor.
 
-`SCHEDULED_RESIDENT` no forma parte de la API disponible en `0.6.0`.
+`SCHEDULED_RESIDENT` no forma parte de la API disponible en `0.7.0`.
 
 ## Configuración
 
@@ -124,7 +124,8 @@ Runtime separa ownership activo de autoridad durable:
 ```text
 ${VOLUMEN_PATH}/${APPLICATION}/.runtime/
 ├── leases/${JOB_KEY}.json
-└── authority/${JOB_KEY}.json
+├── authority/${JOB_KEY}.json
+└── fences/${JOB_KEY}.lock
 ```
 
 La lease activa contiene ownership efímero. El registro de autoridad conserva la `generation` monotónica y el último slot scheduled completado.
@@ -160,11 +161,23 @@ Recovery, run y drain comparten la misma lease generation. El heartbeat permanec
 ```text
 context.lease_generation
 context.assert_lease_current()
+context.fenced_mutation()
 ```
 
-`assert_lease_current()` verifica owner token, generación, existencia, expiración y autoridad durable vigente. Ante pérdida o renovación incierta, falla cerrado.
+`assert_lease_current()` conserva el chequeo lógico de owner token, generación, existencia, expiración y autoridad durable vigente. Es útil para validar autoridad antes de trabajo que no requiere una frontera física.
 
-Este contrato es fencing lógico `check-before-commit`. `0.6.0` no declara una transacción física entre esa comprobación y una escritura externa. El Persistence POC debe medir la posible carrera TOCTOU antes de justificar un primitive adicional.
+`fenced_mutation()` agrega la frontera física de R20E. La entrada adquiere un lock exclusivo por `job_key` en el volumen compartido, revalida lease + generation mientras ese lock permanece retenido y sólo entonces entrega el control al consumidor. La adquisición/takeover de una nueva generación usa el mismo lock, por lo que una nueva `generation` no puede hacerse efectiva mientras una mutación protegida anterior siga dentro de la sección crítica.
+
+Uso esperado:
+
+```python
+with context.fenced_mutation():
+    persistence.publish_durable_head(...)
+```
+
+La sección debe contener únicamente la mutación física inmediata: `os.replace`, publicación de un head, snapshot u otra operación corta. No debe envolver evaluación de negocio, sleeps, llamadas HTTP prolongadas ni trabajo no relacionado. El Runtime serializa autoridad; no conoce WAL, snapshots, Cosmos, SQL ni la semántica del recurso escrito.
+
+En Linux local el lock es cooperativo entre procesos Atlanticus. Sobre CIFS/SMB con kernel Linux 5.5 o superior, `flock()` se propaga como lock SMB de archivo; el mount no debe deshabilitar byte-range locking mediante `nobrl`. Azure Files SMB soporta locking de archivo/byte-range, por lo que el mismo primitive puede usarse sin una dependencia Azure específica.
 
 ## Cancelación y observabilidad
 
@@ -183,4 +196,4 @@ Desde `backend/`:
 ./scripts/validation/check.sh
 ```
 
-El cierre coordinado de `0.6.0` requiere además que los consumidores que fijan `atlanticus-job-runtime` regeneren sus `uv.lock` con UV y que los artifacts de procesos vuelvan a transportar el wheel `atlanticus_job_runtime-0.6.0-py3-none-any.whl`.
+El cierre coordinado de `0.7.0` requiere que los consumidores que fijan `atlanticus-job-runtime` regeneren sus `uv.lock` con UV y que los artifacts de procesos vuelvan a transportar el wheel `atlanticus_job_runtime-0.7.0-py3-none-any.whl`.
