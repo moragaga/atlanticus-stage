@@ -4,12 +4,26 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 
+from ada.alarms.core.deactivation import (
+    DeactivationEffectIdFactory,
+    DeactivationRequestIdFactory,
+    _apply_deactivation_action,
+    _apply_deactivation_decision,
+    _expire_deactivation_effects,
+    _index_pending_requests,
+    _validate_decisions,
+)
 from ada.alarms.core.errors import AlarmContractError, AlarmLifecycleError
 from ada.alarms.core.models import (
     AlarmIdentity,
     AlarmKind,
     AlarmRuntimeState,
     CascadeSuppression,
+    DeactivationDecision,
+    DeactivationDecisionResult,
+    DeactivationEffectChange,
+    DeactivationRequest,
+    DeactivationRequestResult,
     EpisodeChange,
     EpisodeChangeKind,
     GroupLifecycleState,
@@ -34,6 +48,9 @@ class _ManagementPreparation:
     state: GroupLifecycleState
     action_results: tuple[ManagementActionResult, ...]
     effect_changes: tuple[ManagementEffectChange, ...]
+    deactivation_request_results: tuple[DeactivationRequestResult, ...]
+    deactivation_decision_results: tuple[DeactivationDecisionResult, ...]
+    deactivation_effect_changes: tuple[DeactivationEffectChange, ...]
     reappearance_changes: tuple[ReappearanceChange, ...]
 
 
@@ -115,36 +132,51 @@ def _prepare_management_state(
     actions: Sequence[ManagementAction],
     effect_id_factory: ManagementEffectIdFactory | None,
     due_at_resolver: ReappearanceDueAtResolver | None,
+    pending_deactivation_requests: Sequence[DeactivationRequest],
+    deactivation_decisions: Sequence[DeactivationDecision],
+    deactivation_request_id_factory: DeactivationRequestIdFactory | None,
+    deactivation_effect_id_factory: DeactivationEffectIdFactory | None,
 ) -> _ManagementPreparation:
     _require_utc_datetime(cycle_at, 'cycle_at')
     indexed_actions = _validate_actions(actions, cycle_at=cycle_at)
+    indexed_decisions = _validate_decisions(deactivation_decisions, cycle_at=cycle_at)
+    pending_by_id, pending_by_alarm = _index_pending_requests(pending_deactivation_requests)
     working = {alarm.alarm_identity: alarm for alarm in state.alarms}
     results: list[ManagementActionResult] = []
     effect_changes: list[ManagementEffectChange] = []
+    deactivation_request_results: list[DeactivationRequestResult] = []
+    deactivation_decision_results: list[DeactivationDecisionResult] = []
+    deactivation_effect_changes: list[DeactivationEffectChange] = []
     reappearance_changes: list[ReappearanceChange] = []
 
-    grouped: dict[datetime, list[ManagementAction]] = {}
+    actions_by_at: dict[datetime, list[ManagementAction]] = {}
     for action in indexed_actions:
-        grouped.setdefault(action.source_created_at, []).append(action)
+        actions_by_at.setdefault(action.source_created_at, []).append(action)
+    decisions_by_at: dict[datetime, list[DeactivationDecision]] = {}
+    for decision in indexed_decisions:
+        decisions_by_at.setdefault(decision.decided_at, []).append(decision)
 
-    for effective_at in sorted(grouped):
-        action_group = sorted(
-            grouped[effective_at],
-            key=lambda action: (action.alarm_identity, action.input_id),
-        )
-        current_targets = {
-            action.alarm_identity
-            for action in action_group
-            if _targets_current_occurrence(working.get(action.alarm_identity), action)
-        }
-        working, cleared, reappeared = _resolve_due_effects(
+    event_times = sorted(set(actions_by_at) | set(decisions_by_at))
+    for effective_at in event_times:
+        working, expired = _expire_deactivation_effects(
             working,
             cutoff=effective_at,
             include_equal=True,
-            exclude_equal_identities=current_targets,
+        )
+        deactivation_effect_changes.extend(expired)
+        working, cleared, reappeared = _resolve_due_effects(
+            working,
+            cutoff=effective_at,
+            include_equal=False,
+            exclude_equal_identities=set(),
         )
         effect_changes.extend(cleared)
         reappearance_changes.extend(reappeared)
+
+        action_group = sorted(
+            actions_by_at.get(effective_at, ()),
+            key=lambda action: (action.alarm_identity, action.input_id),
+        )
         for action in action_group:
             working, action_result, changes = _apply_action(
                 working,
@@ -156,7 +188,50 @@ def _prepare_management_state(
             )
             results.append(action_result)
             effect_changes.extend(changes)
+            working, deactivation_result, deactivation_changes = _apply_deactivation_action(
+                working,
+                plans=plans,
+                action_result=action_result,
+                pending_by_id=pending_by_id,
+                pending_by_alarm=pending_by_alarm,
+                request_id_factory=deactivation_request_id_factory,
+                effect_id_factory=deactivation_effect_id_factory,
+            )
+            if deactivation_result is not None:
+                deactivation_request_results.append(deactivation_result)
+            deactivation_effect_changes.extend(deactivation_changes)
 
+        for decision in sorted(
+            decisions_by_at.get(effective_at, ()),
+            key=lambda item: (item.request_id, item.decision_id),
+        ):
+            working, decision_result, deactivation_changes = _apply_deactivation_decision(
+                working,
+                plans=plans,
+                decision=decision,
+                pending_by_id=pending_by_id,
+                pending_by_alarm=pending_by_alarm,
+                effect_id_factory=deactivation_effect_id_factory,
+            )
+            deactivation_decision_results.append(decision_result)
+            deactivation_effect_changes.extend(deactivation_changes)
+
+        if effective_at < cycle_at:
+            working, cleared, reappeared = _resolve_due_effects(
+                working,
+                cutoff=effective_at,
+                include_equal=True,
+                exclude_equal_identities=set(),
+            )
+            effect_changes.extend(cleared)
+            reappearance_changes.extend(reappeared)
+
+    working, expired = _expire_deactivation_effects(
+        working,
+        cutoff=cycle_at,
+        include_equal=True,
+    )
+    deactivation_effect_changes.extend(expired)
     working, cleared, reappeared = _resolve_due_effects(
         working,
         cutoff=cycle_at,
@@ -182,6 +257,32 @@ def _prepare_management_state(
             )
         ),
         effect_changes=tuple(sorted(effect_changes, key=_effect_change_sort_key)),
+        deactivation_request_results=tuple(
+            sorted(
+                deactivation_request_results,
+                key=lambda item: (
+                    item.action.source_created_at,
+                    item.action.alarm_identity,
+                    item.action.input_id,
+                ),
+            )
+        ),
+        deactivation_decision_results=tuple(
+            sorted(
+                deactivation_decision_results,
+                key=lambda item: (
+                    item.decision.decided_at,
+                    item.decision.request_id,
+                    item.decision.decision_id,
+                ),
+            )
+        ),
+        deactivation_effect_changes=tuple(
+            sorted(
+                deactivation_effect_changes,
+                key=lambda item: (item.effective_at, item.alarm_identity, item.kind.value),
+            )
+        ),
         reappearance_changes=tuple(
             sorted(
                 reappearance_changes,
@@ -240,7 +341,7 @@ def _finalize_management_state(
             )
         )
         working[identity] = replace(current, management_effect=None)
-        if working[identity].occurrence is None:
+        if working[identity].occurrence is None and working[identity].deactivation_effect is None:
             del working[identity]
 
     final_state = GroupLifecycleState(
@@ -504,8 +605,14 @@ def _resolve_due_effects(
             )
         )
         next_state = replace(current, management_effect=None)
+        deactivation = current.deactivation_effect
+        deactivation_blocks_reappearance = bool(
+            deactivation is not None
+            and deactivation.effective_from <= due < deactivation.effective_until
+        )
         if (
-            current.occurrence is not None
+            not deactivation_blocks_reappearance
+            and current.occurrence is not None
             and current.management_cycle is not None
             and effect.source_occurrence_id == current.occurrence.occurrence_id
         ):
@@ -520,7 +627,11 @@ def _resolve_due_effects(
                 )
             )
         working[identity] = next_state
-        if next_state.occurrence is None and next_state.management_effect is None:
+        if (
+            next_state.occurrence is None
+            and next_state.management_effect is None
+            and next_state.deactivation_effect is None
+        ):
             del working[identity]
     return working, tuple(changes), tuple(reappearances)
 

@@ -1,6 +1,7 @@
 # Espejo pedagógico de Priority Resolution.
-# Selecciona predominancia entre occurrences operacionales, excluye shadows y respeta cascade suppression.
-# El resultado no modifica GroupLifecycleState.
+# La prioridad continúa siendo derivada y no se persiste como winner/suppressed/eligible.
+# Una alarma con DeactivationEffect vigente queda fuera de candidatos operacionales y se clasifica DEACTIVATED.
+# Shadow se mantiene separado: una alarma no entregable sigue siendo SHADOW y no adquiere efectos accionables.
 
 from __future__ import annotations
 
@@ -32,8 +33,11 @@ def resolve_group_priority(
     active = {alarm.alarm_identity: alarm for alarm in state.alarms if alarm.occurrence is not None}
     candidates = [
         plans[identity]
-        for identity in active
-        if identity in plans and plans[identity].delivery_enabled and identity not in cascades
+        for identity, current in active.items()
+        if identity in plans
+        and plans[identity].delivery_enabled
+        and identity not in cascades
+        and current.deactivation_effect is None
     ]
     predominant = min(candidates, key=lambda plan: plan.priority_order) if candidates else None
     decisions: list[AlarmPriorityDecision] = []
@@ -48,6 +52,14 @@ def resolve_group_priority(
                 AlarmPriorityDecision(
                     alarm_identity=identity,
                     disposition=PriorityDisposition.SHADOW,
+                )
+            )
+            continue
+        if active[identity].deactivation_effect is not None:
+            decisions.append(
+                AlarmPriorityDecision(
+                    alarm_identity=identity,
+                    disposition=PriorityDisposition.DEACTIVATED,
                 )
             )
             continue

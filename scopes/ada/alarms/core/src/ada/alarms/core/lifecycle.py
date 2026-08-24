@@ -4,6 +4,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from ada.alarms.core.deactivation import (
+    DeactivationEffectIdFactory,
+    DeactivationRequestIdFactory,
+)
 from ada.alarms.core.errors import AlarmContractError, AlarmLifecycleError
 from ada.alarms.core.management import (
     ManagementEffectIdFactory,
@@ -21,6 +25,10 @@ from ada.alarms.core.models import (
     AlarmRuntimeState,
     AlarmStatus,
     ConfigurationClosure,
+    DeactivationDecision,
+    DeactivationEffectChange,
+    DeactivationEffectChangeKind,
+    DeactivationRequest,
     EpisodeChange,
     EpisodeChangeKind,
     EpisodeClosureReason,
@@ -64,6 +72,10 @@ def reduce_group_cycle(
     management_actions: Sequence[ManagementAction] = (),
     management_effect_id_factory: ManagementEffectIdFactory | None = None,
     reappearance_due_at_resolver: ReappearanceDueAtResolver | None = None,
+    pending_deactivation_requests: Sequence[DeactivationRequest] = (),
+    deactivation_decisions: Sequence[DeactivationDecision] = (),
+    deactivation_request_id_factory: DeactivationRequestIdFactory | None = None,
+    deactivation_effect_id_factory: DeactivationEffectIdFactory | None = None,
     technical_hold_grace_seconds: int = TECHNICAL_HOLD_GRACE_SECONDS,
 ) -> GroupLifecycleDecision:
     _validate_cycle_at(cycle_at)
@@ -79,6 +91,10 @@ def reduce_group_cycle(
         actions=management_actions,
         effect_id_factory=management_effect_id_factory,
         due_at_resolver=reappearance_due_at_resolver,
+        pending_deactivation_requests=pending_deactivation_requests,
+        deactivation_decisions=deactivation_decisions,
+        deactivation_request_id_factory=deactivation_request_id_factory,
+        deactivation_effect_id_factory=deactivation_effect_id_factory,
     )
 
     working = {alarm.alarm_identity: alarm for alarm in management.state.alarms}
@@ -226,6 +242,7 @@ def reduce_group_cycle(
                 last_evaluation=evaluation,
                 management_cycle=1,
                 management_effect=(None if previous is None else previous.management_effect),
+                deactivation_effect=(None if previous is None else previous.deactivation_effect),
             )
             occurrence_changes.append(
                 OccurrenceChange(kind=OccurrenceChangeKind.STARTED, occurrence=occurrence)
@@ -277,6 +294,9 @@ def reduce_group_cycle(
             )
         ),
         management_action_results=management.action_results,
+        deactivation_request_results=management.deactivation_request_results,
+        deactivation_decision_results=management.deactivation_decision_results,
+        deactivation_effect_changes=management.deactivation_effect_changes,
         management_effect_changes=tuple(
             sorted(
                 (
@@ -316,6 +336,7 @@ def reset_group_for_reconfiguration(
     occurrence_changes: list[OccurrenceChange] = []
     technical_hold_changes: list[TechnicalHoldChange] = []
     management_effect_changes: list[ManagementEffectChange] = []
+    deactivation_effect_changes: list[DeactivationEffectChange] = []
     for alarm in sorted(state.alarms, key=lambda item: item.alarm_identity):
         if alarm.occurrence is not None:
             closed = alarm.occurrence.close(
@@ -342,6 +363,14 @@ def reset_group_for_reconfiguration(
                     effective_at=effective_at,
                 )
             )
+        if alarm.deactivation_effect is not None:
+            deactivation_effect_changes.append(
+                DeactivationEffectChange(
+                    kind=DeactivationEffectChangeKind.CLEARED,
+                    alarm_identity=alarm.alarm_identity,
+                    effective_at=effective_at,
+                )
+            )
     episode_changes: tuple[EpisodeChange, ...] = ()
     if state.episode is not None:
         closed_episode = state.episode.close(
@@ -355,6 +384,7 @@ def reset_group_for_reconfiguration(
         episode_changes=episode_changes,
         technical_hold_changes=tuple(technical_hold_changes),
         management_effect_changes=tuple(management_effect_changes),
+        deactivation_effect_changes=tuple(deactivation_effect_changes),
     )
 
 
@@ -411,6 +441,7 @@ def _resolve_cycle_alarm(
                 last_evaluation=evaluation,
                 management_cycle=current.management_cycle,
                 management_effect=current.management_effect,
+                deactivation_effect=current.deactivation_effect,
                 assignments=current.assignments,
                 pending_assignments=current.pending_assignments,
             ),
@@ -436,6 +467,7 @@ def _resolve_cycle_alarm(
                 technical_hold=hold,
                 management_cycle=current.management_cycle,
                 management_effect=current.management_effect,
+                deactivation_effect=current.deactivation_effect,
                 assignments=current.assignments,
                 pending_assignments=current.pending_assignments,
             ),
@@ -461,11 +493,12 @@ def _resolve_cycle_alarm(
 
 
 def _management_only_state(current: AlarmRuntimeState) -> AlarmRuntimeState | None:
-    if current.management_effect is None:
+    if current.management_effect is None and current.deactivation_effect is None:
         return None
     return AlarmRuntimeState(
         alarm_identity=current.alarm_identity,
         management_effect=current.management_effect,
+        deactivation_effect=current.deactivation_effect,
     )
 
 
@@ -486,7 +519,13 @@ def _clear_management_only_states(
                 effective_at=effective_at,
             )
         )
-        del states[identity]
+        if current.deactivation_effect is None:
+            del states[identity]
+        else:
+            states[identity] = AlarmRuntimeState(
+                alarm_identity=identity,
+                deactivation_effect=current.deactivation_effect,
+            )
 
 
 def _clear_hold_if_needed(

@@ -1,3 +1,8 @@
+from ada.alarms.core.deactivation import (
+    DeactivationEffectIdFactory,
+    DeactivationRequestIdFactory,
+    is_deactivated,
+)
 from ada.alarms.core.errors import AlarmContractError, AlarmCoreError, AlarmLifecycleError
 from ada.alarms.core.evaluation import Evaluator, execute_evaluator
 from ada.alarms.core.lifecycle import (
@@ -29,6 +34,18 @@ from ada.alarms.core.models import (
     CascadeSuppression,
     ConfigurationClosure,
     Criticality,
+    DeactivationDecision,
+    DeactivationDecisionKind,
+    DeactivationDecisionOutcome,
+    DeactivationDecisionResult,
+    DeactivationEffect,
+    DeactivationEffectChange,
+    DeactivationEffectChangeKind,
+    DeactivationIntent,
+    DeactivationPolicy,
+    DeactivationRequest,
+    DeactivationRequestOutcome,
+    DeactivationRequestResult,
     EpisodeChange,
     EpisodeChangeKind,
     EpisodeClosureReason,
@@ -65,7 +82,7 @@ from ada.alarms.core.routing import (
     resolve_group_routing,
 )
 
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 
 __all__ = [
     'TECHNICAL_HOLD_GRACE_SECONDS',
@@ -87,6 +104,20 @@ __all__ = [
     'CascadeSuppression',
     'ConfigurationClosure',
     'Criticality',
+    'DeactivationDecision',
+    'DeactivationDecisionKind',
+    'DeactivationDecisionOutcome',
+    'DeactivationDecisionResult',
+    'DeactivationEffect',
+    'DeactivationEffectChange',
+    'DeactivationEffectChangeKind',
+    'DeactivationEffectIdFactory',
+    'DeactivationIntent',
+    'DeactivationPolicy',
+    'DeactivationRequest',
+    'DeactivationRequestIdFactory',
+    'DeactivationRequestOutcome',
+    'DeactivationRequestResult',
     'EpisodeChange',
     'EpisodeChangeKind',
     'EpisodeClosureReason',
@@ -123,6 +154,7 @@ __all__ = [
     'ToolAssignment',
     '__version__',
     'execute_evaluator',
+    'is_deactivated',
     'is_directly_managed',
     'reduce_group_cycle',
     'reset_group_for_reconfiguration',

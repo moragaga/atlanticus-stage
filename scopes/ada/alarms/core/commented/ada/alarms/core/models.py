@@ -1,5 +1,7 @@
-# Espejo pedagógico de los contratos inmutables del Core.
-# En 0.3.0 routing y assignments son memoria operacional; predominancia/eclipsado siguen siendo vistas derivadas.
+# Espejo pedagógico de los contratos puros del Alarm Core 0.4.0.
+# Deactivation agrega Policy, Intent, Request, Decision, Effect y outcomes sin convertir AlarmRuntimeState en historial.
+# El hot state conserva sólo el DeactivationEffect vigente porque su pérdida sí cambiaría decisiones futuras tras restart.
+# Request y Decision conservan causalidad y trazabilidad; receipts, actoría histórica completa y persistencia quedan fuera del hot state.
 
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ class PriorityDisposition(StrEnum):
     PREDOMINANT = 'PREDOMINANT'
     ECLIPSED = 'ECLIPSED'
     CASCADE_SUPPRESSED = 'CASCADE_SUPPRESSED'
+    DEACTIVATED = 'DEACTIVATED'
     SHADOW = 'SHADOW'
 
 
@@ -92,6 +95,36 @@ class ManagementEffectChangeKind(StrEnum):
     CLEARED = 'CLEARED'
 
 
+class DeactivationRequestOutcome(StrEnum):
+    DIRECT = 'DIRECT'
+    PENDING_APPROVAL = 'PENDING_APPROVAL'
+    ADDITIONAL = 'ADDITIONAL'
+    UNAVAILABLE = 'UNAVAILABLE'
+    LATE = 'LATE'
+
+
+class DeactivationDecisionKind(StrEnum):
+    APPROVED = 'APPROVED'
+    REJECTED = 'REJECTED'
+    CANCELLED = 'CANCELLED'
+    INVALIDATED = 'INVALIDATED'
+
+
+class DeactivationDecisionOutcome(StrEnum):
+    APPLIED = 'APPLIED'
+    REJECTED = 'REJECTED'
+    CANCELLED = 'CANCELLED'
+    INVALIDATED = 'INVALIDATED'
+    EXPIRED = 'EXPIRED'
+    STALE_TARGET = 'STALE_TARGET'
+    PENDING_DEPENDENCY = 'PENDING_DEPENDENCY'
+
+
+class DeactivationEffectChangeKind(StrEnum):
+    STARTED = 'STARTED'
+    CLEARED = 'CLEARED'
+
+
 @dataclass(frozen=True, slots=True, order=True)
 class RoutingDestination:
     tool_key: str
@@ -143,6 +176,15 @@ class AlarmIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class DeactivationPolicy:
+    approval_required: bool
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.approval_required, bool):
+            raise TypeError('approval_required must be a bool')
+
+
+@dataclass(frozen=True, slots=True)
 class PlannedAlarm:
     identity: AlarmIdentity
     kind: AlarmKind
@@ -154,6 +196,7 @@ class PlannedAlarm:
     alarm_configuration_revision: str
     tool_registry_revision: str
     routing: AlarmRouting
+    deactivation_policy: DeactivationPolicy | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.identity, AlarmIdentity):
@@ -177,6 +220,10 @@ class PlannedAlarm:
         _require_non_empty_string(self.tool_registry_revision, 'tool_registry_revision')
         if not isinstance(self.routing, AlarmRouting):
             raise TypeError('routing must be an AlarmRouting')
+        if self.deactivation_policy is not None and not isinstance(
+            self.deactivation_policy, DeactivationPolicy
+        ):
+            raise TypeError('deactivation_policy must be a DeactivationPolicy')
         if self.criticality is Criticality.C1 and any(
             destination.delay_seconds is not None for destination in self.routing.destinations
         ):
@@ -406,6 +453,14 @@ class TechnicalHold:
 
 
 @dataclass(frozen=True, slots=True)
+class DeactivationIntent:
+    effective_until: datetime
+
+    def __post_init__(self) -> None:
+        _require_utc_datetime(self.effective_until, 'effective_until')
+
+
+@dataclass(frozen=True, slots=True)
 class ManagementAction:
     input_id: str
     alarm_identity: AlarmIdentity
@@ -414,6 +469,7 @@ class ManagementAction:
     actor_key: str
     source_created_at: datetime
     context: Mapping[str, str] = MappingProxyType({})
+    deactivation_intent: DeactivationIntent | None = None
 
     def __post_init__(self) -> None:
         _require_non_empty_string(self.input_id, 'input_id')
@@ -424,6 +480,11 @@ class ManagementAction:
         _require_non_empty_string(self.tool_key, 'tool_key')
         _require_non_empty_string(self.actor_key, 'actor_key')
         _require_utc_datetime(self.source_created_at, 'source_created_at')
+        if self.deactivation_intent is not None:
+            if not isinstance(self.deactivation_intent, DeactivationIntent):
+                raise TypeError('deactivation_intent must be a DeactivationIntent')
+            if self.deactivation_intent.effective_until <= self.source_created_at:
+                raise ValueError('deactivation effective_until must be after source_created_at')
         if not isinstance(self.context, Mapping):
             raise TypeError('context must be a mapping')
         normalized: dict[str, str] = {}
@@ -448,6 +509,61 @@ class ManagementEffect:
         _require_utc_datetime(self.reappearance_due_at, 'reappearance_due_at')
         if self.reappearance_due_at <= self.effective_at:
             raise ValueError('reappearance_due_at must be after effective_at')
+
+
+@dataclass(frozen=True, slots=True)
+class DeactivationRequest:
+    request_id: str
+    alarm_identity: AlarmIdentity
+    source_management_input_id: str
+    source_occurrence_id: str
+    requested_at: datetime
+    effective_until: datetime
+    approval_required: bool
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.request_id, 'request_id')
+        if not isinstance(self.alarm_identity, AlarmIdentity):
+            raise TypeError('alarm_identity must be an AlarmIdentity')
+        _require_non_empty_string(self.source_management_input_id, 'source_management_input_id')
+        _require_non_empty_string(self.source_occurrence_id, 'source_occurrence_id')
+        _require_utc_datetime(self.requested_at, 'requested_at')
+        _require_utc_datetime(self.effective_until, 'effective_until')
+        if self.effective_until <= self.requested_at:
+            raise ValueError('effective_until must be after requested_at')
+        if not isinstance(self.approval_required, bool):
+            raise TypeError('approval_required must be a bool')
+
+
+@dataclass(frozen=True, slots=True)
+class DeactivationDecision:
+    decision_id: str
+    request_id: str
+    kind: DeactivationDecisionKind
+    decided_at: datetime
+    actor_key: str
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.decision_id, 'decision_id')
+        _require_non_empty_string(self.request_id, 'request_id')
+        if not isinstance(self.kind, DeactivationDecisionKind):
+            raise TypeError('kind must be a DeactivationDecisionKind')
+        _require_utc_datetime(self.decided_at, 'decided_at')
+        _require_non_empty_string(self.actor_key, 'actor_key')
+
+
+@dataclass(frozen=True, slots=True)
+class DeactivationEffect:
+    effect_id: str
+    effective_from: datetime
+    effective_until: datetime
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.effect_id, 'effect_id')
+        _require_utc_datetime(self.effective_from, 'effective_from')
+        _require_utc_datetime(self.effective_until, 'effective_until')
+        if self.effective_until <= self.effective_from:
+            raise ValueError('effective_until must be after effective_from')
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -478,6 +594,7 @@ class AlarmRuntimeState:
     technical_hold: TechnicalHold | None = None
     management_cycle: int | None = None
     management_effect: ManagementEffect | None = None
+    deactivation_effect: DeactivationEffect | None = None
     assignments: tuple[ToolAssignment, ...] = ()
     pending_assignments: tuple[PendingToolAssignment, ...] = ()
 
@@ -524,6 +641,10 @@ class AlarmRuntimeState:
                 raise TypeError('management_effect must be a ManagementEffect')
             if self.occurrence is None and self.technical_hold is not None:
                 raise ValueError('management-only state must not retain technical_hold')
+        if self.deactivation_effect is not None and not isinstance(
+            self.deactivation_effect, DeactivationEffect
+        ):
+            raise TypeError('deactivation_effect must be a DeactivationEffect')
         if not isinstance(self.assignments, tuple):
             raise TypeError('assignments must be a tuple')
         if not isinstance(self.pending_assignments, tuple):
@@ -723,6 +844,87 @@ class ManagementEffectChange:
 
 
 @dataclass(frozen=True, slots=True)
+class DeactivationRequestResult:
+    action: ManagementAction
+    outcome: DeactivationRequestOutcome
+    deactivation_request: DeactivationRequest | None = None
+    deactivation_effect_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.action, ManagementAction):
+            raise TypeError('action must be a ManagementAction')
+        if not isinstance(self.outcome, DeactivationRequestOutcome):
+            raise TypeError('outcome must be a DeactivationRequestOutcome')
+        if self.action.deactivation_intent is None:
+            raise ValueError('deactivation request result requires deactivation_intent')
+        if self.deactivation_request is not None and not isinstance(
+            self.deactivation_request, DeactivationRequest
+        ):
+            raise TypeError('deactivation_request must be a DeactivationRequest')
+        if self.deactivation_effect_id is not None:
+            _require_non_empty_string(self.deactivation_effect_id, 'deactivation_effect_id')
+        if self.outcome is DeactivationRequestOutcome.DIRECT:
+            if self.deactivation_request is None or self.deactivation_effect_id is None:
+                raise ValueError('DIRECT result requires request and deactivation_effect_id')
+        elif self.outcome is DeactivationRequestOutcome.PENDING_APPROVAL:
+            if self.deactivation_request is None or self.deactivation_effect_id is not None:
+                raise ValueError('PENDING_APPROVAL result requires request without effect')
+        elif self.deactivation_request is not None or self.deactivation_effect_id is not None:
+            raise ValueError(
+                'non-effective deactivation request result must not contain request/effect'
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class DeactivationDecisionResult:
+    decision: DeactivationDecision
+    outcome: DeactivationDecisionOutcome
+    deactivation_request: DeactivationRequest | None = None
+    deactivation_effect_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.decision, DeactivationDecision):
+            raise TypeError('decision must be a DeactivationDecision')
+        if not isinstance(self.outcome, DeactivationDecisionOutcome):
+            raise TypeError('outcome must be a DeactivationDecisionOutcome')
+        if self.deactivation_request is not None and not isinstance(
+            self.deactivation_request, DeactivationRequest
+        ):
+            raise TypeError('deactivation_request must be a DeactivationRequest')
+        if self.deactivation_effect_id is not None:
+            _require_non_empty_string(self.deactivation_effect_id, 'deactivation_effect_id')
+        if self.outcome is DeactivationDecisionOutcome.APPLIED:
+            if self.deactivation_request is None or self.deactivation_effect_id is None:
+                raise ValueError('APPLIED result requires request and deactivation_effect_id')
+        elif self.deactivation_effect_id is not None:
+            raise ValueError('non-applied deactivation decision must not contain effect id')
+
+
+@dataclass(frozen=True, slots=True)
+class DeactivationEffectChange:
+    kind: DeactivationEffectChangeKind
+    alarm_identity: AlarmIdentity
+    effective_at: datetime
+    deactivation_effect: DeactivationEffect | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, DeactivationEffectChangeKind):
+            raise TypeError('kind must be a DeactivationEffectChangeKind')
+        if not isinstance(self.alarm_identity, AlarmIdentity):
+            raise TypeError('alarm_identity must be an AlarmIdentity')
+        _require_utc_datetime(self.effective_at, 'effective_at')
+        if self.kind is DeactivationEffectChangeKind.STARTED:
+            if not isinstance(self.deactivation_effect, DeactivationEffect):
+                raise ValueError('STARTED deactivation effect change requires deactivation_effect')
+            if self.effective_at != self.deactivation_effect.effective_from:
+                raise ValueError('STARTED deactivation effect effective_at must match effect')
+        elif self.deactivation_effect is not None:
+            raise ValueError(
+                'CLEARED deactivation effect change must not contain deactivation_effect'
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ReappearanceChange:
     alarm_identity: AlarmIdentity
     occurrence_id: str
@@ -808,9 +1010,13 @@ class AlarmPriorityDecision:
             seen.add(identity)
             normalized.append(identity)
         object.__setattr__(self, 'blocking_alarm_identities', tuple(sorted(normalized)))
-        if self.disposition in {PriorityDisposition.PREDOMINANT, PriorityDisposition.SHADOW}:
+        if self.disposition in {
+            PriorityDisposition.PREDOMINANT,
+            PriorityDisposition.DEACTIVATED,
+            PriorityDisposition.SHADOW,
+        }:
             if self.blocking_alarm_identities:
-                raise ValueError('PREDOMINANT and SHADOW decisions must not contain blockers')
+                raise ValueError('unblocked priority decisions must not contain blockers')
         elif not self.blocking_alarm_identities:
             raise ValueError('blocked priority decisions require blocking alarms')
 
@@ -859,6 +1065,9 @@ class GroupLifecycleDecision:
     technical_hold_changes: tuple[TechnicalHoldChange, ...] = ()
     management_action_results: tuple[ManagementActionResult, ...] = ()
     management_effect_changes: tuple[ManagementEffectChange, ...] = ()
+    deactivation_request_results: tuple[DeactivationRequestResult, ...] = ()
+    deactivation_decision_results: tuple[DeactivationDecisionResult, ...] = ()
+    deactivation_effect_changes: tuple[DeactivationEffectChange, ...] = ()
     reappearance_changes: tuple[ReappearanceChange, ...] = ()
     cascade_suppressions: tuple[CascadeSuppression, ...] = ()
     assignment_changes: tuple[AssignmentChange, ...] = ()
@@ -877,6 +1086,12 @@ class GroupLifecycleDecision:
             raise TypeError('management_action_results must be a tuple')
         if not isinstance(self.management_effect_changes, tuple):
             raise TypeError('management_effect_changes must be a tuple')
+        if not isinstance(self.deactivation_request_results, tuple):
+            raise TypeError('deactivation_request_results must be a tuple')
+        if not isinstance(self.deactivation_decision_results, tuple):
+            raise TypeError('deactivation_decision_results must be a tuple')
+        if not isinstance(self.deactivation_effect_changes, tuple):
+            raise TypeError('deactivation_effect_changes must be a tuple')
         if not isinstance(self.reappearance_changes, tuple):
             raise TypeError('reappearance_changes must be a tuple')
         if not isinstance(self.cascade_suppressions, tuple):
@@ -907,6 +1122,21 @@ class GroupLifecycleDecision:
                 raise TypeError(
                     'management_effect_changes must contain ManagementEffectChange values'
                 )
+        for result in self.deactivation_request_results:
+            if not isinstance(result, DeactivationRequestResult):
+                raise TypeError(
+                    'deactivation_request_results must contain DeactivationRequestResult values'
+                )
+        for result in self.deactivation_decision_results:
+            if not isinstance(result, DeactivationDecisionResult):
+                raise TypeError(
+                    'deactivation_decision_results must contain DeactivationDecisionResult values'
+                )
+        for change in self.deactivation_effect_changes:
+            if not isinstance(change, DeactivationEffectChange):
+                raise TypeError(
+                    'deactivation_effect_changes must contain DeactivationEffectChange values'
+                )
         for change in self.reappearance_changes:
             if not isinstance(change, ReappearanceChange):
                 raise TypeError('reappearance_changes must contain ReappearanceChange values')
@@ -924,6 +1154,7 @@ class GroupLifecycleDecision:
             or self.episode_changes
             or self.technical_hold_changes
             or self.management_effect_changes
+            or self.deactivation_effect_changes
             or self.reappearance_changes
             or self.assignment_changes
         )
