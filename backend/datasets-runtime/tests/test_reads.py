@@ -172,3 +172,174 @@ def test_read_schema_maps_missing_publication_to_not_found(
 
     with pytest.raises(DatasetRuntimeNotFoundError, match='no confirmed publication'):
         dataset_runtime.read_schema(definition=pi_definition, target=target)
+
+
+def test_scan_table_typed_projection_synthesizes_missing_columns_across_targets(
+    dataset_runtime: DatasetRuntime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    day_20 = _target(pi_definition, day='20')
+    day_21 = _target(pi_definition, day='21')
+    dataset_runtime.replace(
+        definition=pi_definition,
+        target=day_20,
+        data=pa.table(
+            {
+                'timestamp': pa.array([1], type=pa.int64()),
+                'pressure': pa.array([10.0], type=pa.float64()),
+            }
+        ),
+    )
+    dataset_runtime.replace(
+        definition=pi_definition,
+        target=day_21,
+        data=pa.table(
+            {
+                'timestamp': pa.array([2], type=pa.int64()),
+                'other': pa.array([20.0], type=pa.float64()),
+            }
+        ),
+    )
+    projection_schema = pa.schema(
+        [
+            pa.field('timestamp', pa.int64()),
+            pa.field('pressure', pa.float64()),
+        ]
+    )
+
+    result = dataset_runtime.scan_table(
+        definition=pi_definition,
+        targets=(day_20, day_21),
+        projection_schema=projection_schema,
+    )
+
+    assert result.table.schema.equals(projection_schema, check_metadata=True)
+    assert result.table.to_pydict() == {
+        'timestamp': [1, 2],
+        'pressure': [10.0, None],
+    }
+    assert result.target_count == 2
+    assert len(result.warnings) == 1
+
+
+def test_scan_dataframe_typed_projection_preserves_missing_columns_as_nulls(
+    dataset_runtime: DatasetRuntime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    target = _target(pi_definition, day='21')
+    dataset_runtime.replace(
+        definition=pi_definition,
+        target=target,
+        data=pa.table(
+            {
+                'timestamp': pa.array([1, 2], type=pa.int64()),
+                'other': pa.array([10.0, 20.0], type=pa.float64()),
+            }
+        ),
+    )
+
+    result = dataset_runtime.scan_dataframe(
+        definition=pi_definition,
+        targets=(target,),
+        projection_schema=pa.schema(
+            [
+                pa.field('timestamp', pa.int64()),
+                pa.field('missing_text', pa.string()),
+            ]
+        ),
+    )
+
+    assert result.dataframe.columns.tolist() == ['timestamp', 'missing_text']
+    assert result.dataframe['timestamp'].tolist() == [1, 2]
+    assert result.dataframe['missing_text'].isna().tolist() == [True, True]
+    assert len(result.warnings) == 1
+
+
+def test_scan_typed_projection_keeps_filters_strict_and_applies_them_before_null_projection(
+    dataset_runtime: DatasetRuntime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    target = _target(pi_definition, day='21')
+    dataset_runtime.replace(
+        definition=pi_definition,
+        target=target,
+        data=pa.table(
+            {
+                'timestamp': pa.array([1, 2, 3], type=pa.int64()),
+                'other': pa.array([10.0, 20.0, 30.0], type=pa.float64()),
+            }
+        ),
+    )
+
+    result = dataset_runtime.scan_table(
+        definition=pi_definition,
+        targets=(target,),
+        projection_schema=pa.schema([pa.field('missing_tag', pa.float64())]),
+        filters=(
+            ColumnFilter(
+                column='timestamp',
+                operator=FilterOperator.GREATER_THAN_OR_EQUAL,
+                value=2,
+            ),
+        ),
+    )
+
+    assert result.table.to_pydict() == {'missing_tag': [None, None]}
+
+
+def test_scan_rejects_columns_and_projection_schema_together_at_runtime_boundary(
+    dataset_runtime: DatasetRuntime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    target = _target(pi_definition, day='21')
+    dataset_runtime.replace(
+        definition=pi_definition,
+        target=target,
+        data=pa.table({'value': pa.array([1.0], type=pa.float64())}),
+    )
+
+    with pytest.raises(DatasetRuntimeValidationError, match='invalid dataset scan request'):
+        dataset_runtime.scan_table(
+            definition=pi_definition,
+            targets=(target,),
+            columns=('value',),
+            projection_schema=pa.schema([pa.field('value', pa.float64())]),
+        )
+
+
+def test_scan_legacy_columns_remain_strict_for_never_published_column(
+    dataset_runtime: DatasetRuntime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    target = _target(pi_definition, day='21')
+    dataset_runtime.replace(
+        definition=pi_definition,
+        target=target,
+        data=pa.table({'value': pa.array([1.0], type=pa.float64())}),
+    )
+
+    with pytest.raises(DatasetRuntimeValidationError, match='invalid dataset scan request'):
+        dataset_runtime.scan_table(
+            definition=pi_definition,
+            targets=(target,),
+            columns=('missing_tag',),
+        )
+
+
+def test_scan_typed_projection_rejects_incompatible_physical_type(
+    dataset_runtime: DatasetRuntime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    target = _target(pi_definition, day='21')
+    dataset_runtime.replace(
+        definition=pi_definition,
+        target=target,
+        data=pa.table({'value': pa.array(['1.0'], type=pa.string())}),
+    )
+
+    with pytest.raises(DatasetRuntimeValidationError, match='invalid dataset scan request'):
+        dataset_runtime.scan_table(
+            definition=pi_definition,
+            targets=(target,),
+            projection_schema=pa.schema([pa.field('value', pa.float64())]),
+        )

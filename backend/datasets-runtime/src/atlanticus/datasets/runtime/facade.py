@@ -267,6 +267,7 @@ class DatasetRuntime:
         definition: DatasetDefinition,
         targets: Iterable[DatasetTarget],
         columns: Iterable[str] | None = None,
+        projection_schema: pa.Schema | None = None,
         filters: Iterable[ColumnFilter] = (),
     ) -> TableReadResult:
         """Proyecta y filtra targets explícitos conservando Arrow."""
@@ -285,6 +286,7 @@ class DatasetRuntime:
                 definition=definition,
                 targets=resolved_targets,
                 columns=resolved_columns,
+                projection_schema=projection_schema,
                 filters=resolved_filters,
             )
         except ParquetPublicationNotFoundError as error:
@@ -312,6 +314,7 @@ class DatasetRuntime:
         definition: DatasetDefinition,
         targets: Iterable[DatasetTarget],
         columns: Iterable[str] | None = None,
+        projection_schema: pa.Schema | None = None,
         filters: Iterable[ColumnFilter] = (),
     ) -> DataFrameReadResult:
         """Proyecta y filtra targets explícitos y entrega un DataFrame nuevo."""
@@ -321,6 +324,7 @@ class DatasetRuntime:
                 definition=definition,
                 targets=targets,
                 columns=columns,
+                projection_schema=projection_schema,
                 filters=filters,
             )
         )
