@@ -54,4 +54,4 @@ def test_execution_result_rejects_invalid_direct_contract(field, value) -> None:
 
 
 def test_runtime_version_exposes_adaptive_iteration_delay_release() -> None:
-    assert runtime.__version__ == '0.5.0'
+    assert runtime.__version__ == '0.6.0'

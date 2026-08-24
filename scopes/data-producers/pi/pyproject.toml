@@ -12,7 +12,7 @@ dependencies = [
     "atlanticus-datasets==0.1.0",
     "atlanticus-datasets-parquet==0.2.0",
     "atlanticus-datasets-runtime==0.2.0",
-    "atlanticus-job-runtime==0.5.0",
+    "atlanticus-job-runtime==0.6.0",
     "atlanticus-observability==0.5.0",
     "atlanticus-pi-contracts==0.1.0",
     "atlanticus-pi-web-api==0.1.0",

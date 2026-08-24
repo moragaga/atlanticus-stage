@@ -2,91 +2,196 @@
 
 ## Frontera
 
-Runtime orquesta ejecución, coordinación y cierre. Observability registra lo ocurrido; cada proceso
-inyecta su lógica y compone sus conectores. Runtime no conoce ADA, Azure Container Apps, cron,
-`config.json`, Cosmos, SQL, Blob, Service Bus, Databricks, State ni Datasets.
+Runtime orquesta ejecución, coordinación temporal, lease, autoridad y cierre. Observability registra lo ocurrido; cada proceso inyecta su lógica y compone sus conectores. Runtime no conoce ADA, Alarm Engine, Azure Container Apps, Cosmos, SQL, Blob, Service Bus, Databricks, State, Datasets, WAL ni snapshots.
 
-La API pública se limita a `JobDefinition`, `JobRuntimeContext`, `RuntimeConfiguration`,
-`RuntimeExecutionResult`, `execute_job` y los errores controlados. Lease, argumentos y recursos
-son detalles internos.
+La API pública se limita a `JobDefinition`, `JobRuntimeContext`, `RuntimeConfiguration`, `RuntimeExecutionResult`, `execute_job` y los errores controlados. Lease, scheduling parser, authority store y resource monitor son detalles internos.
 
-## Presupuesto temporal
+R20C consolida `0.6.0` sin cambiar la regla de compatibilidad: un consumidor que no configura scheduling y no entrega hooks sigue usando el modelo histórico `RELATIVE`.
 
-`execution_timeout_seconds` es el presupuesto total del runtime desde que crea el contexto de la
-ejecución. La adquisición y espera de la lease consume ese mismo presupuesto. Nunca se agrega una
-ventana completa nueva después de obtener ownership.
+## Fuentes de autoridad
 
-`shutdown_grace_seconds` se reserva al final de ese presupuesto. Por eso
-`safe_execution_seconds = execution_timeout_seconds - shutdown_grace_seconds` representa el tiempo
-máximo disponible para adquisición de lease, iteraciones y sleeps antes de iniciar el cierre.
+Runtime distingue cuatro fuentes y no las mezcla:
 
-`lease_wait_seconds=None` activa la política adaptativa: la ejecución puede esperar ownership con
-el presupuesto seguro restante, reservando al menos un `iteration_timeout_seconds` completo para
-trabajo útil. Un valor numérico actúa como cap adicional, pero nunca puede extender la ejecución
-más allá de su deadline ni consumir la reserva mínima de una iteración.
+- `JobDefinition`: límites cooperativos declarados por código;
+- environment efectivo: identidad y metadata operacional de la invocación;
+- lease: ownership activo y efímero;
+- authority store: generación durable y último scheduled slot completado.
 
-La plataforma externa conserva su propio hard timeout. Runtime no lo calcula ni lo lee desde
-configuración de despliegue.
+`config.detail.json`, `config.json`, `secrets.detail.json` y `secrets.json` no son entradas directas del Runtime. La plataforma o launcher proyecta al environment únicamente la metadata efectiva requerida.
 
-`JobDefinition.sleep_seconds` sigue siendo el cadence estático por defecto. Una iteración puede
-reemplazar únicamente su próxima espera mediante `JobRuntimeContext.set_next_iteration_delay()`.
-El runtime valida ese delay, lo mantiene interrumpible y lo descarta al comenzar la siguiente
-iteración. No interpreta timestamps ni reglas de dominio: cada proceso decide el delay usando su
-propio contrato temporal.
+## Modos de ejecución
 
-## Secuencia
+### RELATIVE
+
+Es el default. Sin `ATLANTICUS_JOB_SCHEDULE_CRON`, el deadline Runtime parte desde `started_at` y usa `execution_timeout_seconds`.
+
+### SCHEDULED_EXTERNAL
+
+Se activa únicamente con cron efectivo válido. Runtime resuelve el slot actual y el próximo slot desde:
+
+```text
+ATLANTICUS_JOB_SCHEDULE_CRON
+ATLANTICUS_JOB_SCHEDULE_TIMEZONE
+```
+
+Un late start conserva la frontera del slot real; no crea un slot artificial desde el momento de arranque.
+
+`ATLANTICUS_JOB_PLATFORM_TIMEOUT_SECONDS`, cuando existe, agrega un límite físico conocido por la invocación.
+
+### SCHEDULED_RESIDENT
+
+Está aceptado como posibilidad arquitectónica, pero no está implementado ni declarado disponible en `0.6.0`.
+
+## Execution Window
+
+Runtime construye una `ExecutionWindow` como intersección de límites conocidos.
+
+En `RELATIVE`:
+
+```text
+runtime_deadline = started_at + execution_timeout_seconds
+```
+
+En `SCHEDULED_EXTERNAL`:
+
+```text
+runtime_deadline = MIN(
+    scheduled_at + execution_timeout_seconds,
+    next_scheduled_at,
+)
+```
+
+Si existe platform timeout:
+
+```text
+runtime_deadline = MIN(
+    runtime_deadline,
+    started_at + platform_timeout_seconds,
+)
+```
+
+La ventana segura reserva `shutdown_grace_seconds` dentro de esa frontera:
+
+```text
+safe_deadline = runtime_deadline - shutdown_grace_seconds
+```
+
+Todos los límites son máximos. La finalización natural puede ocurrir antes.
+
+`run_once` es ortogonal: limita la cantidad de iteraciones, no altera schedule, lease ni deadlines.
+
+## Adquisición y autoridad durable
+
+Cada `job_key` posee dos estados separados:
+
+```text
+.runtime/leases/<job>.json
+.runtime/authority/<job>.json
+```
+
+La lease representa ownership activo mediante `owner_token`, `generation`, expiración e identidad operacional. El authority store conserva estado que debe sobrevivir a release, restart, crash y takeover:
+
+```text
+generation
+last_completed_scheduled_at_utc
+```
+
+La adquisición válida avanza `generation` de forma monotónica. El release normal elimina la lease pero no retrocede authority.
+
+En scheduled mode, si `last_completed_scheduled_at_utc` ya cubre el slot actual, la invocación se omite como slot completado. Un slot incompleto no se marca y queda reintentable por una generación posterior.
+
+## Hard authority y renovación
+
+La renovación del heartbeat requiere que el owner siga vigente y que su lease no haya expirado. Una lease propia ya expirada no puede revivirse en la misma generación.
+
+Cuando existe scheduled/platform authority, la expiración renovada queda capped por la frontera efectiva. El heartbeat no puede convertir una invocación vencida en autoridad nueva.
+
+`renew()` y `assert_current()` comparten coordinación para evitar que una ocupación breve del guard interno sea interpretada como pérdida de ownership. Una pérdida real de owner, generation o expiración sigue fallando cerrado.
+
+## Lifecycle
+
+La secuencia estable de `execute_job` es:
 
 1. valida definición, argumentos y configuración;
-2. crea identidad y contexto, fijando deadline y ventana segura;
-3. calcula la espera efectiva y adquiere la lease por `job_key`;
-4. configura observabilidad local y, opcionalmente, Azure;
-5. registra cuánto tiempo consumió la adquisición y si recuperó un owner expirado;
-6. inicia el heartbeat;
-7. instala temporalmente el handler cooperativo de `SIGTERM`;
-8. ejecuta iteraciones y verifica la lease antes y después de cada una;
-9. cierra el monitor y emite el resumen final;
-10. restaura la señal, limpia memoria, libera la lease y cierra observabilidad.
+2. crea `JobRuntimeContext` y su `ExecutionWindow`;
+3. crea y adquiere la lease;
+4. avanza/bindea `generation` y authority;
+5. configura observabilidad;
+6. inicia heartbeat;
+7. instala el handler cooperativo de `SIGTERM`;
+8. ejecuta `recovery(context)` si existe;
+9. ejecuta iteraciones mientras exista autoridad y presupuesto;
+10. ejecuta `drain(context)` si existe y todavía queda ventana física;
+11. detiene heartbeat al entrar en release;
+12. marca el scheduled slot completado sólo cuando la ejecución termina con éxito;
+13. libera lease y cierra observabilidad.
 
-La lease se adquiere antes de abrir la traza persistente porque protege el supuesto de un único
-escritor por servicio. Se libera antes de cerrar observabilidad para poder registrar un fallo de
-cierre sin ocultar un error de negocio previo.
+Los hooks son opt-in. La firma histórica sigue siendo válida:
 
-## Coordinación
+```text
+execute_job(definition=..., iteration=...)
+```
 
-Los identificadores utilizados en rutas se validan y nunca se transforman. Así, valores distintos
-como `job/key` y `job_key` no pueden converger en el mismo archivo.
+El contrato ampliado permite:
 
-El heartbeat renueva la expiración en un hilo interno. Si pierde el token propietario o no puede
-confirmar una escritura segura, conserva un error controlado, despierta el contexto y evita que la
-ejecución termine como exitosa. La duración del lease no depende de la duración total del job: un
-job largo conserva ownership renovando heartbeats; un owner muerto queda recuperable cuando vence
-su lease.
+```text
+execute_job(
+    definition=...,
+    recovery=...,
+    iteration=...,
+    drain=...,
+)
+```
 
-La detención sigue siendo cooperativa: una iteración bloqueada solo responde cuando su dependencia
-retorna o vence su timeout.
+## Semántica de recovery y drain
+
+Recovery, run y drain operan bajo la misma `lease_generation`.
+
+- recovery falla: iteration no comienza y el slot no se completa;
+- iteration finaliza normalmente: drain puede ejecutarse antes del release;
+- drain falla: el slot scheduled permanece incompleto;
+- SIGTERM: solicita stop cooperativo; no realiza I/O desde el signal handler;
+- heartbeat: permanece activo durante recovery, run y drain.
+
+Esto permite que el consumidor implemente recuperación y flush final sin transferir al Runtime conocimiento del dominio o del mecanismo de persistencia.
+
+## Fencing authority
+
+`JobRuntimeContext` expone dos elementos públicos para el consumidor:
+
+```text
+lease_generation
+assert_lease_current()
+```
+
+`assert_lease_current()` valida la autoridad vigente contra la lease y el authority store. La comprobación incluye ownership, token, generation, existencia y expiración. Si la renovación es incierta o la autoridad cambió, el Runtime no autoriza continuar como owner vigente.
+
+El Runtime no conoce el recurso externo que el consumidor escribe. Por eso `0.6.0` sólo garantiza fencing lógico `check-before-commit`.
+
+No existe todavía un primitive transaccional que una `assert_lease_current()` con un commit en WAL, snapshot, Cosmos, SQL, Storage u otro backend. El Persistence POC debe probar físicamente stale writers y medir la ventana TOCTOU antes de introducir otra abstracción transversal.
 
 ## Cancelación
 
-`RuntimeCancellationRequested`, `KeyboardInterrupt` y `SIGTERM` generan
-`execution.cancelled`, no `execution.failed`. La primera razón de detención se conserva y
-`JobRuntimeContext.wait()` puede despertarse inmediatamente.
+`RuntimeCancellationRequested`, `KeyboardInterrupt` y `SIGTERM` generan cierre cooperativo. La primera razón de detención se conserva y `JobRuntimeContext.wait()` puede despertarse inmediatamente.
 
-El agotamiento de la ventana segura y la falta de tiempo para una nueva iteración son cierres
-normales. El timeout forzoso final pertenece a la plataforma de ejecución.
+El agotamiento de la ventana segura y la falta de tiempo para una nueva iteración son cierres normales. Una operación externa bloqueada sigue siendo responsabilidad del consumidor y de los timeouts de su dependencia.
 
-## Recursos
+## Recursos y observabilidad
 
-El soporte de recursos está separado en modelos, sampler cgroup, detector de presión y monitor.
-Las muestras solo actualizan acumuladores en memoria; no se conserva una serie temporal. Una falla
-de muestreo se registra una vez como warning hasta que exista una muestra correcta y nunca rompe la
-lógica del job.
+El soporte de recursos permanece separado en modelos, sampler cgroup, detector de presión y monitor. Las muestras sólo actualizan acumuladores en memoria. Una falla de muestreo genera warning y no rompe la lógica del job.
 
-Los episodios de presión y sus escalamientos requieren muestras consecutivas. Esto evita escalar
-por picos alternados que no representan presión sostenida.
+Observability y scheduling son ortogonales. La configuración proyectada a la extensión Azure sigue limitada a sus variables explícitas; Runtime no expone secretos ni serializa configuración de plataforma en logs.
 
-## Seguridad
+## Compatibilidad y no-alcance de `0.6.0`
 
-Las excepciones automáticas se convierten mediante `ErrorInfo.from_exception()`. Se conserva el
-tipo y la ubicación del fallo, pero no `str(error)`, URLs firmadas, connection strings ni mensajes
-de SDK. La configuración proyectada hacia la extensión Azure contiene únicamente sus tres
-variables explícitas.
+El cierre R20C no modifica automáticamente ningún proceso consumidor. En particular:
+
+- no agrega cron a procesos existentes;
+- no cambia `config.detail.json`, `secrets.detail.json`, `config.json` ni `.env`;
+- no cambia deployment Azure;
+- no cambia la semántica de `run_once`;
+- no agrega lógica de Alarm Engine;
+- no implementa WAL ni snapshot;
+- no declara `SCHEDULED_RESIDENT` disponible.
+
+El cambio coordinado de consumidores se limita a certificar `atlanticus-job-runtime==0.6.0`, regenerar locks con UV y reconstruir los artifacts que transportan el wheel.

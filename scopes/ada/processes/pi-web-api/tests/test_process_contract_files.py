@@ -15,7 +15,7 @@ def test_process_exposes_entrypoint_and_container_command() -> None:
     )
     assert project['tool']['atlanticus']['container']['command'] == 'ada-pi-web-api'
     assert project['tool']['atlanticus']['container']['system-profile'] == 'base'
-    assert 'atlanticus-job-runtime==0.5.0' in project['project']['dependencies']
+    assert 'atlanticus-job-runtime==0.6.0' in project['project']['dependencies']
     assert 'atlanticus-data-producers-pi==0.1.0' in project['project']['dependencies']
     assert 'atlanticus-datasets-runtime==0.2.0' not in project['project']['dependencies']
     assert 'atlanticus-datasets-parquet==0.2.0' not in project['project']['dependencies']
