@@ -11,6 +11,8 @@ import pytest
 
 import atlanticus.state.store as store_module
 from atlanticus.state import (
+    DEFAULT_MAX_DOCUMENT_BYTES,
+    AtomicJsonStore,
     AtomicStateStore,
     StateCorruptionError,
     StateKey,
@@ -328,3 +330,98 @@ def test_replace_fsyncs_parent_directory_after_atomic_replace(
     store.replace(_key(), {'change_token': 'durable'})
 
     assert synced_directories == [store.path_for(_key()).parent]
+
+
+def test_atomic_json_store_round_trip_uses_explicit_root(tmp_path: Path) -> None:
+    store = AtomicJsonStore(root_path=tmp_path)
+    relative_path = Path('alarms/runtime/state/groups/crusher-pressure.json')
+
+    written = store.replace(relative_path, {'revision': 7, 'status': 'active'})
+    read = store.read(relative_path)
+
+    assert written == {'revision': 7, 'status': 'active'}
+    assert read == written
+    assert store.root_path == tmp_path
+    assert store.path_for(relative_path) == tmp_path / relative_path
+    assert store.path_for(relative_path).read_text(encoding='utf-8').endswith('\n')
+
+
+def test_atomic_json_store_missing_document_returns_none(tmp_path: Path) -> None:
+    store = AtomicJsonStore(root_path=tmp_path)
+
+    assert store.read('alarms/runtime/journal-head.json') is None
+
+
+@pytest.mark.parametrize(
+    'relative_path',
+    [
+        '/absolute.json',
+        '../escape.json',
+        'alarms/../escape.json',
+        'alarms/runtime/snapshot',
+        '.',
+        '',
+    ],
+)
+def test_atomic_json_store_rejects_unsafe_or_non_json_paths(
+    tmp_path: Path, relative_path: str
+) -> None:
+    store = AtomicJsonStore(root_path=tmp_path)
+
+    with pytest.raises(StateValidationError):
+        store.path_for(relative_path)
+
+
+def test_atomic_json_store_default_limit_remains_one_mib(tmp_path: Path) -> None:
+    assert DEFAULT_MAX_DOCUMENT_BYTES == 1024 * 1024
+    store = AtomicJsonStore(root_path=tmp_path)
+
+    with pytest.raises(StateTooLargeError):
+        store.replace('large.json', {'payload': 'x' * DEFAULT_MAX_DOCUMENT_BYTES})
+
+
+def test_atomic_json_store_none_disables_application_size_limit(tmp_path: Path) -> None:
+    store = AtomicJsonStore(root_path=tmp_path, max_document_bytes=None)
+    payload = {'payload': 'x' * (DEFAULT_MAX_DOCUMENT_BYTES + 128)}
+
+    written = store.replace('alarms/runtime/state/groups/large.json', payload)
+    read = store.read('alarms/runtime/state/groups/large.json')
+
+    assert written == payload
+    assert read == payload
+
+
+def test_atomic_state_store_none_disables_application_size_limit(tmp_path: Path) -> None:
+    store = _store(tmp_path, max_document_bytes=None)
+    payload = {'payload': 'x' * (DEFAULT_MAX_DOCUMENT_BYTES + 128)}
+
+    store.replace(_key(), payload)
+
+    assert store.read(_key()).value == payload
+
+
+@pytest.mark.parametrize('max_document_bytes', [0, -1, True, '1024'])
+def test_stores_reject_invalid_document_limits(tmp_path: Path, max_document_bytes: Any) -> None:
+    with pytest.raises(StateValidationError, match='greater than zero or None'):
+        AtomicJsonStore(root_path=tmp_path, max_document_bytes=max_document_bytes)
+    with pytest.raises(StateValidationError, match='greater than zero or None'):
+        _store(tmp_path, max_document_bytes=max_document_bytes)
+
+
+def test_atomic_json_store_failed_replace_preserves_last_committed_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = AtomicJsonStore(root_path=tmp_path)
+    relative_path = Path('alarms/runtime/journal-head.json')
+    store.replace(relative_path, {'durable': 10})
+
+    def fail_replace(source: Path, target: Path) -> None:
+        raise OSError('simulated replacement failure')
+
+    monkeypatch.setattr(store_module.os, 'replace', fail_replace)
+
+    with pytest.raises(StateWriteError):
+        store.replace(relative_path, {'durable': 20})
+
+    assert store.read(relative_path) == {'durable': 10}
+    assert list(store.path_for(relative_path).parent.glob('*.tmp')) == []

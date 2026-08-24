@@ -22,7 +22,7 @@ dependencies = [
     "atlanticus-kernel==0.1.0",
     "atlanticus-key-vault==0.1.0",
     "atlanticus-observability-azure==0.1.0",
-    "atlanticus-state==0.1.0",
+    "atlanticus-state==0.2.0",
 ]
 
 [dependency-groups]

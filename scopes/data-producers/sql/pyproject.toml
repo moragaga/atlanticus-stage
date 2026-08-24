@@ -15,7 +15,7 @@ dependencies = [
     "atlanticus-datasets-runtime==0.2.0",
     "atlanticus-job-runtime==0.6.0",
     "atlanticus-sql==0.1.0",
-    "atlanticus-state==0.1.0",
+    "atlanticus-state==0.2.0",
     "pyarrow==25.0.0",
 ]
 

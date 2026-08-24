@@ -11,7 +11,7 @@ classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "ada-kpis-core==0.1.0",
     "atlanticus-json==0.1.0",
-    "atlanticus-state==0.1.0",
+    "atlanticus-state==0.2.0",
 ]
 
 [dependency-groups]

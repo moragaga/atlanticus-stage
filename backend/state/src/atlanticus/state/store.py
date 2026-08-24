@@ -1,4 +1,4 @@
-"""Store JSON pequeño con reemplazo atómico en el mismo filesystem."""
+"""Stores JSON compactos con reemplazo atómico en el mismo filesystem."""
 
 from __future__ import annotations
 
@@ -27,9 +27,84 @@ from atlanticus.state.errors import (
     StateWriteError,
 )
 from atlanticus.state.models import StateDocument, StateKey, validate_application
-from atlanticus.state.serialization import decode_json_object, encode_canonical_json
+from atlanticus.state.serialization import (
+    JsonObject,
+    decode_json_object,
+    encode_canonical_json,
+    normalize_json_object,
+)
 
 DEFAULT_MAX_DOCUMENT_BYTES = 1024 * 1024
+
+
+class AtomicJsonStore:
+    """Persiste objetos JSON sin sobre de dominio bajo una raíz explícita."""
+
+    def __init__(
+        self,
+        *,
+        root_path: str | Path,
+        max_document_bytes: int | None = DEFAULT_MAX_DOCUMENT_BYTES,
+    ) -> None:
+        self._root_path = _require_absolute_path(root_path, field_name='root_path')
+        self._max_document_bytes = _validate_max_document_bytes(max_document_bytes)
+        self._write_lock = threading.RLock()
+
+    @property
+    def root_path(self) -> Path:
+        """Raíz física que delimita todas las rutas relativas del store."""
+
+        return self._root_path
+
+    def path_for(self, relative_path: str | Path) -> Path:
+        """Resuelve una ruta JSON relativa segura sin acceder al filesystem."""
+
+        return self._root_path / _require_relative_json_path(relative_path)
+
+    def read(self, relative_path: str | Path) -> JsonObject | None:
+        """Lee el último objeto confirmado o retorna ``None`` si no existe."""
+
+        resolved_relative_path = _require_relative_json_path(relative_path)
+        path = self._root_path / resolved_relative_path
+        try:
+            content = _read_bytes(path, self._max_document_bytes)
+        except FileNotFoundError:
+            return None
+        except StateTooLargeError as error:
+            raise StateTooLargeError(
+                f'JSON document {resolved_relative_path.as_posix()} exceeds '
+                f'{self._max_document_bytes} bytes'
+            ) from error
+        except OSError as error:
+            raise StateReadError(
+                f'could not read JSON document {resolved_relative_path.as_posix()}'
+            ) from error
+        return decode_json_object(content)
+
+    def replace(self, relative_path: str | Path, value: Mapping[str, Any]) -> JsonObject:
+        """Confirma un objeto JSON completo mediante ``fsync`` y ``os.replace``."""
+
+        resolved_relative_path = _require_relative_json_path(relative_path)
+        path = self._root_path / resolved_relative_path
+        try:
+            with self._write_lock:
+                normalized = normalize_json_object(value)
+                content = encode_canonical_json(normalized) + b'\n'
+                try:
+                    _enforce_document_size(content, self._max_document_bytes)
+                except StateTooLargeError as error:
+                    raise StateTooLargeError(
+                        f'JSON document {resolved_relative_path.as_posix()} exceeds '
+                        f'{self._max_document_bytes} bytes'
+                    ) from error
+                _replace_bytes(path, content)
+        except StateError:
+            raise
+        except (OSError, TypeError, ValueError) as error:
+            raise StateWriteError(
+                f'could not write JSON document {resolved_relative_path.as_posix()}'
+            ) from error
+        return normalized
 
 
 class AtomicStateStore:
@@ -40,25 +115,12 @@ class AtomicStateStore:
         *,
         volume_path: str | Path,
         application: str,
-        max_document_bytes: int = DEFAULT_MAX_DOCUMENT_BYTES,
+        max_document_bytes: int | None = DEFAULT_MAX_DOCUMENT_BYTES,
         clock: Callable[[], datetime] | None = None,
         logger: ObservabilityLogger | None = None,
     ) -> None:
-        if not isinstance(volume_path, str | Path):
-            raise StateValidationError('volume_path must be a filesystem path')
-        if isinstance(volume_path, str) and volume_path != volume_path.strip():
-            raise StateValidationError('volume_path must not contain surrounding whitespace')
-        if not str(volume_path):
-            raise StateValidationError('volume_path must not be empty')
-        resolved_volume_path = Path(volume_path)
-        if not resolved_volume_path.is_absolute():
-            raise StateValidationError('volume_path must be an absolute path')
-        if (
-            not isinstance(max_document_bytes, int)
-            or isinstance(max_document_bytes, bool)
-            or max_document_bytes <= 0
-        ):
-            raise StateValidationError('max_document_bytes must be greater than zero')
+        resolved_volume_path = _require_absolute_path(volume_path, field_name='volume_path')
+        resolved_max_document_bytes = _validate_max_document_bytes(max_document_bytes)
         resolved_clock = _utc_now if clock is None else clock
         if not callable(resolved_clock):
             raise StateValidationError('clock must be callable')
@@ -68,7 +130,7 @@ class AtomicStateStore:
         self._application = validate_application(application)
         self._application_root = resolved_volume_path / self._application
         self._state_root = self._application_root / '.runtime' / 'state'
-        self._max_document_bytes = max_document_bytes
+        self._max_document_bytes = resolved_max_document_bytes
         self._clock = resolved_clock
         self._logger = resolved_logger
         self._write_lock = threading.RLock()
@@ -98,8 +160,7 @@ class AtomicStateStore:
         path = self.path_for(resolved_key)
         try:
             try:
-                with path.open('rb') as file_handle:
-                    content = file_handle.read(self._max_document_bytes + 1)
+                content = _read_bytes(path, self._max_document_bytes)
             except FileNotFoundError:
                 self._emit_success(
                     'state.read.missing',
@@ -109,15 +170,15 @@ class AtomicStateStore:
                     metrics={'byte_count': 0},
                 )
                 return None
+            except StateTooLargeError as error:
+                raise StateTooLargeError(
+                    f'state document {resolved_key.identifier} exceeds '
+                    f'{self._max_document_bytes} bytes'
+                ) from error
             except OSError as error:
                 raise StateReadError(
                     f'could not read state document {resolved_key.identifier}'
                 ) from error
-            if len(content) > self._max_document_bytes:
-                raise StateTooLargeError(
-                    f'state document {resolved_key.identifier} exceeds '
-                    f'{self._max_document_bytes} bytes'
-                )
             try:
                 payload = decode_json_object(content)
                 document = StateDocument.from_payload(resolved_key, payload)
@@ -156,11 +217,13 @@ class AtomicStateStore:
                     value=dict(value),
                 )
                 content = encode_canonical_json(document.to_payload()) + b'\n'
-                if len(content) > self._max_document_bytes:
+                try:
+                    _enforce_document_size(content, self._max_document_bytes)
+                except StateTooLargeError as error:
                     raise StateTooLargeError(
                         f'state document {resolved_key.identifier} exceeds '
                         f'{self._max_document_bytes} bytes'
-                    )
+                    ) from error
                 orphan_temporary_count = self._replace_bytes(self.path_for(resolved_key), content)
         except StateError as error:
             severity = (
@@ -202,30 +265,7 @@ class AtomicStateStore:
         return document
 
     def _replace_bytes(self, path: Path, content: bytes) -> int:
-        temporary_path = path.with_name(f'.{path.name}.{uuid4().hex}.tmp')
-        orphan_temporary_count = 0
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            orphan_temporary_count = _remove_orphan_temporaries(path)
-            descriptor = os.open(
-                temporary_path,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                0o640,
-            )
-            with os.fdopen(descriptor, 'wb') as file_handle:
-                file_handle.write(content)
-                file_handle.flush()
-                os.fsync(file_handle.fileno())
-            os.replace(temporary_path, path)
-            _fsync_directory(path.parent)
-        except OSError as error:
-            raise StateWriteError(f'could not replace state document {path.name}') from error
-        finally:
-            try:
-                temporary_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        return orphan_temporary_count
+        return _replace_bytes(path, content)
 
     def _resolve_now(self) -> datetime:
         value = self._clock()
@@ -290,6 +330,42 @@ class AtomicStateStore:
             pass
 
 
+def _read_bytes(path: Path, max_document_bytes: int | None) -> bytes:
+    with path.open('rb') as file_handle:
+        if max_document_bytes is None:
+            return file_handle.read()
+        content = file_handle.read(max_document_bytes + 1)
+    _enforce_document_size(content, max_document_bytes)
+    return content
+
+
+def _replace_bytes(path: Path, content: bytes) -> int:
+    temporary_path = path.with_name(f'.{path.name}.{uuid4().hex}.tmp')
+    orphan_temporary_count = 0
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        orphan_temporary_count = _remove_orphan_temporaries(path)
+        descriptor = os.open(
+            temporary_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o640,
+        )
+        with os.fdopen(descriptor, 'wb') as file_handle:
+            file_handle.write(content)
+            file_handle.flush()
+            os.fsync(file_handle.fileno())
+        os.replace(temporary_path, path)
+        _fsync_directory(path.parent)
+    except OSError as error:
+        raise StateWriteError(f'could not replace JSON document {path.name}') from error
+    finally:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return orphan_temporary_count
+
+
 def _remove_orphan_temporaries(path: Path) -> int:
     removed_count = 0
     for candidate in path.parent.glob(f'.{path.name}.*.tmp'):
@@ -321,6 +397,49 @@ def _fsync_directory(path: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _require_absolute_path(value: str | Path, *, field_name: str) -> Path:
+    if not isinstance(value, str | Path):
+        raise StateValidationError(f'{field_name} must be a filesystem path')
+    if isinstance(value, str) and value != value.strip():
+        raise StateValidationError(f'{field_name} must not contain surrounding whitespace')
+    if not str(value):
+        raise StateValidationError(f'{field_name} must not be empty')
+    resolved = Path(value)
+    if not resolved.is_absolute():
+        raise StateValidationError(f'{field_name} must be an absolute path')
+    return resolved
+
+
+def _require_relative_json_path(value: str | Path) -> Path:
+    if not isinstance(value, str | Path):
+        raise StateValidationError('relative_path must be a filesystem path')
+    if isinstance(value, str) and value != value.strip():
+        raise StateValidationError('relative_path must not contain surrounding whitespace')
+    if not str(value):
+        raise StateValidationError('relative_path must not be empty')
+    resolved = Path(value)
+    if resolved == Path('.') or resolved.is_absolute() or resolved.drive:
+        raise StateValidationError('relative_path must be a relative JSON path')
+    if any(part in {'.', '..'} for part in resolved.parts):
+        raise StateValidationError('relative_path must not contain relative path segments')
+    if resolved.suffix != '.json':
+        raise StateValidationError('relative_path must end with .json')
+    return resolved
+
+
+def _validate_max_document_bytes(value: int | None) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise StateValidationError('max_document_bytes must be greater than zero or None')
+    return value
+
+
+def _enforce_document_size(content: bytes, max_document_bytes: int | None) -> None:
+    if max_document_bytes is not None and len(content) > max_document_bytes:
+        raise StateTooLargeError('document exceeds max_document_bytes')
 
 
 def _utc_now() -> datetime:

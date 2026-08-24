@@ -1,4 +1,4 @@
-# La fachada exporta solamente el contrato estable que usarán los jobs.
+# Espejo pedagógico de la API pública de atlanticus-state.
 """Contratos compactos de estado para jobs Atlanticus."""
 
 from atlanticus.state.errors import (
@@ -13,15 +13,17 @@ from atlanticus.state.errors import (
 from atlanticus.state.expiring import ExpiringKeySet
 from atlanticus.state.models import STATE_SCHEMA_VERSION, StateDocument, StateKey
 from atlanticus.state.signatures import build_state_signature
-from atlanticus.state.store import DEFAULT_MAX_DOCUMENT_BYTES, AtomicStateStore
 
-# La versión pertenece a este wheel; no existe una versión global de Atlanticus.
-__version__ = '0.1.0'
+# Se exporta el store con envelope existente y el primitive JSON raw introducido en 0.2.0.
+from atlanticus.state.store import DEFAULT_MAX_DOCUMENT_BYTES, AtomicJsonStore, AtomicStateStore
 
-# Mantener esta lista pequeña evita que los jobs dependan de helpers internos de serialización.
+# La versión 0.2.0 incorpora la política de tamaño opcional y AtomicJsonStore.
+__version__ = '0.2.0'
+
 __all__ = [
     'DEFAULT_MAX_DOCUMENT_BYTES',
     'STATE_SCHEMA_VERSION',
+    'AtomicJsonStore',
     'AtomicStateStore',
     'ExpiringKeySet',
     'StateCorruptionError',

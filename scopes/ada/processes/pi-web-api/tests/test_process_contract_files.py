@@ -19,7 +19,7 @@ def test_process_exposes_entrypoint_and_container_command() -> None:
     assert 'atlanticus-data-producers-pi==0.1.0' in project['project']['dependencies']
     assert 'atlanticus-datasets-runtime==0.2.0' not in project['project']['dependencies']
     assert 'atlanticus-datasets-parquet==0.2.0' not in project['project']['dependencies']
-    assert 'atlanticus-state==0.1.0' not in project['project']['dependencies']
+    assert 'atlanticus-state==0.2.0' not in project['project']['dependencies']
     assert 'pyarrow==25.0.0' not in project['project']['dependencies']
 
 

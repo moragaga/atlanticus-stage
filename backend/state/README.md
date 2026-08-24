@@ -1,8 +1,8 @@
 # `atlanticus-state`
 
-`atlanticus-state==0.1.0` conserva memoria técnica compacta entre ejecuciones de jobs. El package
-no conoce PI, Dispatch, KPI, alarmas ni conectores: el job decide la clave y el valor que necesita
-recordar.
+`atlanticus-state==0.2.0` conserva memoria técnica compacta entre ejecuciones de jobs y expone un
+primitive de reemplazo JSON atómico para dominios que necesitan controlar su propio schema y layout.
+El package no conoce PI, Dispatch, KPI, alarmas ni conectores.
 
 ## Contrato principal
 
@@ -56,7 +56,54 @@ El archivo contiene únicamente el sobre técnico y el valor entregado por el du
 ```
 
 No existe un identificador incremental ni historial de runs. Una clave conserva siempre el último
-valor confirmado y su tamaño predeterminado está limitado a 1 MiB.
+valor confirmado.
+
+## Límite de documentos
+
+El límite predeterminado continúa siendo 1 MiB. Puede configurarse por instancia con un entero
+positivo o deshabilitarse explícitamente con `None`:
+
+```python
+store = AtomicStateStore(
+    volume_path='/app/volumen',
+    application='ada',
+    max_document_bytes=None,
+)
+```
+
+`None` significa que Atlanticus no impone un límite aplicativo al tamaño del documento. No elimina
+los límites reales del filesystem, memoria disponible ni plataforma de ejecución. Los consumidores
+existentes que no configuran este parámetro conservan exactamente la protección de 1 MiB.
+
+## Primitive JSON atómico
+
+`AtomicJsonStore` reutiliza la misma semántica física de reemplazo sin imponer `StateDocument`,
+`.runtime/state` ni un schema de dominio. El consumidor entrega una raíz absoluta y rutas `.json`
+relativas a esa raíz:
+
+```python
+from atlanticus.state import AtomicJsonStore
+
+json_store = AtomicJsonStore(
+    root_path='/app/volumen/ada',
+    max_document_bytes=None,
+)
+
+json_store.replace(
+    'alarms/runtime/state/groups/crusher-pressure.json',
+    {
+        'schema_version': 1,
+        'group_id': 'crusher-pressure',
+        'commit_id': '...',
+    },
+)
+
+snapshot = json_store.read('alarms/runtime/state/groups/crusher-pressure.json')
+```
+
+Las rutas absolutas, `..`, segmentos relativos y archivos sin extensión `.json` se rechazan. El
+primitive no conoce WAL, leases, snapshots de alarmas ni semántica de commit; esas responsabilidades
+permanecen en el dominio consumidor.
 
 ## Atomicidad y calidad de datos
 
@@ -69,11 +116,11 @@ control y observability. Sólo un fallo técnico que impide confirmar o interpre
 debe bloquear el avance del estado.
 
 Si una escritura falla, el documento confirmado anteriormente permanece intacto. Una terminación
-forzosa puede dejar el temporal porque no ejecuta `finally`; la siguiente escritura de esa misma
-clave elimina únicamente temporales propios con UUID antes de confirmar el valor nuevo y emite
-`state.temporary.recovered`. Los errores de lectura, corrupción, schema, tamaño, limpieza y
-escritura se propagan al job. Un fallo del backend de observabilidad, en cambio, no cambia el
-resultado funcional ni hace que una escritura ya confirmada parezca fallida.
+forzosa puede dejar el temporal porque no ejecuta `finally`; la siguiente escritura del mismo
+destino elimina únicamente temporales propios con UUID antes de confirmar el valor nuevo. En
+`AtomicStateStore` esa recuperación además emite `state.temporary.recovered`. Los errores de
+lectura, corrupción, schema, tamaño, limpieza y escritura se propagan al consumidor. Un fallo del
+backend de observabilidad no cambia el resultado funcional de `AtomicStateStore`.
 
 ## Detección de cambios
 
@@ -119,13 +166,14 @@ negocio.
 
 ## Observabilidad
 
-Las lecturas, escrituras y purgas correctas generan eventos locales con duración, bytes o
-cantidades. Warnings, errores y la recuperación de temporales huérfanos se marcan para operaciones
-y por eso entran al perfil Azure `slim`. Nunca se emite el contenido de `value` ni los
-identificadores usados para deduplicar.
+Las lecturas, escrituras y purgas correctas de `AtomicStateStore` generan eventos locales con
+duración, bytes o cantidades. Warnings, errores y la recuperación de temporales huérfanos se marcan
+para operaciones y por eso entran al perfil Azure `slim`. Nunca se emite el contenido de `value` ni
+los identificadores usados para deduplicar.
 
-Las lecturas cargan como máximo el límite configurado más un byte. El parser exige UTF-8, rechaza
-claves duplicadas, números no finitos y profundidad excesiva. `StateDocument` conserva un snapshot
-profundamente inmutable, aunque el consumidor modifique después el objeto original.
+Las lecturas con límite cargan como máximo el valor configurado más un byte. Cuando el límite es
+`None`, el consumidor acepta explícitamente cargar el documento completo. El parser exige UTF-8,
+rechaza claves duplicadas, números no finitos y profundidad excesiva. `StateDocument` conserva un
+snapshot profundamente inmutable, aunque el consumidor modifique después el objeto original.
 
 El diseño completo está en [`docs/design.md`](docs/design.md).

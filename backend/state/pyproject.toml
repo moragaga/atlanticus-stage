@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlanticus-state"
-version = "0.1.0"
-description = "Atomic, compact and extensible state contracts for Atlanticus jobs."
+version = "0.2.0"
+description = "Atomic, compact and extensible state and JSON persistence contracts for Atlanticus jobs."
 readme = "README.md"
 requires-python = "==3.14.2"
 classifiers = [
