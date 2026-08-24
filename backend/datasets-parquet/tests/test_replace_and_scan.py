@@ -243,6 +243,178 @@ def test_multiple_targets_require_explicit_columns_and_align_new_columns(
     assert len(result.warnings) == 1
 
 
+def test_typed_projection_synthesizes_columns_missing_from_all_publications(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    target = _target(pi_definition)
+    table = pa.table(
+        {
+            'timestamp': timestamp_array(
+                '2026-07-21T10:00:00Z',
+                '2026-07-21T11:00:00Z',
+            ),
+            'existing': pa.array([1.0, 2.0], type=pa.float64()),
+        }
+    )
+    store.replace(definition=pi_definition, target=target, table=table)
+    projection_schema = pa.schema(
+        [
+            table.schema.field('timestamp'),
+            pa.field('missing_number', pa.float64(), nullable=False),
+            pa.field('existing', pa.float64()),
+            pa.field('missing_text', pa.string(), nullable=False),
+        ]
+    )
+
+    result = store.scan(
+        definition=pi_definition,
+        targets=(target,),
+        projection_schema=projection_schema,
+    )
+
+    assert result.table.column_names == [
+        'timestamp',
+        'missing_number',
+        'existing',
+        'missing_text',
+    ]
+    assert result.table['missing_number'].type == pa.float64()
+    assert result.table['missing_number'].to_pylist() == [None, None]
+    assert result.table['missing_text'].type == pa.string()
+    assert result.table['missing_text'].to_pylist() == [None, None]
+    assert result.table.schema.field('missing_number').nullable
+    assert result.table.schema.field('missing_text').nullable
+    assert result.table['existing'].to_pylist() == [1.0, 2.0]
+    assert len(result.warnings) == 2
+
+
+def test_typed_projection_preserves_row_count_when_all_projected_columns_are_missing(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    target = _target(pi_definition)
+    store.replace(
+        definition=pi_definition,
+        target=target,
+        table=pa.table(
+            {
+                'timestamp': timestamp_array(
+                    '2026-07-21T10:00:00Z',
+                    '2026-07-21T11:00:00Z',
+                ),
+                'existing': pa.array([1.0, 2.0], type=pa.float64()),
+            }
+        ),
+    )
+
+    result = store.scan(
+        definition=pi_definition,
+        targets=(target,),
+        projection_schema=pa.schema(
+            [
+                pa.field('missing_number', pa.float64()),
+                pa.field('missing_text', pa.string()),
+            ]
+        ),
+    )
+
+    assert result.row_count == 2
+    assert result.table['missing_number'].to_pylist() == [None, None]
+    assert result.table['missing_text'].to_pylist() == [None, None]
+
+
+def test_typed_projection_rejects_physical_type_mismatch(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    target = _target(pi_definition)
+    store.replace(
+        definition=pi_definition,
+        target=target,
+        table=pa.table({'value': pa.array([1], type=pa.int64())}),
+    )
+
+    with pytest.raises(ParquetSchemaError, match='incompatible type for projected column value'):
+        store.scan(
+            definition=pi_definition,
+            targets=(target,),
+            projection_schema=pa.schema([pa.field('value', pa.float64())]),
+        )
+
+
+def test_typed_projection_does_not_make_filter_columns_tolerant(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    target = _target(pi_definition)
+    store.replace(
+        definition=pi_definition,
+        target=target,
+        table=pa.table({'value': pa.array([1.0], type=pa.float64())}),
+    )
+
+    with pytest.raises(ParquetSchemaError, match='filter column does not exist'):
+        store.scan(
+            definition=pi_definition,
+            targets=(target,),
+            projection_schema=pa.schema([pa.field('missing_tag', pa.float64())]),
+            filters=(
+                ColumnFilter(
+                    column='missing_tag',
+                    operator=FilterOperator.GREATER_THAN,
+                    value=0.0,
+                ),
+            ),
+        )
+
+
+def test_string_projection_keeps_strict_missing_column_behavior(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    target = _target(pi_definition)
+    store.replace(
+        definition=pi_definition,
+        target=target,
+        table=pa.table({'value': pa.array([1.0], type=pa.float64())}),
+    )
+
+    with pytest.raises(ParquetSchemaError, match='column does not exist'):
+        store.scan(
+            definition=pi_definition,
+            targets=(target,),
+            columns=('missing_tag',),
+        )
+
+
+def test_columns_and_typed_projection_are_mutually_exclusive(
+    tmp_path: Path,
+    clock: datetime,
+    pi_definition: DatasetDefinition,
+) -> None:
+    store = _store(tmp_path, clock)
+    target = _target(pi_definition)
+
+    with pytest.raises(ParquetValidationError, match='mutually exclusive'):
+        store.scan(
+            definition=pi_definition,
+            targets=(target,),
+            columns=('value',),
+            projection_schema=pa.schema([pa.field('value', pa.float64())]),
+        )
+
+
 def test_multiple_targets_reject_incompatible_types(
     tmp_path: Path,
     clock: datetime,

@@ -127,6 +127,22 @@ def _normalize_targets(values: Iterable[DatasetTarget]) -> tuple[DatasetTarget, 
     return targets
 
 
+def _normalize_projection_schema(value: pa.Schema | None) -> pa.Schema | None:
+    if value is None:
+        return None
+    if not isinstance(value, pa.Schema):
+        raise ParquetValidationError('projection_schema must be a pyarrow.Schema or None')
+    if len(value) == 0:
+        raise ParquetValidationError('projection_schema must contain at least one field')
+    if not all(isinstance(name, str) and name for name in value.names):
+        raise ParquetValidationError('projection_schema field names must be non-empty strings')
+    if len(set(value.names)) != len(value.names):
+        raise ParquetValidationError('projection_schema field names must not contain duplicates')
+    if any(pa.types.is_null(field.type) for field in value):
+        raise ParquetValidationError('projection_schema fields must declare a concrete data type')
+    return value
+
+
 def _normalize_columns(
     values: Iterable[str],
     *,

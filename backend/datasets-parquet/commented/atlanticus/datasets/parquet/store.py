@@ -30,6 +30,7 @@ from atlanticus.datasets.parquet._validation import (
     _align_table as _align_table_impl,
     _normalize_columns,
     _normalize_incoming_parts as _normalize_incoming_parts_impl,
+    _normalize_projection_schema,
     _normalize_remove_parts as _normalize_remove_parts_impl,
     _normalize_targets,
     _validate_key_values as _validate_key_values_impl,
@@ -404,6 +405,7 @@ class ParquetDatasetStore:
         definition: DatasetDefinition,
         targets: Iterable[DatasetTarget],
         columns: Iterable[str] | None = None,
+        projection_schema: pa.Schema | None = None,
         filters: Iterable[ColumnFilter] = (),
     ) -> ParquetReadResult:
         """Proyecta y filtra una o varias particiones explícitas con pushdown Parquet."""
@@ -414,8 +416,18 @@ class ParquetDatasetStore:
             if columns is None
             else _normalize_columns(columns, field='columns', allow_empty=False)
         )
-        if len(resolved_targets) > 1 and projected_columns is None:
-            raise ParquetValidationError('columns must be explicit when scanning multiple targets')
+        # El modo tipado es explícito y no cambia la semántica estricta de columns.
+        resolved_projection_schema = _normalize_projection_schema(projection_schema)
+        if projected_columns is not None and resolved_projection_schema is not None:
+            raise ParquetValidationError('columns and projection_schema are mutually exclusive')
+        if (
+            len(resolved_targets) > 1
+            and projected_columns is None
+            and resolved_projection_schema is None
+        ):
+            raise ParquetValidationError(
+                'columns or projection_schema must be explicit when scanning multiple targets'
+            )
         resolved_filters = tuple(filters)
         if not all(isinstance(item, ColumnFilter) for item in resolved_filters):
             raise ParquetValidationError('filters must contain only ColumnFilter values')
@@ -433,6 +445,7 @@ class ParquetDatasetStore:
             targets=resolved_targets,
             publications=publications,
             columns=projected_columns,
+            projection_schema=resolved_projection_schema,
             filters=resolved_filters,
         )
 

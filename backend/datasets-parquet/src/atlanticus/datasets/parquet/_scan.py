@@ -36,11 +36,13 @@ def _scan_publications(
     targets: tuple[DatasetTarget, ...],
     publications: tuple[_ResolvedPublication, ...],
     columns: tuple[str, ...] | None,
+    projection_schema: pa.Schema | None,
     filters: tuple[ColumnFilter, ...],
 ) -> ParquetReadResult:
     output_schema = _resolve_scan_schema(
         publications=publications,
         columns=columns,
+        projection_schema=projection_schema,
     )
     filter_fields = _resolve_filter_fields(
         publications=publications,
@@ -135,7 +137,14 @@ def _resolve_scan_schema(
     *,
     publications: tuple[_ResolvedPublication, ...],
     columns: tuple[str, ...] | None,
+    projection_schema: pa.Schema | None,
 ) -> pa.Schema:
+    if projection_schema is not None:
+        fields = [
+            _resolve_projected_field(publications=publications, expected=field)
+            for field in projection_schema
+        ]
+        return pa.schema(fields, metadata=projection_schema.metadata)
     if columns is None:
         return publications[0].schema
     fields = [
@@ -143,6 +152,33 @@ def _resolve_scan_schema(
         for column in columns
     ]
     return pa.schema(fields)
+
+
+def _resolve_projected_field(
+    *,
+    publications: tuple[_ResolvedPublication, ...],
+    expected: pa.Field,
+) -> pa.Field:
+    found = [
+        publication.schema.field(expected.name)
+        for publication in publications
+        if expected.name in publication.schema.names
+    ]
+    incompatible = [field.type for field in found if field.type != expected.type]
+    if incompatible:
+        types = sorted({str(expected.type), *(str(data_type) for data_type in incompatible)})
+        raise ParquetSchemaError(f'incompatible type for projected column {expected.name}: {types}')
+    nullable = (
+        expected.nullable
+        or len(found) != len(publications)
+        or any(field.nullable for field in found)
+    )
+    return pa.field(
+        expected.name,
+        expected.type,
+        nullable=nullable,
+        metadata=expected.metadata,
+    )
 
 
 def _resolve_filter_fields(
