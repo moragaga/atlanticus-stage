@@ -52,6 +52,7 @@ from ada.processes.alarms_runtime.revision_file import (
 )
 from ada.processes.alarms_runtime.revision_resolution import (
     RUNTIME_MANIFEST_SCHEMA_VERSION,
+    ResolvedRuntimeRevision,
     RuntimeManifest,
     RuntimeRevisionBundle,
     RuntimeRevisionCache,
@@ -82,7 +83,7 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.11.0'
+__version__ = '0.12.0'
 
 __all__ = [
     'AlarmConfigurationRevision',
@@ -126,6 +127,7 @@ __all__ = [
     'FileRuntimeRevisionCache',
     'FileRuntimeRevisionSource',
     'RUNTIME_MANIFEST_SCHEMA_VERSION',
+    'ResolvedRuntimeRevision',
     'RuntimeManifest',
     'RuntimeRevisionBundle',
     'RuntimeRevisionCache',

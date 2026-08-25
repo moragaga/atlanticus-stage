@@ -77,18 +77,15 @@ class RuntimeRevisionBundle:
 
 
 @dataclass(frozen=True, slots=True)
-class RuntimeRevisionResolution:
+class ResolvedRuntimeRevision:
     bundle: RuntimeRevisionBundle
     revision: AlarmConfigurationRevision
-    origin: RuntimeRevisionOrigin
 
     def __post_init__(self) -> None:
         if not isinstance(self.bundle, RuntimeRevisionBundle):
             raise TypeError('bundle must be a RuntimeRevisionBundle')
         if not isinstance(self.revision, AlarmConfigurationRevision):
             raise TypeError('revision must be an AlarmConfigurationRevision')
-        if not isinstance(self.origin, RuntimeRevisionOrigin):
-            raise TypeError('origin must be a RuntimeRevisionOrigin')
         if self.bundle.revision_key != self.revision.revision_key:
             raise RuntimeRevisionContractError(
                 'decoded configuration revision does not match runtime manifest'
@@ -101,6 +98,41 @@ class RuntimeRevisionResolution:
     @property
     def revision_key(self) -> tuple[str, str]:
         return self.bundle.revision_key
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeRevisionResolution:
+    origin: RuntimeRevisionOrigin
+    effective: ResolvedRuntimeRevision | None
+    target: ResolvedRuntimeRevision
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.origin, RuntimeRevisionOrigin):
+            raise TypeError('origin must be a RuntimeRevisionOrigin')
+        if self.effective is not None and not isinstance(self.effective, ResolvedRuntimeRevision):
+            raise TypeError('effective must be a ResolvedRuntimeRevision or None')
+        if not isinstance(self.target, ResolvedRuntimeRevision):
+            raise TypeError('target must be a ResolvedRuntimeRevision')
+        if self.origin in {
+            RuntimeRevisionOrigin.CACHE_CURRENT,
+            RuntimeRevisionOrigin.CACHE_FALLBACK,
+        }:
+            if self.effective is None:
+                raise RuntimeRevisionContractError(
+                    'cache resolution requires an effective runtime revision'
+                )
+            if self.effective.revision_key != self.target.revision_key:
+                raise RuntimeRevisionContractError(
+                    'cache resolution target must match the effective runtime revision'
+                )
+        if (
+            self.origin is RuntimeRevisionOrigin.SOURCE_CANDIDATE
+            and self.effective is not None
+            and self.effective.revision_key == self.target.revision_key
+        ):
+            raise RuntimeRevisionContractError(
+                'source candidate must differ from the effective runtime revision'
+            )
 
 
 @runtime_checkable

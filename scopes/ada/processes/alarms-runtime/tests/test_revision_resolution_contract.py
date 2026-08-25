@@ -9,6 +9,7 @@ from ada.processes.alarms_runtime import (
     AlarmConfigurationRevision,
     AlarmEvaluatorContract,
     AlarmEvaluatorRegistry,
+    ResolvedRuntimeRevision,
     RuntimeManifest,
     RuntimeRevisionBundle,
     RuntimeRevisionCache,
@@ -88,6 +89,23 @@ def _bundle(
         ),
         alarm_configuration={'revision': alarm_revision},
         tool_registry={'revision': tool_revision},
+    )
+
+
+def _resolved(
+    *,
+    alarm_revision: str = 'AC-52',
+    tool_revision: str = 'TR-18',
+) -> ResolvedRuntimeRevision:
+    return ResolvedRuntimeRevision(
+        bundle=_bundle(
+            alarm_revision=alarm_revision,
+            tool_revision=tool_revision,
+        ),
+        revision=_revision(
+            alarm_revision=alarm_revision,
+            tool_revision=tool_revision,
+        ),
     )
 
 
@@ -208,23 +226,18 @@ def test_runtime_revision_bundle_requires_mapping_documents(field: str, value: o
         RuntimeRevisionBundle(**values)
 
 
-def test_runtime_revision_resolution_exposes_manifest_and_revision_key() -> None:
-    resolution = RuntimeRevisionResolution(
-        bundle=_bundle(),
-        revision=_revision(),
-        origin=RuntimeRevisionOrigin.SOURCE_CANDIDATE,
-    )
+def test_resolved_runtime_revision_exposes_manifest_and_revision_key() -> None:
+    resolved = _resolved()
 
-    assert resolution.manifest == resolution.bundle.manifest
-    assert resolution.revision_key == ('AC-52', 'TR-18')
+    assert resolved.manifest == resolved.bundle.manifest
+    assert resolved.revision_key == ('AC-52', 'TR-18')
 
 
-def test_runtime_revision_resolution_rejects_decoded_revision_mismatch() -> None:
+def test_resolved_runtime_revision_rejects_decoded_revision_mismatch() -> None:
     with pytest.raises(RuntimeRevisionContractError):
-        RuntimeRevisionResolution(
+        ResolvedRuntimeRevision(
             bundle=_bundle(),
             revision=_revision(alarm_revision='AC-51'),
-            origin=RuntimeRevisionOrigin.SOURCE_CANDIDATE,
         )
 
 
@@ -233,14 +246,95 @@ def test_runtime_revision_resolution_rejects_decoded_revision_mismatch() -> None
     [
         ('bundle', object()),
         ('revision', object()),
+    ],
+)
+def test_resolved_runtime_revision_requires_contract_types(field: str, value: object) -> None:
+    values = {
+        'bundle': _bundle(),
+        'revision': _revision(),
+    }
+    values[field] = value
+
+    with pytest.raises(TypeError):
+        ResolvedRuntimeRevision(**values)
+
+
+def test_runtime_revision_resolution_exposes_effective_and_target() -> None:
+    effective = _resolved(alarm_revision='AC-51', tool_revision='TR-17')
+    target = _resolved()
+    resolution = RuntimeRevisionResolution(
+        origin=RuntimeRevisionOrigin.SOURCE_CANDIDATE,
+        effective=effective,
+        target=target,
+    )
+
+    assert resolution.effective is effective
+    assert resolution.target is target
+
+
+def test_runtime_revision_resolution_allows_first_bootstrap_candidate() -> None:
+    target = _resolved()
+
+    resolution = RuntimeRevisionResolution(
+        origin=RuntimeRevisionOrigin.SOURCE_CANDIDATE,
+        effective=None,
+        target=target,
+    )
+
+    assert resolution.effective is None
+    assert resolution.target is target
+
+
+@pytest.mark.parametrize(
+    'origin',
+    [RuntimeRevisionOrigin.CACHE_CURRENT, RuntimeRevisionOrigin.CACHE_FALLBACK],
+)
+def test_cache_resolution_requires_effective_revision(origin: RuntimeRevisionOrigin) -> None:
+    with pytest.raises(RuntimeRevisionContractError, match='requires an effective'):
+        RuntimeRevisionResolution(
+            origin=origin,
+            effective=None,
+            target=_resolved(),
+        )
+
+
+@pytest.mark.parametrize(
+    'origin',
+    [RuntimeRevisionOrigin.CACHE_CURRENT, RuntimeRevisionOrigin.CACHE_FALLBACK],
+)
+def test_cache_resolution_target_must_match_effective(origin: RuntimeRevisionOrigin) -> None:
+    with pytest.raises(RuntimeRevisionContractError, match='must match'):
+        RuntimeRevisionResolution(
+            origin=origin,
+            effective=_resolved(alarm_revision='AC-51'),
+            target=_resolved(alarm_revision='AC-52'),
+        )
+
+
+def test_source_candidate_must_differ_from_effective_revision() -> None:
+    resolved = _resolved()
+
+    with pytest.raises(RuntimeRevisionContractError, match='must differ'):
+        RuntimeRevisionResolution(
+            origin=RuntimeRevisionOrigin.SOURCE_CANDIDATE,
+            effective=resolved,
+            target=resolved,
+        )
+
+
+@pytest.mark.parametrize(
+    ('field', 'value'),
+    [
         ('origin', 'source_candidate'),
+        ('effective', object()),
+        ('target', object()),
     ],
 )
 def test_runtime_revision_resolution_requires_contract_types(field: str, value: object) -> None:
     values = {
-        'bundle': _bundle(),
-        'revision': _revision(),
         'origin': RuntimeRevisionOrigin.SOURCE_CANDIDATE,
+        'effective': _resolved(alarm_revision='AC-51'),
+        'target': _resolved(),
     }
     values[field] = value
 

@@ -1,10 +1,9 @@
-# Este módulo implementa sólo el algoritmo de resolución.
-# No conoce filesystem, AtomicJsonStore, Cosmos ni Job Runtime.
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from ada.processes.alarms_runtime.revision_resolution import (
+    ResolvedRuntimeRevision,
     RuntimeRevisionBundle,
     RuntimeRevisionCache,
     RuntimeRevisionCacheError,
@@ -21,7 +20,6 @@ class RuntimeRevisionResolverError(RuntimeError):
     pass
 
 
-# El resolver compone las tres estrategias cerradas en R3.4A.
 @dataclass(frozen=True, slots=True)
 class RuntimeRevisionResolver:
     source: RuntimeRevisionSource
@@ -36,28 +34,25 @@ class RuntimeRevisionResolver:
         if not isinstance(self.cache, RuntimeRevisionCache):
             raise TypeError('cache must implement RuntimeRevisionCache')
 
+    # Resuelve una sola vez el cache efectivo y lo transporta junto al candidate para el planner.
     def resolve(self) -> RuntimeRevisionResolution:
-        # La copia efectiva se valida antes de consultar Source.
-        # Si está corrupta, no se intenta reconstruirla de manera heurística.
         cached = self._load_cached_resolution()
         try:
             manifest = self.source.read_manifest()
         except RuntimeRevisionSourceError as error:
-            # Una caída de Source puede degradar a last-known-good sólo si el cache es válido.
             return self._fallback_or_raise(
                 cached,
                 error,
                 'published runtime manifest is unavailable and no effective cache exists',
             )
-        # Misma pareja AC/TR implica que los documentos cacheados siguen siendo autoridad efectiva.
+        # Si Source apunta al mismo revision_key, la copia efectiva ya es suficiente y no releemos artifacts.
         if cached is not None and manifest.revision_key == cached.revision_key:
             return RuntimeRevisionResolution(
-                bundle=cached.bundle,
-                revision=cached.revision,
                 origin=RuntimeRevisionOrigin.CACHE_CURRENT,
+                effective=cached,
+                target=cached,
             )
         try:
-            # La configuración y el registro se solicitan por los IDs exactos del manifest.
             bundle = RuntimeRevisionBundle(
                 manifest=manifest,
                 alarm_configuration=self.source.read_alarm_configuration(
@@ -67,32 +62,32 @@ class RuntimeRevisionResolver:
                     revision=manifest.tool_registry_revision
                 ),
             )
-            # El decoder sigue siendo dueño de la validación semántica y cross-validation.
-            revision = self.decoder.decode(bundle=bundle)
-            return RuntimeRevisionResolution(
+            # El target queda decodificado y cross-validado antes de exponerse a la composición.
+            target = ResolvedRuntimeRevision(
                 bundle=bundle,
-                revision=revision,
+                revision=self.decoder.decode(bundle=bundle),
+            )
+            return RuntimeRevisionResolution(
                 origin=RuntimeRevisionOrigin.SOURCE_CANDIDATE,
+                effective=cached,
+                target=target,
             )
         except (RuntimeRevisionSourceError, RuntimeRevisionContractError, ValueError) as error:
-            # Un target incompleto o inválido nunca reemplaza el último epoch válido.
             return self._fallback_or_raise(
                 cached,
                 error,
                 'published runtime revision is invalid and no effective cache exists',
             )
 
-    def _load_cached_resolution(self) -> RuntimeRevisionResolution | None:
+    # El cache inválido falla cerrado porque representa la última autoridad local efectivamente adoptada.
+    def _load_cached_resolution(self) -> ResolvedRuntimeRevision | None:
         bundle = self.cache.load_effective()
         if bundle is None:
             return None
         try:
-            # El cache físico también debe atravesar el mismo decoder que Source.
-            revision = self.decoder.decode(bundle=bundle)
-            return RuntimeRevisionResolution(
+            return ResolvedRuntimeRevision(
                 bundle=bundle,
-                revision=revision,
-                origin=RuntimeRevisionOrigin.CACHE_CURRENT,
+                revision=self.decoder.decode(bundle=bundle),
             )
         except (RuntimeRevisionContractError, ValueError) as error:
             raise RuntimeRevisionCacheError(
@@ -101,14 +96,14 @@ class RuntimeRevisionResolver:
 
     @staticmethod
     def _fallback_or_raise(
-        cached: RuntimeRevisionResolution | None,
+        cached: ResolvedRuntimeRevision | None,
         error: Exception,
         message: str,
     ) -> RuntimeRevisionResolution:
         if cached is None:
             raise RuntimeRevisionResolverError(message) from error
         return RuntimeRevisionResolution(
-            bundle=cached.bundle,
-            revision=cached.revision,
             origin=RuntimeRevisionOrigin.CACHE_FALLBACK,
+            effective=cached,
+            target=cached,
         )

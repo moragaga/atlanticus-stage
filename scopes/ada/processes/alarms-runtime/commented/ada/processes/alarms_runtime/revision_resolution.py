@@ -1,5 +1,3 @@
-# Este módulo cierra únicamente los contratos de resolución de revisiones.
-# No lee archivos, Cosmos ni cache: esas responsabilidades llegan en R3.4B.
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -10,7 +8,7 @@ from typing import Protocol, runtime_checkable
 
 from ada.processes.alarms_runtime.adoption import AlarmConfigurationRevision
 
-# La versión del schema persistente es independiente de las revisiones AC/TR.
+# El manifest identifica la pareja publicada; su schema evoluciona de forma independiente a AC/TR.
 RUNTIME_MANIFEST_SCHEMA_VERSION = 'alarm-runtime-manifest.v1'
 
 RuntimeRevisionDocument = Mapping[str, object]
@@ -20,7 +18,6 @@ class RuntimeRevisionContractError(ValueError):
     pass
 
 
-# Los adapters físicos normalizan fallos de lectura y cache con errores propios del contrato.
 class RuntimeRevisionSourceError(RuntimeError):
     pass
 
@@ -35,7 +32,6 @@ class RuntimeRevisionOrigin(StrEnum):
     CACHE_FALLBACK = 'cache_fallback'
 
 
-# RuntimeManifest es el puntero publicado y su identidad operacional es la pareja AC/TR.
 @dataclass(frozen=True, slots=True)
 class RuntimeManifest:
     schema_version: str
@@ -62,7 +58,6 @@ class RuntimeManifest:
         return self.alarm_configuration_revision, self.tool_registry_revision
 
 
-# El bundle conserva juntos los tres documentos que el cache físico deberá persistir.
 @dataclass(frozen=True, slots=True)
 class RuntimeRevisionBundle:
     manifest: RuntimeManifest
@@ -82,20 +77,17 @@ class RuntimeRevisionBundle:
         return self.manifest.revision_key
 
 
-# La resolución une el bundle físico con la revisión ya decodificada y su procedencia.
+# Une el bundle físico validado con su representación operacional ya decodificada.
 @dataclass(frozen=True, slots=True)
-class RuntimeRevisionResolution:
+class ResolvedRuntimeRevision:
     bundle: RuntimeRevisionBundle
     revision: AlarmConfigurationRevision
-    origin: RuntimeRevisionOrigin
 
     def __post_init__(self) -> None:
         if not isinstance(self.bundle, RuntimeRevisionBundle):
             raise TypeError('bundle must be a RuntimeRevisionBundle')
         if not isinstance(self.revision, AlarmConfigurationRevision):
             raise TypeError('revision must be an AlarmConfigurationRevision')
-        if not isinstance(self.origin, RuntimeRevisionOrigin):
-            raise TypeError('origin must be a RuntimeRevisionOrigin')
         if self.bundle.revision_key != self.revision.revision_key:
             raise RuntimeRevisionContractError(
                 'decoded configuration revision does not match runtime manifest'
@@ -110,7 +102,44 @@ class RuntimeRevisionResolution:
         return self.bundle.revision_key
 
 
-# La fuente sólo expone lecturas por revisión exacta; nunca un latest independiente por artefacto.
+# Expone a la composición tanto el last-known-good como el target sin obligarla a releer el cache.
+@dataclass(frozen=True, slots=True)
+class RuntimeRevisionResolution:
+    origin: RuntimeRevisionOrigin
+    effective: ResolvedRuntimeRevision | None
+    target: ResolvedRuntimeRevision
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.origin, RuntimeRevisionOrigin):
+            raise TypeError('origin must be a RuntimeRevisionOrigin')
+        if self.effective is not None and not isinstance(self.effective, ResolvedRuntimeRevision):
+            raise TypeError('effective must be a ResolvedRuntimeRevision or None')
+        if not isinstance(self.target, ResolvedRuntimeRevision):
+            raise TypeError('target must be a ResolvedRuntimeRevision')
+        # Los orígenes basados en cache siempre describen exactamente el epoch efectivo.
+        if self.origin in {
+            RuntimeRevisionOrigin.CACHE_CURRENT,
+            RuntimeRevisionOrigin.CACHE_FALLBACK,
+        }:
+            if self.effective is None:
+                raise RuntimeRevisionContractError(
+                    'cache resolution requires an effective runtime revision'
+                )
+            if self.effective.revision_key != self.target.revision_key:
+                raise RuntimeRevisionContractError(
+                    'cache resolution target must match the effective runtime revision'
+                )
+        # Un candidate con cache previo debe representar una transición real hacia otra pareja.
+        if (
+            self.origin is RuntimeRevisionOrigin.SOURCE_CANDIDATE
+            and self.effective is not None
+            and self.effective.revision_key == self.target.revision_key
+        ):
+            raise RuntimeRevisionContractError(
+                'source candidate must differ from the effective runtime revision'
+            )
+
+
 @runtime_checkable
 class RuntimeRevisionSource(Protocol):
     def read_manifest(self) -> RuntimeManifest: ...
@@ -120,13 +149,11 @@ class RuntimeRevisionSource(Protocol):
     def read_tool_registry(self, *, revision: str) -> RuntimeRevisionDocument: ...
 
 
-# El decoder es la frontera de validación y traducción hacia AlarmConfigurationRevision.
 @runtime_checkable
 class RuntimeRevisionDecoder(Protocol):
     def decode(self, *, bundle: RuntimeRevisionBundle) -> AlarmConfigurationRevision: ...
 
 
-# El cache representa únicamente la última pareja efectivamente adoptada.
 @runtime_checkable
 class RuntimeRevisionCache(Protocol):
     def load_effective(self) -> RuntimeRevisionBundle | None: ...

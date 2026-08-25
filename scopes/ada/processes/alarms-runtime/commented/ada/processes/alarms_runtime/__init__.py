@@ -1,4 +1,3 @@
-# API pública de alarms-runtime. Los comentarios explican agrupaciones sin alterar contratos.
 from ada.processes.alarms_runtime.adoption import (
     AlarmConfigurationRevision,
     AlarmConfigurationRevisionError,
@@ -47,14 +46,13 @@ from ada.processes.alarms_runtime.iteration import (
     AlarmIterationLoader,
     AlarmIterationSourceLoader,
 )
-
-# Contratos puros R3.4A para resolver una pareja publicada sin I/O físico.
 from ada.processes.alarms_runtime.revision_file import (
     FileRuntimeRevisionCache,
     FileRuntimeRevisionSource,
 )
 from ada.processes.alarms_runtime.revision_resolution import (
     RUNTIME_MANIFEST_SCHEMA_VERSION,
+    ResolvedRuntimeRevision,
     RuntimeManifest,
     RuntimeRevisionBundle,
     RuntimeRevisionCache,
@@ -85,8 +83,8 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-# R3.4A agrega contratos públicos de resolución; por eso incrementa la versión minor.
-__version__ = '0.11.0'
+# R3.4C.0 expone el handoff effective + target requerido por la composición Job Runtime.
+__version__ = '0.12.0'
 
 __all__ = [
     'AlarmConfigurationRevision',
@@ -130,6 +128,7 @@ __all__ = [
     'FileRuntimeRevisionCache',
     'FileRuntimeRevisionSource',
     'RUNTIME_MANIFEST_SCHEMA_VERSION',
+    'ResolvedRuntimeRevision',
     'RuntimeManifest',
     'RuntimeRevisionBundle',
     'RuntimeRevisionCache',

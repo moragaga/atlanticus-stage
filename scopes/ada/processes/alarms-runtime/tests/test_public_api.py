@@ -40,6 +40,7 @@ from ada.processes.alarms_runtime import (
     ConfigurationAdoptionRejectionReason,
     FileRuntimeRevisionCache,
     FileRuntimeRevisionSource,
+    ResolvedRuntimeRevision,
     RuntimeManifest,
     RuntimeRevisionBundle,
     RuntimeRevisionCache,
@@ -104,6 +105,7 @@ def test_public_api_and_version() -> None:
     assert FileRuntimeRevisionCache.__name__ == 'FileRuntimeRevisionCache'
     assert FileRuntimeRevisionSource.__name__ == 'FileRuntimeRevisionSource'
     assert RUNTIME_MANIFEST_SCHEMA_VERSION == 'alarm-runtime-manifest.v1'
+    assert ResolvedRuntimeRevision.__name__ == 'ResolvedRuntimeRevision'
     assert RuntimeManifest.__name__ == 'RuntimeManifest'
     assert RuntimeRevisionBundle.__name__ == 'RuntimeRevisionBundle'
     assert RuntimeRevisionCache.__name__ == 'RuntimeRevisionCache'
@@ -123,7 +125,7 @@ def test_public_api_and_version() -> None:
     assert callable(decode_group_runtime_snapshot)
     assert callable(encode_group_runtime_snapshot)
     assert callable(plan_configuration_adoption)
-    assert __version__ == '0.11.0'
+    assert __version__ == '0.12.0'
     assert not hasattr(alarms_runtime, 'AlarmRuntimeDurability')
     assert not hasattr(alarms_runtime, 'AlarmRuntimePersistenceComposition')
     assert not hasattr(alarms_runtime, 'build_persistence_composition')

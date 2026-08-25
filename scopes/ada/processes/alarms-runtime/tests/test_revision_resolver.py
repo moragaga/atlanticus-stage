@@ -156,7 +156,8 @@ def test_resolver_uses_cache_current_without_reading_source_artifacts() -> None:
     resolution = resolver.resolve()
 
     assert resolution.origin is RuntimeRevisionOrigin.CACHE_CURRENT
-    assert resolution.revision_key == ('AC-52', 'TR-18')
+    assert resolution.effective is resolution.target
+    assert resolution.target.revision_key == ('AC-52', 'TR-18')
     assert source.reads == [('manifest', None)]
 
 
@@ -174,7 +175,8 @@ def test_resolver_treats_same_revision_key_as_current_even_if_published_at_chang
     ).resolve()
 
     assert resolution.origin is RuntimeRevisionOrigin.CACHE_CURRENT
-    assert resolution.bundle.manifest.published_at == PUBLISHED_AT
+    assert resolution.effective is resolution.target
+    assert resolution.target.bundle.manifest.published_at == PUBLISHED_AT
 
 
 def test_resolver_reads_exact_target_revisions_and_returns_source_candidate() -> None:
@@ -186,7 +188,9 @@ def test_resolver_reads_exact_target_revisions_and_returns_source_candidate() ->
     resolution = RuntimeRevisionResolver(source=source, decoder=Decoder(), cache=cache).resolve()
 
     assert resolution.origin is RuntimeRevisionOrigin.SOURCE_CANDIDATE
-    assert resolution.revision_key == ('AC-52', 'TR-18')
+    assert resolution.effective is not None
+    assert resolution.effective.revision_key == ('AC-51', 'TR-17')
+    assert resolution.target.revision_key == ('AC-52', 'TR-18')
     assert source.reads == [('manifest', None), ('alarm', 'AC-52'), ('tool', 'TR-18')]
     assert cache.replace_calls == []
     assert cache.bundle is cached
@@ -202,7 +206,8 @@ def test_resolver_returns_source_candidate_for_first_bootstrap() -> None:
     ).resolve()
 
     assert resolution.origin is RuntimeRevisionOrigin.SOURCE_CANDIDATE
-    assert resolution.revision_key == ('AC-52', 'TR-18')
+    assert resolution.effective is None
+    assert resolution.target.revision_key == ('AC-52', 'TR-18')
 
 
 def test_resolver_falls_back_to_valid_cache_when_manifest_is_unavailable() -> None:
@@ -216,7 +221,8 @@ def test_resolver_falls_back_to_valid_cache_when_manifest_is_unavailable() -> No
     ).resolve()
 
     assert resolution.origin is RuntimeRevisionOrigin.CACHE_FALLBACK
-    assert resolution.revision_key == cached.revision_key
+    assert resolution.effective is resolution.target
+    assert resolution.target.revision_key == cached.revision_key
 
 
 @pytest.mark.parametrize('failure', ['alarm', 'tool'])
@@ -233,7 +239,8 @@ def test_resolver_falls_back_when_candidate_bundle_cannot_be_completed(failure: 
     ).resolve()
 
     assert resolution.origin is RuntimeRevisionOrigin.CACHE_FALLBACK
-    assert resolution.revision_key == cached.revision_key
+    assert resolution.effective is resolution.target
+    assert resolution.target.revision_key == cached.revision_key
 
 
 def test_resolver_falls_back_when_candidate_fails_cross_validation() -> None:
@@ -249,7 +256,8 @@ def test_resolver_falls_back_when_candidate_fails_cross_validation() -> None:
     ).resolve()
 
     assert resolution.origin is RuntimeRevisionOrigin.CACHE_FALLBACK
-    assert resolution.revision_key == cached.revision_key
+    assert resolution.effective is resolution.target
+    assert resolution.target.revision_key == cached.revision_key
 
 
 def test_resolver_without_cache_fails_when_source_is_unavailable() -> None:
