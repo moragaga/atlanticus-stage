@@ -38,6 +38,7 @@ from ada.processes.alarms_runtime import (
     compose_engine_commit_record,
     decode_group_runtime_snapshot,
     encode_group_runtime_snapshot,
+    plan_configuration_adoption,
 )
 
 
@@ -79,7 +80,8 @@ def test_public_api_and_version() -> None:
     assert callable(compose_engine_commit_record)
     assert callable(decode_group_runtime_snapshot)
     assert callable(encode_group_runtime_snapshot)
-    assert __version__ == '0.7.0'
+    assert callable(plan_configuration_adoption)
+    assert __version__ == '0.8.0'
     assert not hasattr(alarms_runtime, 'AlarmRuntimeDurability')
     assert not hasattr(alarms_runtime, 'AlarmRuntimePersistenceComposition')
     assert not hasattr(alarms_runtime, 'build_persistence_composition')

@@ -1,24 +1,24 @@
 from __future__ import annotations
 
-# Los contratos de adopción son inmutables y no realizan I/O ni aplican efectos.
+# Este módulo mantiene pura la clasificación de revisiones y no ejecuta efectos durables.
 from dataclasses import dataclass
 from enum import StrEnum
 
-from ada.alarms.core import AlarmIdentity, PlannedAlarm
+from ada.alarms.core import AlarmIdentity, Criticality, PlannedAlarm
 from ada.processes.alarms_runtime.session import AlarmExecutionSession
 
 
-# Error de una revisión que no representa un epoch coherente de configuración.
+# Señala una revisión incoherente antes de planificar cualquier adopción.
 class AlarmConfigurationRevisionError(ValueError):
     pass
 
 
-# Error estructural de un plan de adopción antes de ejecutar cualquier transición.
+# Señala un plan estructuralmente inválido o imposible de consumir con seguridad.
 class ConfigurationAdoptionPlanError(ValueError):
     pass
 
 
-# Clasifica el efecto permitido de la revisión objetivo sobre una alarma antes ejecutable.
+# Resume el efecto contractual que la revisión objetivo tendrá sobre una alarma existente.
 class ConfigurationAdoptionDisposition(StrEnum):
     UNCHANGED = 'unchanged'
     COMPATIBLE = 'compatible'
@@ -28,7 +28,7 @@ class ConfigurationAdoptionDisposition(StrEnum):
     REJECTED = 'rejected'
 
 
-# Motivos que impiden adoptar una revisión sin una regla contractual adicional.
+# Conserva causas explícitas para que una revisión completa falle cerrada sin heurísticas.
 class ConfigurationAdoptionRejectionReason(StrEnum):
     PRIORITY_GROUP_CHANGED = 'priority_group_changed'
     ALARM_KIND_CHANGED = 'alarm_kind_changed'
@@ -37,7 +37,7 @@ class ConfigurationAdoptionRejectionReason(StrEnum):
     C3_ROUTING_MUTATION_UNSUPPORTED = 'c3_routing_mutation_unsupported'
 
 
-# Representa una pareja coherente Alarm Configuration + Tool Registry y su sesión ejecutable.
+# Une la pareja de revisiones publicada con sus alarmas definidas y la sesión ejecutable congelada.
 @dataclass(frozen=True, slots=True)
 class AlarmConfigurationRevision:
     alarm_configuration_revision: str
@@ -46,7 +46,6 @@ class AlarmConfigurationRevision:
     session: AlarmExecutionSession
 
     def __post_init__(self) -> None:
-        # La revisión declarada debe ser exactamente la que congeló la sesión.
         alarm_revision = _required_text(
             self.alarm_configuration_revision,
             'alarm_configuration_revision',
@@ -67,7 +66,6 @@ class AlarmConfigurationRevision:
             raise AlarmConfigurationRevisionError(
                 'execution session tool registry revision does not match revision'
             )
-        # Una alarma ejecutable siempre debe existir en la revisión, pero una definida puede estar disabled.
         defined = set(identities)
         executable = set(self.session.identities)
         if not executable <= defined:
@@ -84,7 +82,6 @@ class AlarmConfigurationRevision:
 
     @property
     def revision_key(self) -> tuple[str, str]:
-        # El epoch queda identificado por ambas revisiones publicadas.
         return self.alarm_configuration_revision, self.tool_registry_revision
 
     def is_defined(self, identity: AlarmIdentity) -> bool:
@@ -96,7 +93,6 @@ class AlarmConfigurationRevision:
         return identity in self.session.identities
 
     def plan_for(self, identity: AlarmIdentity) -> PlannedAlarm | None:
-        # None significa que la alarma no participa del plan ejecutable de esta revisión.
         _require_identity(identity)
         for entry in self.session.entries:
             if entry.identity == identity:
@@ -104,7 +100,7 @@ class AlarmConfigurationRevision:
         return None
 
 
-# Describe una decisión de adopción para una alarma que estaba en la sesión origen.
+# Describe la clasificación de una alarma que era ejecutable en la revisión origen.
 @dataclass(frozen=True, slots=True)
 class ConfigurationAdoptionChange:
     identity: AlarmIdentity
@@ -119,7 +115,6 @@ class ConfigurationAdoptionChange:
             self.rejection_reason, ConfigurationAdoptionRejectionReason
         ):
             raise TypeError('rejection_reason must be ConfigurationAdoptionRejectionReason or None')
-        # Sólo un rechazo puede transportar una razón de rechazo y todo rechazo debe explicarla.
         if self.disposition is ConfigurationAdoptionDisposition.REJECTED:
             if self.rejection_reason is None:
                 raise ConfigurationAdoptionPlanError(
@@ -131,7 +126,7 @@ class ConfigurationAdoptionChange:
             )
 
 
-# Es el contrato que C.1 producirá y que C.2 consumirá después de validarlo completamente.
+# Agrupa la clasificación completa que C.2 consumirá sólo después de validarla.
 @dataclass(frozen=True, slots=True)
 class ConfigurationAdoptionPlan:
     source: AlarmConfigurationRevision
@@ -151,7 +146,6 @@ class ConfigurationAdoptionPlan:
         identities = tuple(change.identity for change in changes)
         if len(identities) != len(set(identities)):
             raise ConfigurationAdoptionPlanError('configuration changes must be unique by identity')
-        # El plan explica exactamente el destino de toda alarma previamente ejecutable.
         if set(identities) != set(self.source.session.identities):
             raise ConfigurationAdoptionPlanError(
                 'configuration changes must exactly cover source execution session alarms'
@@ -166,7 +160,6 @@ class ConfigurationAdoptionPlan:
 
     @property
     def is_adoptable(self) -> bool:
-        # Un único cambio rechazado impide adoptar el epoch completo.
         return all(
             change.disposition is not ConfigurationAdoptionDisposition.REJECTED
             for change in self.changes
@@ -182,7 +175,6 @@ class ConfigurationAdoptionPlan:
 
     @property
     def structural_reset_groups(self) -> tuple[str, ...]:
-        # C.2 podrá resetear una vez cada grupo aunque varias alarmas disparen el mismo reset.
         groups = {
             self.source.plan_for(change.identity).priority_group
             for change in self.changes
@@ -198,7 +190,6 @@ class ConfigurationAdoptionPlan:
             )
         target_plan = self.target.plan_for(change.identity)
         target_defined = self.target.is_defined(change.identity)
-        # Las clasificaciones que continúan ejecutando una alarma requieren un plan objetivo.
         if change.disposition in {
             ConfigurationAdoptionDisposition.UNCHANGED,
             ConfigurationAdoptionDisposition.COMPATIBLE,
@@ -211,7 +202,6 @@ class ConfigurationAdoptionPlan:
                     f'{change.disposition.value}'
                 )
             return
-        # Disabled y removed desaparecen de la sesión, pero sólo disabled conserva definición.
         if target_plan is not None:
             raise ConfigurationAdoptionPlanError(
                 f'{change.identity.canonical_key}: {change.disposition.value} alarm must not be '
@@ -227,6 +217,118 @@ class ConfigurationAdoptionPlan:
                 f'{change.identity.canonical_key}: removed alarm must not be defined in target '
                 'revision'
             )
+
+
+# Compara source contra target sin I/O, reloj, WAL ni materialización de snapshots.
+def plan_configuration_adoption(
+    source: AlarmConfigurationRevision,
+    target: AlarmConfigurationRevision,
+) -> ConfigurationAdoptionPlan:
+    if not isinstance(source, AlarmConfigurationRevision):
+        raise TypeError('source must be AlarmConfigurationRevision')
+    if not isinstance(target, AlarmConfigurationRevision):
+        raise TypeError('target must be AlarmConfigurationRevision')
+    changes = tuple(
+        _classify_change(source, target, identity) for identity in source.session.identities
+    )
+    return ConfigurationAdoptionPlan(source=source, target=target, changes=changes)
+
+
+# Clasifica primero desaparición, luego prohibiciones, reset estructural y cambios compatibles.
+def _classify_change(
+    source: AlarmConfigurationRevision,
+    target: AlarmConfigurationRevision,
+    identity: AlarmIdentity,
+) -> ConfigurationAdoptionChange:
+    source_plan = source.plan_for(identity)
+    if source_plan is None:
+        raise ConfigurationAdoptionPlanError(
+            f'{identity.canonical_key}: source execution plan is missing'
+        )
+    target_plan = target.plan_for(identity)
+    if target_plan is None:
+        disposition = (
+            ConfigurationAdoptionDisposition.DISABLED
+            if target.is_defined(identity)
+            else ConfigurationAdoptionDisposition.REMOVED
+        )
+        return ConfigurationAdoptionChange(identity=identity, disposition=disposition)
+    rejection_reason = _rejection_reason(source_plan, target_plan)
+    if rejection_reason is not None:
+        return ConfigurationAdoptionChange(
+            identity=identity,
+            disposition=ConfigurationAdoptionDisposition.REJECTED,
+            rejection_reason=rejection_reason,
+        )
+    if source_plan.criticality is not target_plan.criticality:
+        return ConfigurationAdoptionChange(
+            identity=identity,
+            disposition=ConfigurationAdoptionDisposition.STRUCTURAL_RESET,
+        )
+    if source_plan.routing != target_plan.routing:
+        routing_rejection = _routing_rejection_reason(source_plan.criticality)
+        if routing_rejection is not None:
+            return ConfigurationAdoptionChange(
+                identity=identity,
+                disposition=ConfigurationAdoptionDisposition.REJECTED,
+                rejection_reason=routing_rejection,
+            )
+    disposition = (
+        ConfigurationAdoptionDisposition.UNCHANGED
+        if _runtime_semantics_equal(source, target, identity)
+        else ConfigurationAdoptionDisposition.COMPATIBLE
+    )
+    return ConfigurationAdoptionChange(identity=identity, disposition=disposition)
+
+
+# Las mutaciones de identidad semántica dominan sobre cualquier cambio reconfigurable.
+def _rejection_reason(
+    source: PlannedAlarm,
+    target: PlannedAlarm,
+) -> ConfigurationAdoptionRejectionReason | None:
+    if source.priority_group != target.priority_group:
+        return ConfigurationAdoptionRejectionReason.PRIORITY_GROUP_CHANGED
+    if source.kind is not target.kind:
+        return ConfigurationAdoptionRejectionReason.ALARM_KIND_CHANGED
+    if source.evaluator_key != target.evaluator_key:
+        return ConfigurationAdoptionRejectionReason.EVALUATOR_CHANGED
+    return None
+
+
+# A02.6 autoriza hot mutation de routing sólo mientras la alarma permanezca C2.
+def _routing_rejection_reason(
+    criticality: Criticality,
+) -> ConfigurationAdoptionRejectionReason | None:
+    if criticality is Criticality.C1:
+        return ConfigurationAdoptionRejectionReason.C1_ROUTING_MUTATION_UNSUPPORTED
+    if criticality is Criticality.C3:
+        return ConfigurationAdoptionRejectionReason.C3_ROUTING_MUTATION_UNSUPPORTED
+    return None
+
+
+# Ignora los IDs de revisión y compara únicamente la semántica operacional de la alarma.
+def _runtime_semantics_equal(
+    source: AlarmConfigurationRevision,
+    target: AlarmConfigurationRevision,
+    identity: AlarmIdentity,
+) -> bool:
+    source_plan = source.plan_for(identity)
+    target_plan = target.plan_for(identity)
+    if source_plan is None or target_plan is None:
+        return False
+    source_entry = source.session.entry_for(identity)
+    target_entry = target.session.entry_for(identity)
+    return (
+        source_plan.kind is target_plan.kind
+        and source_plan.criticality is target_plan.criticality
+        and source_plan.priority_group == target_plan.priority_group
+        and source_plan.priority_order == target_plan.priority_order
+        and source_plan.delivery_enabled is target_plan.delivery_enabled
+        and source_plan.evaluator_key == target_plan.evaluator_key
+        and source_plan.routing == target_plan.routing
+        and source_plan.deactivation_policy == target_plan.deactivation_policy
+        and source_entry.parameters == target_entry.parameters
+    )
 
 
 def _required_text(value: str, field_name: str) -> str:

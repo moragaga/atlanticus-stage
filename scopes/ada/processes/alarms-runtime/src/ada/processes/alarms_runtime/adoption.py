@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from ada.alarms.core import AlarmIdentity, PlannedAlarm
+from ada.alarms.core import AlarmIdentity, Criticality, PlannedAlarm
 from ada.processes.alarms_runtime.session import AlarmExecutionSession
 
 
@@ -209,6 +209,113 @@ class ConfigurationAdoptionPlan:
                 f'{change.identity.canonical_key}: removed alarm must not be defined in target '
                 'revision'
             )
+
+
+def plan_configuration_adoption(
+    source: AlarmConfigurationRevision,
+    target: AlarmConfigurationRevision,
+) -> ConfigurationAdoptionPlan:
+    if not isinstance(source, AlarmConfigurationRevision):
+        raise TypeError('source must be AlarmConfigurationRevision')
+    if not isinstance(target, AlarmConfigurationRevision):
+        raise TypeError('target must be AlarmConfigurationRevision')
+    changes = tuple(
+        _classify_change(source, target, identity) for identity in source.session.identities
+    )
+    return ConfigurationAdoptionPlan(source=source, target=target, changes=changes)
+
+
+def _classify_change(
+    source: AlarmConfigurationRevision,
+    target: AlarmConfigurationRevision,
+    identity: AlarmIdentity,
+) -> ConfigurationAdoptionChange:
+    source_plan = source.plan_for(identity)
+    if source_plan is None:
+        raise ConfigurationAdoptionPlanError(
+            f'{identity.canonical_key}: source execution plan is missing'
+        )
+    target_plan = target.plan_for(identity)
+    if target_plan is None:
+        disposition = (
+            ConfigurationAdoptionDisposition.DISABLED
+            if target.is_defined(identity)
+            else ConfigurationAdoptionDisposition.REMOVED
+        )
+        return ConfigurationAdoptionChange(identity=identity, disposition=disposition)
+    rejection_reason = _rejection_reason(source_plan, target_plan)
+    if rejection_reason is not None:
+        return ConfigurationAdoptionChange(
+            identity=identity,
+            disposition=ConfigurationAdoptionDisposition.REJECTED,
+            rejection_reason=rejection_reason,
+        )
+    if source_plan.criticality is not target_plan.criticality:
+        return ConfigurationAdoptionChange(
+            identity=identity,
+            disposition=ConfigurationAdoptionDisposition.STRUCTURAL_RESET,
+        )
+    if source_plan.routing != target_plan.routing:
+        routing_rejection = _routing_rejection_reason(source_plan.criticality)
+        if routing_rejection is not None:
+            return ConfigurationAdoptionChange(
+                identity=identity,
+                disposition=ConfigurationAdoptionDisposition.REJECTED,
+                rejection_reason=routing_rejection,
+            )
+    disposition = (
+        ConfigurationAdoptionDisposition.UNCHANGED
+        if _runtime_semantics_equal(source, target, identity)
+        else ConfigurationAdoptionDisposition.COMPATIBLE
+    )
+    return ConfigurationAdoptionChange(identity=identity, disposition=disposition)
+
+
+def _rejection_reason(
+    source: PlannedAlarm,
+    target: PlannedAlarm,
+) -> ConfigurationAdoptionRejectionReason | None:
+    if source.priority_group != target.priority_group:
+        return ConfigurationAdoptionRejectionReason.PRIORITY_GROUP_CHANGED
+    if source.kind is not target.kind:
+        return ConfigurationAdoptionRejectionReason.ALARM_KIND_CHANGED
+    if source.evaluator_key != target.evaluator_key:
+        return ConfigurationAdoptionRejectionReason.EVALUATOR_CHANGED
+    return None
+
+
+def _routing_rejection_reason(
+    criticality: Criticality,
+) -> ConfigurationAdoptionRejectionReason | None:
+    if criticality is Criticality.C1:
+        return ConfigurationAdoptionRejectionReason.C1_ROUTING_MUTATION_UNSUPPORTED
+    if criticality is Criticality.C3:
+        return ConfigurationAdoptionRejectionReason.C3_ROUTING_MUTATION_UNSUPPORTED
+    return None
+
+
+def _runtime_semantics_equal(
+    source: AlarmConfigurationRevision,
+    target: AlarmConfigurationRevision,
+    identity: AlarmIdentity,
+) -> bool:
+    source_plan = source.plan_for(identity)
+    target_plan = target.plan_for(identity)
+    if source_plan is None or target_plan is None:
+        return False
+    source_entry = source.session.entry_for(identity)
+    target_entry = target.session.entry_for(identity)
+    return (
+        source_plan.kind is target_plan.kind
+        and source_plan.criticality is target_plan.criticality
+        and source_plan.priority_group == target_plan.priority_group
+        and source_plan.priority_order == target_plan.priority_order
+        and source_plan.delivery_enabled is target_plan.delivery_enabled
+        and source_plan.evaluator_key == target_plan.evaluator_key
+        and source_plan.routing == target_plan.routing
+        and source_plan.deactivation_policy == target_plan.deactivation_policy
+        and source_entry.parameters == target_entry.parameters
+    )
 
 
 def _required_text(value: str, field_name: str) -> str:

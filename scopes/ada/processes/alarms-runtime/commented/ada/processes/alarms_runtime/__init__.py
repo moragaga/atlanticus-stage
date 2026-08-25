@@ -7,6 +7,7 @@ from ada.processes.alarms_runtime.adoption import (
     ConfigurationAdoptionPlan,
     ConfigurationAdoptionPlanError,
     ConfigurationAdoptionRejectionReason,
+    plan_configuration_adoption,
 )
 
 # Este módulo define la API pública estable del proceso Alarm Runtime.
@@ -56,7 +57,7 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.7.0'
+__version__ = '0.8.0'
 
 __all__ = [
     'AlarmConfigurationRevision',
@@ -66,6 +67,7 @@ __all__ = [
     'ConfigurationAdoptionPlan',
     'ConfigurationAdoptionPlanError',
     'ConfigurationAdoptionRejectionReason',
+    'plan_configuration_adoption',
     'AlarmCommitTimeProvider',
     'AlarmDurableInputConsumer',
     'AlarmDurableInputConsumerError',
