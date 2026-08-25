@@ -171,3 +171,35 @@ def test_runtime_revision_resolution_contract_has_no_physical_io_or_runtime_depe
             assert not node.module.startswith(forbidden)
         if isinstance(node, ast.Import):
             assert all(not alias.name.startswith(forbidden) for alias in node.names)
+
+
+def test_runtime_revision_resolver_uses_contracts_without_physical_dependencies() -> None:
+    resolver_path = _SOURCE_ROOT / 'revision_resolver.py'
+    forbidden = (
+        'azure',
+        'atlanticus',
+        'ada.alarms.persistence',
+    )
+    tree = ast.parse(resolver_path.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            assert not node.module.startswith(forbidden)
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith(forbidden) for alias in node.names)
+
+
+def test_runtime_revision_file_adapters_do_not_import_cloud_or_job_runtime() -> None:
+    file_path = _SOURCE_ROOT / 'revision_file.py'
+    forbidden = (
+        'azure',
+        'ada.alarms.persistence',
+        'atlanticus.runtime',
+        'atlanticus.storage',
+        'atlanticus.cosmos',
+    )
+    tree = ast.parse(file_path.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            assert not node.module.startswith(forbidden)
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith(forbidden) for alias in node.names)

@@ -49,6 +49,10 @@ from ada.processes.alarms_runtime.iteration import (
 )
 
 # Contratos puros R3.4A para resolver una pareja publicada sin I/O físico.
+from ada.processes.alarms_runtime.revision_file import (
+    FileRuntimeRevisionCache,
+    FileRuntimeRevisionSource,
+)
 from ada.processes.alarms_runtime.revision_resolution import (
     RUNTIME_MANIFEST_SCHEMA_VERSION,
     RuntimeManifest,
@@ -62,6 +66,10 @@ from ada.processes.alarms_runtime.revision_resolution import (
     RuntimeRevisionResolution,
     RuntimeRevisionSource,
     RuntimeRevisionSourceError,
+)
+from ada.processes.alarms_runtime.revision_resolver import (
+    RuntimeRevisionResolver,
+    RuntimeRevisionResolverError,
 )
 from ada.processes.alarms_runtime.session import (
     AlarmEvaluatorContract,
@@ -78,7 +86,7 @@ from ada.processes.alarms_runtime.snapshot import (
 )
 
 # R3.4A agrega contratos públicos de resolución; por eso incrementa la versión minor.
-__version__ = '0.10.0'
+__version__ = '0.11.0'
 
 __all__ = [
     'AlarmConfigurationRevision',
@@ -119,6 +127,8 @@ __all__ = [
     'AlarmRuntimeComposition',
     'AlarmRuntimeCompositionError',
     'AlarmRuntimeGroup',
+    'FileRuntimeRevisionCache',
+    'FileRuntimeRevisionSource',
     'RUNTIME_MANIFEST_SCHEMA_VERSION',
     'RuntimeManifest',
     'RuntimeRevisionBundle',
@@ -131,6 +141,8 @@ __all__ = [
     'RuntimeRevisionResolution',
     'RuntimeRevisionSource',
     'RuntimeRevisionSourceError',
+    'RuntimeRevisionResolver',
+    'RuntimeRevisionResolverError',
     '__version__',
     'build_alarm_execution_session',
     'build_alarm_runtime_composition',
