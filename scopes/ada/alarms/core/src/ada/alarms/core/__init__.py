@@ -30,6 +30,7 @@ from ada.alarms.core.journey import JourneyEvent
 from ada.alarms.core.lifecycle import (
     EpisodeIdFactory,
     OccurrenceIdFactory,
+    reconcile_group_configuration,
     reduce_group_cycle,
     reset_group_for_reconfiguration,
 )
@@ -105,7 +106,7 @@ from ada.alarms.core.routing import (
     resolve_group_routing,
 )
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'
 
 __all__ = [
     'AssignmentChangeRecord',
@@ -198,6 +199,7 @@ __all__ = [
     'execute_evaluator',
     'is_deactivated',
     'is_directly_managed',
+    'reconcile_group_configuration',
     'reduce_group_cycle',
     'reset_group_for_reconfiguration',
     'resolve_alarm_routing',

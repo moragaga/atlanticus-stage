@@ -800,7 +800,7 @@ def test_structural_reset_without_evaluation_never_fabricates_final_evidence() -
     assert 'occurrence_closed' in {event.event_key for event in materialized.records.journey_events}
 
 
-def test_structural_reset_clears_deactivation_without_calling_it_expiry() -> None:
+def test_structural_reset_preserves_active_deactivation_independently_of_occurrence() -> None:
     ids = Ids()
     alarm = plan('risk', deactivation_approval_required=False)
     previous = GroupLifecycleState(priority_group='mill-feed')
@@ -838,8 +838,13 @@ def test_structural_reset_clears_deactivation_without_calling_it_expiry() -> Non
     )
     assert materialized is not None
     journey = {event.event_key for event in materialized.records.journey_events}
-    assert 'deactivation_cleared' in journey
+    assert 'deactivation_cleared' not in journey
     assert 'deactivation_expired' not in journey
+    runtime = materialized.state.get(alarm.identity)
+    assert runtime is not None
+    assert runtime.occurrence is None
+    assert runtime.deactivation_effect is not None
+    assert runtime.deactivation_effect.effective_until == until
 
 
 def test_overdue_hold_does_not_attach_fresh_inactive_evidence_to_closed_occurrence() -> None:

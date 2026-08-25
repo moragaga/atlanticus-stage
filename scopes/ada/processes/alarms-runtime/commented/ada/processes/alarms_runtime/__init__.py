@@ -1,4 +1,4 @@
-# R3.3C.0 expone contratos de revisión y adopción sin ejecutar todavía la transición.
+# Expone la superficie pública de Alarm Runtime, incluidos contratos, planner y ejecución de adopción de configuración.
 from ada.processes.alarms_runtime.adoption import (
     AlarmConfigurationRevision,
     AlarmConfigurationRevisionError,
@@ -9,9 +9,12 @@ from ada.processes.alarms_runtime.adoption import (
     ConfigurationAdoptionRejectionReason,
     plan_configuration_adoption,
 )
-
-# Este módulo define la API pública estable del proceso Alarm Runtime.
-# R3.3B mantiene el consumer durable sin exponer detalles físicos de Storage.
+from ada.processes.alarms_runtime.adoption_execution import (
+    AlarmConfigurationAdoptionExecutor,
+    ConfigurationAdoptionExecutionError,
+    ConfigurationAdoptionExecutionResult,
+    ConfigurationAdoptionGroupResult,
+)
 from ada.processes.alarms_runtime.commit import compose_engine_commit_record
 from ada.processes.alarms_runtime.composition import (
     AlarmRuntimeComposition,
@@ -36,6 +39,7 @@ from ada.processes.alarms_runtime.inputs import (
     AlarmInputSource,
     AlarmInputStream,
     AlarmOperationalInputs,
+    AlarmPendingDeactivationRequest,
 )
 from ada.processes.alarms_runtime.iteration import (
     AlarmExecutionIteration,
@@ -57,13 +61,17 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.8.0'
+__version__ = '0.9.0'
 
 __all__ = [
     'AlarmConfigurationRevision',
     'AlarmConfigurationRevisionError',
+    'AlarmConfigurationAdoptionExecutor',
     'ConfigurationAdoptionChange',
     'ConfigurationAdoptionDisposition',
+    'ConfigurationAdoptionExecutionError',
+    'ConfigurationAdoptionExecutionResult',
+    'ConfigurationAdoptionGroupResult',
     'ConfigurationAdoptionPlan',
     'ConfigurationAdoptionPlanError',
     'ConfigurationAdoptionRejectionReason',
@@ -88,6 +96,7 @@ __all__ = [
     'AlarmIterationSourceLoader',
     'AlarmOperationalCycle',
     'AlarmOperationalInputs',
+    'AlarmPendingDeactivationRequest',
     'AlarmOperationalCycleError',
     'AlarmOperationalCycleResult',
     'AlarmRuntimeComposition',

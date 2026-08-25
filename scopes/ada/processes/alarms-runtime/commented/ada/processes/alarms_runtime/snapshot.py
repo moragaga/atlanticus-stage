@@ -1,8 +1,6 @@
+# Codifica e hidrata GroupRuntimeSnapshot; sólo permite alarmas ausentes de configuración cuando conservan exclusivamente un DeactivationEffect vigente.
 from __future__ import annotations
 
-# Este codec materializa GroupRuntimeSnapshot.v1 sin persistir AlarmEvaluation ni EvidenceSnapshot completos.
-# Las alarm_key se resuelven contra PlannedAlarm vigente; nunca se reconstruye AlarmIdentity separando strings.
-# La provenance por alarma se conserva desde el snapshot anterior y sólo avanza cuando Core declara un cambio real de hot state.
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -29,10 +27,12 @@ from ada.alarms.persistence import (
 )
 
 
+# Contrato AlarmRuntimeCompositionError: agrupa datos y valida invariantes cerca de su frontera.
 class AlarmRuntimeCompositionError(ValueError):
     pass
 
 
+# Operación encode_group_runtime_snapshot: expone una transformación explícita sin estado global.
 def encode_group_runtime_snapshot(
     state: GroupLifecycleState,
     *,
@@ -63,14 +63,12 @@ def encode_group_runtime_snapshot(
                 f'alarm runtime state has no commit provenance: {alarm_key}'
             )
         alarms[alarm_key] = _encode_alarm_state(alarm, last_commit_id=alarm_commit_id)
-        # La lista runtime_state_updates de Core debe coincidir exactamente con el delta físico persistido; así el adapter no puede ocultar discrepancias.
     _validate_runtime_state_updates(
         previous_alarms=previous_alarms,
         next_alarms=alarms,
         updated_keys=updated_keys,
     )
     episode = _encode_episode(state.episode)
-    # La transición del Episode también debe coincidir con la referencia declarada por EngineCommit.
     _validate_episode_transition(
         previous_document=previous_document,
         next_episode=episode,
@@ -94,6 +92,7 @@ def encode_group_runtime_snapshot(
     return GroupRuntimeSnapshot(document)
 
 
+# Hidrata hot state con la configuración actual y admite sólo el caso huérfano de deactivation-only.
 def decode_group_runtime_snapshot(
     snapshot: GroupRuntimeSnapshot,
     *,
@@ -101,7 +100,6 @@ def decode_group_runtime_snapshot(
 ) -> GroupLifecycleState:
     if not isinstance(snapshot, GroupRuntimeSnapshot):
         raise TypeError('snapshot must be a GroupRuntimeSnapshot')
-        # El decoder usa la configuración vigente como autoridad de identidad y sólo recupera memoria durable desde el snapshot.
     plans = _plan_registry(planned_alarms)
     document = snapshot.as_document()
     episode_document = document.get('episode')
@@ -117,22 +115,21 @@ def decode_group_runtime_snapshot(
     alarms: list[AlarmRuntimeState] = []
     for alarm_key, alarm_document in sorted(document['alarms'].items()):
         plan = plans.get(alarm_key)
-        if plan is None:
-            raise AlarmRuntimeCompositionError(
-                f'snapshot alarm_key is not present in current configuration: {alarm_key}'
-            )
-        identity = plan.identity
-        if plan.priority_group != snapshot.priority_group:
+        identity = plan.identity if plan is not None else _identity_from_canonical_key(alarm_key)
+        if plan is not None and plan.priority_group != snapshot.priority_group:
             raise AlarmRuntimeCompositionError(
                 f'snapshot alarm_key belongs to a different priority_group: {alarm_key}'
             )
-        alarms.append(
-            _decode_alarm_state(
-                identity=identity,
-                document=alarm_document,
-                episode=episode,
-            )
+        alarm = _decode_alarm_state(
+            identity=identity,
+            document=alarm_document,
+            episode=episode,
         )
+        if plan is None and not _is_orphan_deactivation_state(alarm):
+            raise AlarmRuntimeCompositionError(
+                f'snapshot alarm_key is not present in current configuration: {alarm_key}'
+            )
+        alarms.append(alarm)
     try:
         return GroupLifecycleState(
             priority_group=snapshot.priority_group,
@@ -143,6 +140,7 @@ def decode_group_runtime_snapshot(
         raise AlarmRuntimeCompositionError('snapshot cannot hydrate a valid group state') from error
 
 
+# Auxiliar _validated_previous_snapshot: mantiene una responsabilidad interna acotada y determinista.
 def _validated_previous_snapshot(
     commit: EngineCommit,
     previous_snapshot: GroupRuntimeSnapshot | None,
@@ -168,6 +166,7 @@ def _validated_previous_snapshot(
     return previous_snapshot.as_document()
 
 
+# Auxiliar _validate_runtime_state_updates: mantiene una responsabilidad interna acotada y determinista.
 def _validate_runtime_state_updates(
     *,
     previous_alarms: Mapping[str, Any],
@@ -188,6 +187,7 @@ def _validate_runtime_state_updates(
         )
 
 
+# Auxiliar _validate_episode_transition: mantiene una responsabilidad interna acotada y determinista.
 def _validate_episode_transition(
     *,
     previous_document: Mapping[str, Any] | None,
@@ -218,7 +218,7 @@ def _validate_episode_transition(
         )
 
 
-# state_basis avanza sólo con un cambio durable del hot state o del Episode; un commit de receipt conserva la base anterior.
+# Auxiliar _resolve_state_basis: mantiene una responsabilidad interna acotada y determinista.
 def _resolve_state_basis(
     *,
     state: GroupLifecycleState,
@@ -240,6 +240,7 @@ def _resolve_state_basis(
     return dict(previous_basis)
 
 
+# Auxiliar _encode_episode: mantiene una responsabilidad interna acotada y determinista.
 def _encode_episode(episode: AlarmEpisode | None) -> dict[str, str] | None:
     if episode is None:
         return None
@@ -249,6 +250,7 @@ def _encode_episode(episode: AlarmEpisode | None) -> dict[str, str] | None:
     }
 
 
+# Auxiliar _encode_alarm_state: mantiene una responsabilidad interna acotada y determinista.
 def _encode_alarm_state(
     alarm: AlarmRuntimeState,
     *,
@@ -298,6 +300,7 @@ def _encode_alarm_state(
     return document
 
 
+# Auxiliar _encode_last_evaluation: mantiene una responsabilidad interna acotada y determinista.
 def _encode_last_evaluation(evaluation: RuntimeEvaluationState) -> dict[str, str]:
     document = {
         'status': evaluation.status.value,
@@ -308,6 +311,7 @@ def _encode_last_evaluation(evaluation: RuntimeEvaluationState) -> dict[str, str
     return document
 
 
+# Auxiliar _decode_alarm_state: mantiene una responsabilidad interna acotada y determinista.
 def _decode_alarm_state(
     *,
     identity: AlarmIdentity,
@@ -403,6 +407,26 @@ def _decode_alarm_state(
         ) from error
 
 
+# Delimita estrictamente el único hot state permitido para una alarma que ya no existe en la configuración vigente.
+def _is_orphan_deactivation_state(alarm: AlarmRuntimeState) -> bool:
+    return (
+        alarm.occurrence is None
+        and alarm.management_effect is None
+        and alarm.deactivation_effect is not None
+    )
+
+
+# Auxiliar _identity_from_canonical_key: mantiene una responsabilidad interna acotada y determinista.
+def _identity_from_canonical_key(value: str) -> AlarmIdentity:
+    if not isinstance(value, str) or not value.strip():
+        raise AlarmRuntimeCompositionError('snapshot alarm_key must be a non-empty string')
+    parts = value.split('/')
+    if len(parts) != 2 or not all(part.strip() for part in parts):
+        raise AlarmRuntimeCompositionError('snapshot alarm_key is invalid')
+    return AlarmIdentity(family_key=parts[0].strip(), alarm_key=parts[1].strip())
+
+
+# Auxiliar _plan_registry: mantiene una responsabilidad interna acotada y determinista.
 def _plan_registry(planned_alarms: Sequence[PlannedAlarm]) -> dict[str, PlannedAlarm]:
     if isinstance(planned_alarms, str | bytes) or not isinstance(planned_alarms, Sequence):
         raise TypeError('planned_alarms must be a sequence')
@@ -419,6 +443,7 @@ def _plan_registry(planned_alarms: Sequence[PlannedAlarm]) -> dict[str, PlannedA
     return plans
 
 
+# Auxiliar _is_neutral: mantiene una responsabilidad interna acotada y determinista.
 def _is_neutral(alarm: AlarmRuntimeState) -> bool:
     return (
         alarm.occurrence is None
@@ -427,6 +452,7 @@ def _is_neutral(alarm: AlarmRuntimeState) -> bool:
     )
 
 
+# Auxiliar _parse_utc_timestamp: mantiene una responsabilidad interna acotada y determinista.
 def _parse_utc_timestamp(value: str) -> datetime:
     if not isinstance(value, str):
         raise TypeError('timestamp must be a string')
@@ -443,5 +469,6 @@ def _parse_utc_timestamp(value: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+# Auxiliar _utc_text: mantiene una responsabilidad interna acotada y determinista.
 def _utc_text(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace('+00:00', 'Z')

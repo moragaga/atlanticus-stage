@@ -111,22 +111,21 @@ def decode_group_runtime_snapshot(
     alarms: list[AlarmRuntimeState] = []
     for alarm_key, alarm_document in sorted(document['alarms'].items()):
         plan = plans.get(alarm_key)
-        if plan is None:
-            raise AlarmRuntimeCompositionError(
-                f'snapshot alarm_key is not present in current configuration: {alarm_key}'
-            )
-        identity = plan.identity
-        if plan.priority_group != snapshot.priority_group:
+        identity = plan.identity if plan is not None else _identity_from_canonical_key(alarm_key)
+        if plan is not None and plan.priority_group != snapshot.priority_group:
             raise AlarmRuntimeCompositionError(
                 f'snapshot alarm_key belongs to a different priority_group: {alarm_key}'
             )
-        alarms.append(
-            _decode_alarm_state(
-                identity=identity,
-                document=alarm_document,
-                episode=episode,
-            )
+        alarm = _decode_alarm_state(
+            identity=identity,
+            document=alarm_document,
+            episode=episode,
         )
+        if plan is None and not _is_orphan_deactivation_state(alarm):
+            raise AlarmRuntimeCompositionError(
+                f'snapshot alarm_key is not present in current configuration: {alarm_key}'
+            )
+        alarms.append(alarm)
     try:
         return GroupLifecycleState(
             priority_group=snapshot.priority_group,
@@ -394,6 +393,23 @@ def _decode_alarm_state(
         raise AlarmRuntimeCompositionError(
             f'snapshot alarm state is invalid for current Core contract: {identity.canonical_key}'
         ) from error
+
+
+def _is_orphan_deactivation_state(alarm: AlarmRuntimeState) -> bool:
+    return (
+        alarm.occurrence is None
+        and alarm.management_effect is None
+        and alarm.deactivation_effect is not None
+    )
+
+
+def _identity_from_canonical_key(value: str) -> AlarmIdentity:
+    if not isinstance(value, str) or not value.strip():
+        raise AlarmRuntimeCompositionError('snapshot alarm_key must be a non-empty string')
+    parts = value.split('/')
+    if len(parts) != 2 or not all(part.strip() for part in parts):
+        raise AlarmRuntimeCompositionError('snapshot alarm_key is invalid')
+    return AlarmIdentity(family_key=parts[0].strip(), alarm_key=parts[1].strip())
 
 
 def _plan_registry(planned_alarms: Sequence[PlannedAlarm]) -> dict[str, PlannedAlarm]:

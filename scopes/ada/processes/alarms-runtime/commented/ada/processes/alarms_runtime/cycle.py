@@ -1,5 +1,4 @@
-# El ciclo operacional sigue siendo el único orquestador Core -> Persistence.
-# R3.3B agrega Management/Deactivation como inputs explícitos, sin adoptar configuración nueva.
+# Ejecuta un ciclo operacional congelado y drena obligaciones hot que pueden sobrevivir a cambios de configuración.
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -44,15 +43,18 @@ from ada.processes.alarms_runtime.session import AlarmExecutionEntry, AlarmExecu
 from atlanticus.runtime import JobRuntimeContext
 
 
+# Contrato AlarmOperationalCycleError: agrupa datos y valida invariantes cerca de su frontera.
 class AlarmOperationalCycleError(ValueError):
     pass
 
 
+# Contrato AlarmCommitTimeProvider: agrupa datos y valida invariantes cerca de su frontera.
 @runtime_checkable
 class AlarmCommitTimeProvider(Protocol):
     def committed_at(self, *, cycle_at: datetime) -> datetime: ...
 
 
+# Contrato AlarmGroupCycleResult: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class AlarmGroupCycleResult:
     priority_group: str
@@ -77,6 +79,7 @@ class AlarmGroupCycleResult:
                 )
 
 
+# Contrato AlarmOperationalCycleResult: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class AlarmOperationalCycleResult:
     iteration: AlarmExecutionIteration
@@ -104,9 +107,13 @@ class AlarmOperationalCycleResult:
             sorted({entry.planned_alarm.priority_group for entry in self.iteration.session.entries})
         )
         actual_groups = tuple(item.priority_group for item in self.groups)
-        if actual_groups != expected_groups:
+        if actual_groups != tuple(sorted(set(actual_groups))):
             raise AlarmOperationalCycleError(
-                'group results must exactly match execution session priority groups'
+                'group results must be unique and sorted by priority_group'
+            )
+        if not set(expected_groups) <= set(actual_groups):
+            raise AlarmOperationalCycleError(
+                'group results must contain all execution session priority groups'
             )
         if self.commit_result is not None and not isinstance(self.commit_result, CommitBatchResult):
             raise TypeError('commit_result must be CommitBatchResult or None')
@@ -150,6 +157,7 @@ class AlarmOperationalCycleResult:
         )
 
 
+# Contrato _PreparedGroup: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class _PreparedGroup:
     priority_group: str
@@ -159,7 +167,7 @@ class _PreparedGroup:
     previous_priority_resolution: GroupPriorityResolution
 
 
-# Las factories se inyectan para mantener IDs y tiempos bajo autoridad explícita del runtime.
+# Contrato AlarmOperationalCycle: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(slots=True)
 class AlarmOperationalCycle:
     session: AlarmExecutionSession
@@ -209,7 +217,6 @@ class AlarmOperationalCycle:
                 raise TypeError(f'{name} must be callable or None')
         self.runtime_artifact_version = self.runtime_artifact_version.strip()
 
-    # Los inputs externos ya fueron filtrados por el consumer durable antes de entrar al Core.
     def execute(
         self,
         context: JobRuntimeContext,
@@ -231,7 +238,7 @@ class AlarmOperationalCycle:
         if not isinstance(resolved_inputs, AlarmOperationalInputs):
             raise TypeError('operational_inputs must be AlarmOperationalInputs or None')
         self._validate_operational_inputs(resolved_inputs)
-        priority_groups = self._priority_groups()
+        priority_groups = self._priority_groups(resolved_inputs)
         runtime_groups = {
             priority_group: self._load_group(priority_group) for priority_group in priority_groups
         }
@@ -296,7 +303,6 @@ class AlarmOperationalCycle:
         )
         return execute_evaluator(entry.planned_alarm, evaluation_context, entry.evaluator)
 
-    # Cada grupo recibe únicamente acciones y requests pertenecientes a sus AlarmIdentity.
     def _prepare_group(
         self,
         priority_group: str,
@@ -325,9 +331,9 @@ class AlarmOperationalCycle:
             ),
         )
         pending_requests = tuple(
-            request
-            for request in operational_inputs.pending_deactivation_requests
-            if request.alarm_identity in identities
+            pending.request
+            for pending in operational_inputs.pending_deactivation_requests
+            if pending.priority_group == priority_group
         )
         pending_request_ids = {request.request_id for request in pending_requests}
         decision = reduce_group_cycle(
@@ -415,23 +421,42 @@ class AlarmOperationalCycle:
             raise ValueError('committed_at must not be before cycle_at')
         return committed_at
 
-    def _priority_groups(self) -> tuple[str, ...]:
-        return tuple(sorted({entry.planned_alarm.priority_group for entry in self.session.entries}))
+    def _priority_groups(self, operational_inputs: AlarmOperationalInputs) -> tuple[str, ...]:
+        operational_snapshot_groups = {
+            snapshot.priority_group
+            for snapshot in self.composition.durability.persistence.list_snapshots()
+            if _snapshot_has_operational_state(snapshot)
+        }
+        return tuple(
+            sorted(
+                {
+                    *(entry.planned_alarm.priority_group for entry in self.session.entries),
+                    *(
+                        pending.priority_group
+                        for pending in operational_inputs.pending_deactivation_requests
+                    ),
+                    *operational_snapshot_groups,
+                }
+            )
+        )
 
-    # Fallamos cerrado si un input apunta a una alarma fuera de la sesión congelada.
     def _validate_operational_inputs(self, operational_inputs: AlarmOperationalInputs) -> None:
-        identities = set(self.session.identities)
+        identity_to_group = {
+            entry.identity: entry.planned_alarm.priority_group for entry in self.session.entries
+        }
+        identities = set(identity_to_group)
         for action in operational_inputs.management_actions:
             if action.alarm_identity not in identities:
                 raise AlarmOperationalCycleError(
                     f'{action.alarm_identity.canonical_key}: management input alarm is not in '
                     'the execution session'
                 )
-        for request in operational_inputs.pending_deactivation_requests:
-            if request.alarm_identity not in identities:
+        for pending in operational_inputs.pending_deactivation_requests:
+            expected_group = identity_to_group.get(pending.request.alarm_identity)
+            if expected_group is not None and expected_group != pending.priority_group:
                 raise AlarmOperationalCycleError(
-                    f'{request.alarm_identity.canonical_key}: deactivation request alarm is not in '
-                    'the execution session'
+                    f'{pending.request.alarm_identity.canonical_key}: deactivation request '
+                    'priority_group does not match the execution session'
                 )
 
     def _validate_state_basis(self, snapshot: GroupRuntimeSnapshot | None) -> None:
@@ -445,16 +470,15 @@ class AlarmOperationalCycle:
                     'non-neutral group snapshot has no state_basis for revision validation'
                 )
             return
-        if basis['alarm_configuration_revision'] != self.session.alarm_configuration_revision:
-            raise AlarmOperationalCycleError(
-                'group snapshot alarm configuration revision requires controlled adoption'
-            )
-        if basis['tool_registry_revision'] != self.session.tool_registry_revision:
-            raise AlarmOperationalCycleError(
-                'group snapshot tool registry revision requires controlled adoption'
-            )
 
 
+# Auxiliar _snapshot_has_operational_state: mantiene una responsabilidad interna acotada y determinista.
+def _snapshot_has_operational_state(snapshot: GroupRuntimeSnapshot) -> bool:
+    document = snapshot.as_document()
+    return document.get('episode') is not None or bool(document['alarms'])
+
+
+# Auxiliar _input_error: mantiene una responsabilidad interna acotada y determinista.
 def _input_error(
     entry: AlarmExecutionEntry,
     iteration: AlarmExecutionIteration,

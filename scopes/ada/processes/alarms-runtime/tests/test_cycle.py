@@ -396,7 +396,9 @@ def test_cycle_rejects_iteration_from_another_session_before_execution(tmp_path:
     assert clock.calls == []
 
 
-def test_cycle_rejects_snapshot_from_another_configuration_revision(tmp_path: Path) -> None:
+def test_cycle_accepts_older_state_basis_after_configuration_adoption_boundary(
+    tmp_path: Path,
+) -> None:
     old_plan = _planned('risk', priority_order=1, alarm_revision='R42')
     old_session = _session(
         (
@@ -425,20 +427,23 @@ def test_cycle_rejects_snapshot_from_another_configuration_revision(tmp_path: Pa
         occurrence_id_factory=ids.occurrence,
         episode_id_factory=ids.episode,
         commit_time_provider=CommitClock(),
-        runtime_artifact_version='ada-alarms-runtime/0.5.0',
+        runtime_artifact_version='ada-alarms-runtime/0.9.0',
         technical_evidence_contract=EvidenceContractRef(
             contract_key='evaluation-error',
             contract_version='v1',
         ),
     )
 
-    with pytest.raises(AlarmOperationalCycleError, match='controlled adoption'):
-        new_cycle.execute(
-            context,
-            _empty_iteration(new_session, at=NOW + timedelta(minutes=1)),
-        )
+    result = new_cycle.execute(
+        context,
+        _empty_iteration(new_session, at=NOW + timedelta(minutes=1)),
+    )
 
-    assert calls['count'] == 0
+    assert calls['count'] == 1
+    assert result.evaluations[0].status is AlarmStatus.ACTIVE
+    snapshot = composition.durability.persistence.read_snapshot('mill-feed')
+    assert snapshot is not None
+    assert snapshot.as_document()['state_basis']['alarm_configuration_revision'] == 'R42'
 
 
 def test_commit_time_provider_is_explicit_and_must_not_precede_cycle(tmp_path: Path) -> None:

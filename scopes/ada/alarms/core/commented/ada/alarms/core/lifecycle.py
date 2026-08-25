@@ -1,8 +1,4 @@
-# Espejo pedagógico del reducer principal por priority_group.
-# Deactivation se compone como una dimensión ortogonal: no crea/cierra occurrences y puede persistir entre Episodes.
-# El reducer conserva el efecto al abrir una nueva occurrence y lo elimina sólo por expiración o reset estructural explícito.
-# Priority y Routing se resuelven después del lifecycle; Routing sigue avanzando aunque la alarma esté desactivada.
-
+# Orquesta lifecycle y reconciliación de configuración por priority_group, conservando DeactivationEffect como dimensión independiente.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -12,6 +8,7 @@ from datetime import datetime, timedelta
 from ada.alarms.core.deactivation import (
     DeactivationEffectIdFactory,
     DeactivationRequestIdFactory,
+    _expire_deactivation_effects,
 )
 from ada.alarms.core.errors import AlarmContractError, AlarmLifecycleError
 from ada.alarms.core.management import (
@@ -31,8 +28,6 @@ from ada.alarms.core.models import (
     AlarmStatus,
     ConfigurationClosure,
     DeactivationDecision,
-    DeactivationEffectChange,
-    DeactivationEffectChangeKind,
     DeactivationRequest,
     EpisodeChange,
     EpisodeChangeKind,
@@ -58,6 +53,7 @@ OccurrenceIdFactory = Callable[[AlarmIdentity, datetime], str]
 EpisodeIdFactory = Callable[[str, datetime], str]
 
 
+# Contrato _AlarmResolution: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class _AlarmResolution:
     retained_state: AlarmRuntimeState | None
@@ -66,6 +62,7 @@ class _AlarmResolution:
     technical_hold_changes: tuple[TechnicalHoldChange, ...] = ()
 
 
+# Operación reduce_group_cycle: expone una transformación explícita sin estado global.
 def reduce_group_cycle(
     state: GroupLifecycleState,
     *,
@@ -333,17 +330,23 @@ def reduce_group_cycle(
     )
 
 
+# Cierra continuidad estructural y conserva cualquier DeactivationEffect que siga vigente.
 def reset_group_for_reconfiguration(
     state: GroupLifecycleState,
     *,
     effective_at: datetime,
 ) -> GroupLifecycleDecision:
     _validate_cycle_at(effective_at)
+    working, expired_deactivation_changes = _expire_deactivation_effects(
+        {alarm.alarm_identity: alarm for alarm in state.alarms},
+        cutoff=effective_at,
+        include_equal=True,
+    )
     occurrence_changes: list[OccurrenceChange] = []
     technical_hold_changes: list[TechnicalHoldChange] = []
     management_effect_changes: list[ManagementEffectChange] = []
-    deactivation_effect_changes: list[DeactivationEffectChange] = []
-    for alarm in sorted(state.alarms, key=lambda item: item.alarm_identity):
+    retained: list[AlarmRuntimeState] = []
+    for alarm in sorted(working.values(), key=lambda item: item.alarm_identity):
         if alarm.occurrence is not None:
             closed = alarm.occurrence.close(
                 ended_at=effective_at,
@@ -370,11 +373,10 @@ def reset_group_for_reconfiguration(
                 )
             )
         if alarm.deactivation_effect is not None:
-            deactivation_effect_changes.append(
-                DeactivationEffectChange(
-                    kind=DeactivationEffectChangeKind.CLEARED,
+            retained.append(
+                AlarmRuntimeState(
                     alarm_identity=alarm.alarm_identity,
-                    effective_at=effective_at,
+                    deactivation_effect=alarm.deactivation_effect,
                 )
             )
     episode_changes: tuple[EpisodeChange, ...] = ()
@@ -385,15 +387,171 @@ def reset_group_for_reconfiguration(
         )
         episode_changes = (EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode),)
     return GroupLifecycleDecision(
-        state=GroupLifecycleState(priority_group=state.priority_group),
+        state=GroupLifecycleState(
+            priority_group=state.priority_group,
+            alarms=tuple(retained),
+        ),
         occurrence_changes=tuple(occurrence_changes),
         episode_changes=episode_changes,
         technical_hold_changes=tuple(technical_hold_changes),
         management_effect_changes=tuple(management_effect_changes),
-        deactivation_effect_changes=tuple(deactivation_effect_changes),
+        deactivation_effect_changes=expired_deactivation_changes,
     )
 
 
+# Aplica cierres, routing compatible o structural reset ya decididos por Runtime, sin reevaluar alarmas.
+def reconcile_group_configuration(
+    state: GroupLifecycleState,
+    *,
+    effective_at: datetime,
+    planned_alarms: Sequence[PlannedAlarm],
+    configuration_closures: Sequence[ConfigurationClosure] = (),
+    structural_reset: bool = False,
+) -> GroupLifecycleDecision:
+    if not isinstance(state, GroupLifecycleState):
+        raise TypeError('state must be a GroupLifecycleState')
+    _validate_cycle_at(effective_at)
+    if not isinstance(structural_reset, bool):
+        raise TypeError('structural_reset must be a bool')
+    plans = _index_plans(state.priority_group, planned_alarms)
+    closures = _index_closures(effective_at, configuration_closures)
+    if set(plans) & set(closures):
+        raise AlarmContractError('configuration closure alarm must not remain executable')
+    working, expired_deactivation_changes = _expire_deactivation_effects(
+        {alarm.alarm_identity: alarm for alarm in state.alarms},
+        cutoff=effective_at,
+        include_equal=True,
+    )
+    if structural_reset:
+        reset = reset_group_for_reconfiguration(
+            GroupLifecycleState(
+                priority_group=state.priority_group,
+                episode=state.episode,
+                alarms=tuple(working[identity] for identity in sorted(working)),
+            ),
+            effective_at=effective_at,
+        )
+        working = {alarm.alarm_identity: alarm for alarm in reset.state.alarms}
+        deactivation_effect_changes = [
+            *expired_deactivation_changes,
+            *reset.deactivation_effect_changes,
+        ]
+        next_state = GroupLifecycleState(
+            priority_group=state.priority_group,
+            alarms=tuple(working[identity] for identity in sorted(working)),
+        )
+        priority = resolve_group_priority(next_state, planned_alarms=tuple(plans.values()))
+        return GroupLifecycleDecision(
+            state=next_state,
+            occurrence_changes=reset.occurrence_changes,
+            episode_changes=reset.episode_changes,
+            technical_hold_changes=reset.technical_hold_changes,
+            management_effect_changes=reset.management_effect_changes,
+            deactivation_effect_changes=tuple(
+                sorted(
+                    deactivation_effect_changes,
+                    key=lambda change: (
+                        change.effective_at,
+                        change.alarm_identity,
+                        change.kind.value,
+                    ),
+                )
+            ),
+            priority_resolution=priority,
+        )
+
+    occurrence_changes: list[OccurrenceChange] = []
+    technical_hold_changes: list[TechnicalHoldChange] = []
+    deactivation_effect_changes = list(expired_deactivation_changes)
+    for identity, closure in sorted(closures.items()):
+        current = working.get(identity)
+        if current is None:
+            continue
+        if current.occurrence is not None:
+            closed = current.occurrence.close(ended_at=effective_at, reason=closure.reason)
+            occurrence_changes.append(
+                OccurrenceChange(kind=OccurrenceChangeKind.CLOSED, occurrence=closed)
+            )
+            technical_hold_changes.extend(_clear_hold_if_needed(current, effective_at))
+            retained = _management_only_state(current)
+            if retained is None:
+                del working[identity]
+            else:
+                working[identity] = retained
+    episode = state.episode
+    episode_changes: list[EpisodeChange] = []
+    lifecycle_management_effect_changes: list[ManagementEffectChange] = []
+    if episode is not None and not _has_open_occurrence(working):
+        closed_episode = episode.close(
+            ended_at=effective_at,
+            reason=EpisodeClosureReason.CONFIGURATION_TERMINATED,
+        )
+        episode_changes.append(EpisodeChange(kind=EpisodeChangeKind.CLOSED, episode=closed_episode))
+        _clear_management_only_states(
+            working,
+            effective_at=effective_at,
+            changes=lifecycle_management_effect_changes,
+        )
+        episode = None
+
+    intermediate = GroupLifecycleState(
+        priority_group=state.priority_group,
+        episode=episode,
+        alarms=tuple(working[identity] for identity in sorted(working)),
+    )
+    finalized_management = _finalize_management_state(
+        intermediate,
+        cycle_at=effective_at,
+        plans=plans,
+        occurrence_changes=tuple(occurrence_changes),
+        episode_changes=tuple(episode_changes),
+    )
+    routing = resolve_group_routing(
+        finalized_management.state,
+        planned_alarms=tuple(plans.values()),
+        cycle_at=effective_at,
+    )
+    priority = resolve_group_priority(
+        routing.state,
+        planned_alarms=tuple(plans.values()),
+        cascade_suppressions=finalized_management.cascade_suppressions,
+    )
+    return GroupLifecycleDecision(
+        state=routing.state,
+        occurrence_changes=tuple(occurrence_changes),
+        episode_changes=tuple(episode_changes),
+        technical_hold_changes=tuple(technical_hold_changes),
+        management_effect_changes=tuple(
+            sorted(
+                (
+                    *lifecycle_management_effect_changes,
+                    *finalized_management.effect_changes,
+                ),
+                key=lambda change: (
+                    change.effective_at,
+                    change.alarm_identity,
+                    change.kind.value,
+                ),
+            )
+        ),
+        deactivation_effect_changes=tuple(
+            sorted(
+                deactivation_effect_changes,
+                key=lambda change: (
+                    change.effective_at,
+                    change.alarm_identity,
+                    change.kind.value,
+                ),
+            )
+        ),
+        reappearance_changes=finalized_management.reappearance_changes,
+        cascade_suppressions=finalized_management.cascade_suppressions,
+        assignment_changes=routing.assignment_changes,
+        priority_resolution=priority,
+    )
+
+
+# Auxiliar _resolve_cycle_alarm: mantiene una responsabilidad interna acotada y determinista.
 def _resolve_cycle_alarm(
     *,
     current: AlarmRuntimeState | None,
@@ -498,6 +656,7 @@ def _resolve_cycle_alarm(
     )
 
 
+# Auxiliar _management_only_state: mantiene una responsabilidad interna acotada y determinista.
 def _management_only_state(current: AlarmRuntimeState) -> AlarmRuntimeState | None:
     if current.management_effect is None and current.deactivation_effect is None:
         return None
@@ -508,6 +667,7 @@ def _management_only_state(current: AlarmRuntimeState) -> AlarmRuntimeState | No
     )
 
 
+# Auxiliar _clear_management_only_states: mantiene una responsabilidad interna acotada y determinista.
 def _clear_management_only_states(
     states: dict[AlarmIdentity, AlarmRuntimeState],
     *,
@@ -534,6 +694,7 @@ def _clear_management_only_states(
             )
 
 
+# Auxiliar _clear_hold_if_needed: mantiene una responsabilidad interna acotada y determinista.
 def _clear_hold_if_needed(
     current: AlarmRuntimeState,
     effective_at: datetime,
@@ -550,6 +711,7 @@ def _clear_hold_if_needed(
     )
 
 
+# Auxiliar _index_plans: mantiene una responsabilidad interna acotada y determinista.
 def _index_plans(
     priority_group: str,
     planned_alarms: Sequence[PlannedAlarm],
@@ -582,6 +744,7 @@ def _index_plans(
     return plans
 
 
+# Auxiliar _index_evaluations: mantiene una responsabilidad interna acotada y determinista.
 def _index_evaluations(
     cycle_at: datetime,
     evaluations: Sequence[AlarmEvaluation],
@@ -598,6 +761,7 @@ def _index_evaluations(
     return result
 
 
+# Auxiliar _index_closures: mantiene una responsabilidad interna acotada y determinista.
 def _index_closures(
     cycle_at: datetime,
     closures: Sequence[ConfigurationClosure],
@@ -614,6 +778,7 @@ def _index_closures(
     return result
 
 
+# Auxiliar _validate_evaluation_cardinality: mantiene una responsabilidad interna acotada y determinista.
 def _validate_evaluation_cardinality(
     state: GroupLifecycleState,
     plans: dict[AlarmIdentity, PlannedAlarm],
@@ -631,6 +796,7 @@ def _validate_evaluation_cardinality(
         raise AlarmContractError('unexpected_evaluation')
 
 
+# Auxiliar _episode_closure_reason: mantiene una responsabilidad interna acotada y determinista.
 def _episode_closure_reason(
     reasons: Sequence[OccurrenceClosureReason],
 ) -> EpisodeClosureReason:
@@ -651,10 +817,12 @@ def _episode_closure_reason(
     return EpisodeClosureReason.TECHNICAL_UNCERTAINTY
 
 
+# Auxiliar _has_open_occurrence: mantiene una responsabilidad interna acotada y determinista.
 def _has_open_occurrence(states: dict[AlarmIdentity, AlarmRuntimeState]) -> bool:
     return any(alarm.occurrence is not None for alarm in states.values())
 
 
+# Auxiliar _occurrence_change_sort_key: mantiene una responsabilidad interna acotada y determinista.
 def _occurrence_change_sort_key(
     change: OccurrenceChange,
 ) -> tuple[datetime, AlarmIdentity, str]:
@@ -668,6 +836,7 @@ def _occurrence_change_sort_key(
     return effective_at, change.occurrence.alarm_identity, change.kind.value
 
 
+# Auxiliar _episode_change_sort_key: mantiene una responsabilidad interna acotada y determinista.
 def _episode_change_sort_key(change: EpisodeChange) -> tuple[datetime, str, str]:
     effective_at = (
         change.episode.started_at
@@ -679,6 +848,7 @@ def _episode_change_sort_key(change: EpisodeChange) -> tuple[datetime, str, str]
     return effective_at, change.episode.episode_id, change.kind.value
 
 
+# Auxiliar _require_generated_id: mantiene una responsabilidad interna acotada y determinista.
 def _require_generated_id(value: object, name: str) -> str:
     if not isinstance(value, str):
         raise AlarmLifecycleError(f'{name} factory must return a string')
@@ -687,6 +857,7 @@ def _require_generated_id(value: object, name: str) -> str:
     return value
 
 
+# Auxiliar _validate_cycle_at: mantiene una responsabilidad interna acotada y determinista.
 def _validate_cycle_at(cycle_at: datetime) -> None:
     if not isinstance(cycle_at, datetime):
         raise TypeError('cycle_at must be a datetime')
@@ -694,6 +865,7 @@ def _validate_cycle_at(cycle_at: datetime) -> None:
         raise ValueError('cycle_at must be timezone-aware UTC')
 
 
+# Auxiliar _validate_grace: mantiene una responsabilidad interna acotada y determinista.
 def _validate_grace(value: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError('technical_hold_grace_seconds must be an int')

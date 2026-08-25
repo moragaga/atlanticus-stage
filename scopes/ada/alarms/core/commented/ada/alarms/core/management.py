@@ -1,8 +1,4 @@
-# Espejo pedagógico de Management, Reappearance y composición con Deactivation.
-# Las acciones y decisiones se ordenan por effective_at/decided_at sin reiniciar relojes absolutos.
-# ManagementEffect y DeactivationEffect mantienen relojes independientes: desactivar no pausa ni extiende reappearance.
-# Una Deactivation activa bloquea la reaparición operacional, pero no inventa una nueva occurrence ni altera el progreso C2.
-
+# Compone Management con Deactivation manteniendo separadas la política actual y la causalidad ya capturada en requests durables.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
@@ -48,6 +44,7 @@ ManagementEffectIdFactory = Callable[[ManagementAction], str]
 ReappearanceDueAtResolver = Callable[[ManagementAction], datetime]
 
 
+# Contrato _ManagementPreparation: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class _ManagementPreparation:
     state: GroupLifecycleState
@@ -59,6 +56,7 @@ class _ManagementPreparation:
     reappearance_changes: tuple[ReappearanceChange, ...]
 
 
+# Contrato _ManagementFinalization: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class _ManagementFinalization:
     state: GroupLifecycleState
@@ -67,6 +65,7 @@ class _ManagementFinalization:
     cascade_suppressions: tuple[CascadeSuppression, ...]
 
 
+# Operación is_directly_managed: expone una transformación explícita sin estado global.
 def is_directly_managed(state: AlarmRuntimeState, *, at: datetime) -> bool:
     if not isinstance(state, AlarmRuntimeState):
         raise TypeError('state must be an AlarmRuntimeState')
@@ -81,6 +80,7 @@ def is_directly_managed(state: AlarmRuntimeState, *, at: datetime) -> bool:
     )
 
 
+# Operación resolve_management_cascades: expone una transformación explícita sin estado global.
 def resolve_management_cascades(
     state: GroupLifecycleState,
     *,
@@ -129,6 +129,7 @@ def resolve_management_cascades(
     )
 
 
+# Auxiliar _prepare_management_state: mantiene una responsabilidad interna acotada y determinista.
 def _prepare_management_state(
     state: GroupLifecycleState,
     *,
@@ -212,7 +213,6 @@ def _prepare_management_state(
         ):
             working, decision_result, deactivation_changes = _apply_deactivation_decision(
                 working,
-                plans=plans,
                 decision=decision,
                 pending_by_id=pending_by_id,
                 pending_by_alarm=pending_by_alarm,
@@ -297,6 +297,7 @@ def _prepare_management_state(
     )
 
 
+# Auxiliar _finalize_management_state: mantiene una responsabilidad interna acotada y determinista.
 def _finalize_management_state(
     state: GroupLifecycleState,
     *,
@@ -373,6 +374,7 @@ def _finalize_management_state(
     )
 
 
+# Auxiliar _apply_action: mantiene una responsabilidad interna acotada y determinista.
 def _apply_action(
     working: dict[AlarmIdentity, AlarmRuntimeState],
     *,
@@ -501,6 +503,7 @@ def _apply_action(
     )
 
 
+# Auxiliar _roll_management_at_due: mantiene una responsabilidad interna acotada y determinista.
 def _roll_management_at_due(
     working: dict[AlarmIdentity, AlarmRuntimeState],
     *,
@@ -551,6 +554,7 @@ def _roll_management_at_due(
     )
 
 
+# Auxiliar _create_effect: mantiene una responsabilidad interna acotada y determinista.
 def _create_effect(
     *,
     action: ManagementAction,
@@ -579,6 +583,7 @@ def _create_effect(
     )
 
 
+# Auxiliar _resolve_due_effects: mantiene una responsabilidad interna acotada y determinista.
 def _resolve_due_effects(
     working: dict[AlarmIdentity, AlarmRuntimeState],
     *,
@@ -641,6 +646,7 @@ def _resolve_due_effects(
     return working, tuple(changes), tuple(reappearances)
 
 
+# Auxiliar _late_action_has_cascade_scope: mantiene una responsabilidad interna acotada y determinista.
 def _late_action_has_cascade_scope(
     *,
     state: GroupLifecycleState,
@@ -676,6 +682,7 @@ def _late_action_has_cascade_scope(
     )
 
 
+# Auxiliar _effect_has_scope: mantiene una responsabilidad interna acotada y determinista.
 def _effect_has_scope(
     *,
     identity: AlarmIdentity,
@@ -705,6 +712,7 @@ def _effect_has_scope(
     )
 
 
+# Auxiliar _cascade_target_identities: mantiene una responsabilidad interna acotada y determinista.
 def _cascade_target_identities(
     *,
     source_plan: PlannedAlarm,
@@ -726,6 +734,7 @@ def _cascade_target_identities(
     return tuple(sorted(targets))
 
 
+# Auxiliar _scope_end_at: mantiene una responsabilidad interna acotada y determinista.
 def _scope_end_at(
     *,
     effect: ManagementEffect,
@@ -746,6 +755,7 @@ def _scope_end_at(
     return cycle_at
 
 
+# Auxiliar _targets_current_occurrence: mantiene una responsabilidad interna acotada y determinista.
 def _targets_current_occurrence(
     current: AlarmRuntimeState | None,
     action: ManagementAction,
@@ -755,6 +765,7 @@ def _targets_current_occurrence(
     return action.source_occurrence_id in {None, current.occurrence.occurrence_id}
 
 
+# Auxiliar _validate_actions: mantiene una responsabilidad interna acotada y determinista.
 def _validate_actions(
     actions: Sequence[ManagementAction],
     *,
@@ -778,6 +789,7 @@ def _validate_actions(
     return tuple(result)
 
 
+# Auxiliar _index_plans: mantiene una responsabilidad interna acotada y determinista.
 def _index_plans(
     priority_group: str,
     planned_alarms: Sequence[PlannedAlarm],
@@ -810,16 +822,19 @@ def _index_plans(
     return result
 
 
+# Auxiliar _effect_is_active: mantiene una responsabilidad interna acotada y determinista.
 def _effect_is_active(effect: ManagementEffect, *, at: datetime) -> bool:
     return effect.effective_at <= at < effect.reappearance_due_at
 
 
+# Auxiliar _effect_change_sort_key: mantiene una responsabilidad interna acotada y determinista.
 def _effect_change_sort_key(
     change: ManagementEffectChange,
 ) -> tuple[datetime, AlarmIdentity, str]:
     return change.effective_at, change.alarm_identity, change.kind.value
 
 
+# Auxiliar _require_utc_datetime: mantiene una responsabilidad interna acotada y determinista.
 def _require_utc_datetime(value: object, name: str) -> None:
     if not isinstance(value, datetime):
         raise TypeError(f'{name} must be a datetime')

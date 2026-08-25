@@ -22,6 +22,7 @@ from ada.processes.alarms_runtime.inputs import (
     AlarmInputSource,
     AlarmInputStream,
     AlarmOperationalInputs,
+    AlarmPendingDeactivationRequest,
 )
 from ada.processes.alarms_runtime.iteration import AlarmExecutionIteration
 from atlanticus.runtime import JobRuntimeContext
@@ -54,6 +55,7 @@ class _DurableIndex:
     receipts: dict[str, Mapping[str, Any]] | None = None
     requests: dict[str, Mapping[str, Any]] | None = None
     requests_by_management_input: dict[str, str] | None = None
+    request_priority_groups: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         if self.receipts is None:
@@ -62,6 +64,8 @@ class _DurableIndex:
             self.requests = {}
         if self.requests_by_management_input is None:
             self.requests_by_management_input = {}
+        if self.request_priority_groups is None:
+            self.request_priority_groups = {}
 
 
 @dataclass(slots=True)
@@ -195,6 +199,16 @@ class AlarmDurableInputConsumer:
                     )
                 self._index.requests[request_id] = request
                 self._index.requests_by_management_input[management_input_id] = request_id
+                priority_group = entry.record.commit.priority_group
+                existing_priority_group = self._index.request_priority_groups.get(request_id)
+                if (
+                    existing_priority_group is not None
+                    and existing_priority_group != priority_group
+                ):
+                    raise AlarmDurableInputConsumerError(
+                        f'durable deactivation request priority_group is inconsistent: {request_id}'
+                    )
+                self._index.request_priority_groups[request_id] = priority_group
             self._index.position = entry.end
 
     def _read_state(self) -> _ConsumerState | None:
@@ -231,7 +245,7 @@ class AlarmDurableInputConsumer:
         request_ids: Sequence[str],
         *,
         identity_by_key: Mapping[str, AlarmIdentity],
-    ) -> tuple[DeactivationRequest, ...]:
+    ) -> tuple[AlarmPendingDeactivationRequest, ...]:
         requests = []
         for request_id in request_ids:
             document = self._index.requests.get(request_id)
@@ -241,19 +255,24 @@ class AlarmDurableInputConsumer:
                 )
             identity = identity_by_key.get(document['alarm_key'])
             if identity is None:
+                identity = _identity_from_canonical_key(document['alarm_key'])
+            priority_group = self._index.request_priority_groups.get(request_id)
+            if priority_group is None:
                 raise AlarmDurableInputConsumerError(
-                    'durable deactivation request alarm is not in the execution session: '
-                    f'{request_id}'
+                    f'durable deactivation request priority_group is missing: {request_id}'
                 )
             requests.append(
-                DeactivationRequest(
-                    request_id=request_id,
-                    alarm_identity=identity,
-                    source_management_input_id=document['source_management_input_id'],
-                    source_occurrence_id=document['source_occurrence_id'],
-                    requested_at=_parse_utc(document['requested_at']),
-                    effective_until=_parse_utc(document['effective_until']),
-                    approval_required=document['approval_required'],
+                AlarmPendingDeactivationRequest(
+                    priority_group=priority_group,
+                    request=DeactivationRequest(
+                        request_id=request_id,
+                        alarm_identity=identity,
+                        source_management_input_id=document['source_management_input_id'],
+                        source_occurrence_id=document['source_occurrence_id'],
+                        requested_at=_parse_utc(document['requested_at']),
+                        effective_until=_parse_utc(document['effective_until']),
+                        approval_required=document['approval_required'],
+                    ),
                 )
             )
         return tuple(requests)
@@ -524,3 +543,11 @@ def _non_empty_string(value: Any, name: str) -> str:
 
 def _cursor_key(cursor: AlarmInputCursor) -> tuple[str, int]:
     return cursor.hour_bucket, cursor.byte_offset
+
+
+def _identity_from_canonical_key(value: Any) -> AlarmIdentity:
+    canonical_key = _non_empty_string(value, 'alarm_key')
+    parts = canonical_key.split('/')
+    if len(parts) != 2 or not all(part.strip() for part in parts):
+        raise AlarmDurableInputConsumerError('durable request alarm_key is invalid')
+    return AlarmIdentity(family_key=parts[0].strip(), alarm_key=parts[1].strip())

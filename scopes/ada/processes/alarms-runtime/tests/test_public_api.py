@@ -1,6 +1,7 @@
 import ada.processes.alarms_runtime as alarms_runtime
 from ada.processes.alarms_runtime import (
     AlarmCommitTimeProvider,
+    AlarmConfigurationAdoptionExecutor,
     AlarmConfigurationRevision,
     AlarmConfigurationRevisionError,
     AlarmDurableInputConsumer,
@@ -24,11 +25,15 @@ from ada.processes.alarms_runtime import (
     AlarmOperationalCycleError,
     AlarmOperationalCycleResult,
     AlarmOperationalInputs,
+    AlarmPendingDeactivationRequest,
     AlarmRuntimeComposition,
     AlarmRuntimeCompositionError,
     AlarmRuntimeGroup,
     ConfigurationAdoptionChange,
     ConfigurationAdoptionDisposition,
+    ConfigurationAdoptionExecutionError,
+    ConfigurationAdoptionExecutionResult,
+    ConfigurationAdoptionGroupResult,
     ConfigurationAdoptionPlan,
     ConfigurationAdoptionPlanError,
     ConfigurationAdoptionRejectionReason,
@@ -44,6 +49,7 @@ from ada.processes.alarms_runtime import (
 
 def test_public_api_and_version() -> None:
     assert AlarmConfigurationRevision.__name__ == 'AlarmConfigurationRevision'
+    assert AlarmConfigurationAdoptionExecutor.__name__ == 'AlarmConfigurationAdoptionExecutor'
     assert AlarmConfigurationRevisionError.__name__ == 'AlarmConfigurationRevisionError'
     assert AlarmCommitTimeProvider.__name__ == 'AlarmCommitTimeProvider'
     assert AlarmDurableInputConsumer.__name__ == 'AlarmDurableInputConsumer'
@@ -65,6 +71,7 @@ def test_public_api_and_version() -> None:
     assert AlarmInputStream.__name__ == 'AlarmInputStream'
     assert AlarmOperationalCycle.__name__ == 'AlarmOperationalCycle'
     assert AlarmOperationalInputs.__name__ == 'AlarmOperationalInputs'
+    assert AlarmPendingDeactivationRequest.__name__ == 'AlarmPendingDeactivationRequest'
     assert AlarmOperationalCycleError.__name__ == 'AlarmOperationalCycleError'
     assert AlarmOperationalCycleResult.__name__ == 'AlarmOperationalCycleResult'
     assert AlarmRuntimeComposition.__name__ == 'AlarmRuntimeComposition'
@@ -72,6 +79,9 @@ def test_public_api_and_version() -> None:
     assert AlarmRuntimeGroup.__name__ == 'AlarmRuntimeGroup'
     assert ConfigurationAdoptionChange.__name__ == 'ConfigurationAdoptionChange'
     assert ConfigurationAdoptionDisposition.__name__ == 'ConfigurationAdoptionDisposition'
+    assert ConfigurationAdoptionExecutionError.__name__ == 'ConfigurationAdoptionExecutionError'
+    assert ConfigurationAdoptionExecutionResult.__name__ == 'ConfigurationAdoptionExecutionResult'
+    assert ConfigurationAdoptionGroupResult.__name__ == 'ConfigurationAdoptionGroupResult'
     assert ConfigurationAdoptionPlan.__name__ == 'ConfigurationAdoptionPlan'
     assert ConfigurationAdoptionPlanError.__name__ == 'ConfigurationAdoptionPlanError'
     assert ConfigurationAdoptionRejectionReason.__name__ == 'ConfigurationAdoptionRejectionReason'
@@ -81,7 +91,7 @@ def test_public_api_and_version() -> None:
     assert callable(decode_group_runtime_snapshot)
     assert callable(encode_group_runtime_snapshot)
     assert callable(plan_configuration_adoption)
-    assert __version__ == '0.8.0'
+    assert __version__ == '0.9.0'
     assert not hasattr(alarms_runtime, 'AlarmRuntimeDurability')
     assert not hasattr(alarms_runtime, 'AlarmRuntimePersistenceComposition')
     assert not hasattr(alarms_runtime, 'build_persistence_composition')

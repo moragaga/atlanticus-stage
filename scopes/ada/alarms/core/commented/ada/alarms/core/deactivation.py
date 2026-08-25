@@ -1,9 +1,4 @@
-# Espejo pedagógico del dominio de Deactivation.
-# La solicitud nace desde una ManagementAction con intención de desactivar y queda ligada a una occurrence concreta.
-# Si approval_required es falso, Runtime puede materializar el efecto directamente; si es verdadero, espera una decisión canónica.
-# El efecto usa una ventana UTC absoluta y puede sobrevivir al cierre de la occurrence o del Episode.
-# Este archivo no implementa Entra ID, UI, ingress durable, receipts ni EngineCommit: esas responsabilidades viven fuera del Core.
-
+# Implementa la semántica pura de solicitudes, decisiones y efectos de desactivación; una decisión tardía usa el request durable original.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
@@ -34,6 +29,7 @@ DeactivationRequestIdFactory = Callable[[ManagementAction], str]
 DeactivationEffectIdFactory = Callable[[DeactivationRequest], str]
 
 
+# Operación is_deactivated: expone una transformación explícita sin estado global.
 def is_deactivated(state: AlarmRuntimeState, *, at: datetime) -> bool:
     if not isinstance(state, AlarmRuntimeState):
         raise TypeError('state must be an AlarmRuntimeState')
@@ -42,6 +38,7 @@ def is_deactivated(state: AlarmRuntimeState, *, at: datetime) -> bool:
     return bool(effect is not None and effect.effective_from <= at < effect.effective_until)
 
 
+# Auxiliar _index_pending_requests: mantiene una responsabilidad interna acotada y determinista.
 def _index_pending_requests(
     pending_requests: Sequence[DeactivationRequest],
 ) -> tuple[dict[str, DeactivationRequest], dict[AlarmIdentity, str]]:
@@ -63,6 +60,7 @@ def _index_pending_requests(
     return by_id, by_alarm
 
 
+# Auxiliar _validate_decisions: mantiene una responsabilidad interna acotada y determinista.
 def _validate_decisions(
     decisions: Sequence[DeactivationDecision],
     *,
@@ -84,6 +82,7 @@ def _validate_decisions(
     return tuple(result)
 
 
+# Auxiliar _expire_deactivation_effects: mantiene una responsabilidad interna acotada y determinista.
 def _expire_deactivation_effects(
     working: dict[AlarmIdentity, AlarmRuntimeState],
     *,
@@ -115,6 +114,7 @@ def _expire_deactivation_effects(
     return working, tuple(changes)
 
 
+# Auxiliar _apply_deactivation_action: mantiene una responsabilidad interna acotada y determinista.
 def _apply_deactivation_action(
     working: dict[AlarmIdentity, AlarmRuntimeState],
     *,
@@ -233,10 +233,10 @@ def _apply_deactivation_action(
     )
 
 
+# Resuelve la decisión contra el DeactivationRequest durable sin consultar de nuevo la política de configuración vigente.
 def _apply_deactivation_decision(
     working: dict[AlarmIdentity, AlarmRuntimeState],
     *,
-    plans: Mapping[AlarmIdentity, PlannedAlarm],
     decision: DeactivationDecision,
     pending_by_id: dict[str, DeactivationRequest],
     pending_by_alarm: dict[AlarmIdentity, str],
@@ -281,21 +281,6 @@ def _apply_deactivation_decision(
             DeactivationDecisionResult(
                 decision=decision,
                 outcome=DeactivationDecisionOutcome.EXPIRED,
-                deactivation_request=request,
-            ),
-            (),
-        )
-    plan = plans.get(request.alarm_identity)
-    if (
-        plan is None
-        or plan.deactivation_policy is None
-        or not plan.deactivation_policy.approval_required
-    ):
-        return (
-            working,
-            DeactivationDecisionResult(
-                decision=decision,
-                outcome=DeactivationDecisionOutcome.INVALIDATED,
                 deactivation_request=request,
             ),
             (),
@@ -350,6 +335,7 @@ def _apply_deactivation_decision(
     )
 
 
+# Auxiliar _create_effect: mantiene una responsabilidad interna acotada y determinista.
 def _create_effect(
     *,
     request: DeactivationRequest,
@@ -368,6 +354,7 @@ def _create_effect(
     )
 
 
+# Auxiliar _remove_pending: mantiene una responsabilidad interna acotada y determinista.
 def _remove_pending(
     request: DeactivationRequest,
     *,
@@ -379,12 +366,14 @@ def _remove_pending(
         del pending_by_alarm[request.alarm_identity]
 
 
+# Auxiliar _require_generated_id: mantiene una responsabilidad interna acotada y determinista.
 def _require_generated_id(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise AlarmLifecycleError(f'{name} factory must return a non-empty string')
     return value
 
 
+# Auxiliar _require_utc_datetime: mantiene una responsabilidad interna acotada y determinista.
 def _require_utc_datetime(value: object, name: str) -> None:
     if not isinstance(value, datetime):
         raise TypeError(f'{name} must be a datetime')

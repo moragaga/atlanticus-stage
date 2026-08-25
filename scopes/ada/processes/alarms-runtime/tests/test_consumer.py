@@ -19,6 +19,8 @@ from ada.alarms.core import (
 )
 from ada.data.sources import DataSourceRegistry, LoadedDataSources
 from ada.processes.alarms_runtime import (
+    AlarmConfigurationAdoptionExecutor,
+    AlarmConfigurationRevision,
     AlarmDurableInputConsumer,
     AlarmDurableInputConsumerError,
     AlarmEvaluatorContract,
@@ -31,6 +33,7 @@ from ada.processes.alarms_runtime import (
     AlarmOperationalCycle,
     build_alarm_execution_session,
     build_alarm_runtime_composition,
+    plan_configuration_adoption,
 )
 from atlanticus.state import AtomicJsonStore, StateWriteError
 from tests.support import NOW, build_context, identity, plan
@@ -395,3 +398,90 @@ def test_missing_consumer_state_after_durable_decision_fails_closed(tmp_path: Pa
             cycle=cycle,
             iteration=_iteration(session, decision_at + timedelta(minutes=1)),
         )
+
+
+def test_late_decision_after_configuration_disable_uses_durable_request_routing(
+    tmp_path: Path,
+) -> None:
+    session, context, composition, cycle = _runtime(tmp_path)
+    source = InputSource()
+    requested_at = NOW + timedelta(minutes=1)
+    source.append(
+        AlarmInputStream.MANAGEMENT,
+        _record(
+            _management(at=requested_at, until=requested_at + timedelta(hours=7)),
+            offset=0,
+        ),
+    )
+    consumer = AlarmDurableInputConsumer(composition=composition, source=source)
+    consumer.execute(context, cycle=cycle, iteration=_iteration(session, requested_at))
+
+    source_revision = AlarmConfigurationRevision(
+        alarm_configuration_revision='R42',
+        tool_registry_revision='T18',
+        defined_alarm_identities=session.identities,
+        session=session,
+    )
+    target_session = build_alarm_execution_session(
+        alarm_configuration_revision='R43',
+        tool_registry_revision='T18',
+        planned_alarms=(),
+        evaluator_registry=AlarmEvaluatorRegistry(()),
+    )
+    target_revision = AlarmConfigurationRevision(
+        alarm_configuration_revision='R43',
+        tool_registry_revision='T18',
+        defined_alarm_identities=session.identities,
+        session=target_session,
+    )
+    adoption = plan_configuration_adoption(source_revision, target_revision)
+    executor = AlarmConfigurationAdoptionExecutor(
+        composition=composition,
+        commit_time_provider=CommitClock(),
+        runtime_artifact_version='ada-alarms-runtime/0.9.0',
+    )
+    executor.execute(
+        context,
+        adoption,
+        effective_at=requested_at + timedelta(minutes=1),
+    )
+
+    target_cycle = AlarmOperationalCycle(
+        session=target_session,
+        composition=composition,
+        occurrence_id_factory=lambda _identity, _at: 'UNUSED-O',
+        episode_id_factory=lambda _priority_group, _at: 'UNUSED-E',
+        commit_time_provider=CommitClock(),
+        runtime_artifact_version='ada-alarms-runtime/0.9.0',
+        technical_evidence_contract=EvidenceContractRef(
+            contract_key='evaluation-error',
+            contract_version='v1',
+        ),
+        management_effect_id_factory=lambda action: f'ME-{action.input_id}',
+        reappearance_due_at_resolver=lambda action: action.source_created_at + timedelta(hours=10),
+        deactivation_request_id_factory=lambda action: f'DR-{action.input_id}',
+        deactivation_effect_id_factory=lambda request: f'DE-{request.request_id}',
+    )
+    decision_at = requested_at + timedelta(minutes=2)
+    source.append(
+        AlarmInputStream.DEACTIVATION_DECISION,
+        _record(_decision(at=decision_at), offset=0),
+    )
+
+    consumer.execute(
+        context,
+        cycle=target_cycle,
+        iteration=_iteration(target_session, decision_at),
+    )
+
+    state = _state_document(composition)
+    receipts = [
+        receipt
+        for record in _durable_records(composition)
+        for receipt in record.records.get('input_receipts', [])
+        if receipt['input_id'] == 'D100'
+    ]
+    assert len(receipts) == 1
+    assert receipts[0]['outcome'] == 'STALE_TARGET'
+    assert state['pending_deactivation_request_ids'] == []
+    assert state['decisions']['pending'] == []

@@ -8,7 +8,6 @@ from ada.alarms.core import (
     AlarmStatus,
     DeactivationDecisionKind,
     DeactivationDecisionOutcome,
-    DeactivationEffectChangeKind,
     DeactivationRequestOutcome,
     GroupLifecycleState,
     ManagementActionOutcome,
@@ -544,7 +543,7 @@ def test_deactivated_higher_priority_alarm_is_not_predominant() -> None:
     assert dispositions[identity('risk')] is PriorityDisposition.CASCADE_SUPPRESSED
 
 
-def test_structural_reset_clears_deactivation_effect() -> None:
+def test_structural_reset_preserves_active_deactivation_effect() -> None:
     started, ids, alarm = _start(approval_required=False)
     at = NOW + timedelta(minutes=1)
     deactivated = _reduce(
@@ -563,9 +562,11 @@ def test_structural_reset_clears_deactivation_effect() -> None:
     )
     reset_at = at + timedelta(minutes=1)
     reset = reset_group_for_reconfiguration(deactivated.state, effective_at=reset_at)
-    assert reset.state.alarms == ()
-    assert reset.deactivation_effect_changes[0].kind is DeactivationEffectChangeKind.CLEARED
-    assert reset.deactivation_effect_changes[0].effective_at == reset_at
+    runtime = reset.state.get(identity('risk'))
+    assert runtime is not None and runtime.occurrence is None
+    assert runtime.deactivation_effect is not None
+    assert runtime.deactivation_effect.effective_until == at + timedelta(hours=1)
+    assert reset.deactivation_effect_changes == ()
 
 
 def test_approved_decision_after_request_window_is_expired() -> None:
@@ -586,7 +587,7 @@ def test_approved_decision_after_request_window_is_expired() -> None:
     assert decision.deactivation_decision_results[0].outcome is DeactivationDecisionOutcome.EXPIRED
 
 
-def test_approval_policy_change_invalidates_pending_approval() -> None:
+def test_pending_approval_keeps_policy_captured_by_durable_request() -> None:
     started, ids, _ = _start(approval_required=True)
     pending = deactivation_request(requested_at=NOW - timedelta(minutes=1))
     direct_plan = plan('risk', deactivation_approval_required=False)
@@ -598,9 +599,8 @@ def test_approval_policy_change_invalidates_pending_approval() -> None:
         decisions=(deactivation_decision(at=NOW),),
         ids=ids,
     )
-    assert (
-        decision.deactivation_decision_results[0].outcome is DeactivationDecisionOutcome.INVALIDATED
-    )
+    assert decision.deactivation_decision_results[0].outcome is DeactivationDecisionOutcome.APPLIED
+    assert decision.state.get(identity('risk')).deactivation_effect is not None
 
 
 def test_decision_and_request_can_resolve_in_same_cycle_when_request_identity_matches() -> None:

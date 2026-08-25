@@ -76,13 +76,14 @@ def test_operational_cycle_orchestrates_without_physical_dataset_clients_or_wall
             assert node.func.attr not in {'now', 'utcnow'}
 
 
-def test_cycle_integrates_management_and_deactivation_but_defers_configuration() -> None:
+def test_cycle_integrates_operational_inputs_without_reclassifying_configuration() -> None:
     source = (_SOURCE_ROOT / 'cycle.py').read_text(encoding='utf-8')
 
     assert 'management_actions=' in source
     assert 'deactivation_decisions=' in source
     assert 'configuration_closures=' not in source
-    assert 'controlled adoption' in source
+    assert 'ConfigurationAdoptionPlan' not in source
+    assert 'plan_configuration_adoption' not in source
 
 
 def test_configuration_adoption_contract_has_no_io_or_durability_dependencies() -> None:
@@ -92,6 +93,23 @@ def test_configuration_adoption_contract_has_no_io_or_durability_dependencies() 
         'atlanticus.state',
         'atlanticus.storage',
         'ada.alarms.persistence',
+    )
+    tree = ast.parse(adoption_path.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            assert not node.module.startswith(forbidden)
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith(forbidden) for alias in node.names)
+
+
+def test_configuration_adoption_execution_uses_contracts_without_physical_configuration_io() -> (
+    None
+):
+    adoption_path = _SOURCE_ROOT / 'adoption_execution.py'
+    forbidden = (
+        'azure',
+        'atlanticus.storage',
+        'ada.processes.alarms_management',
     )
     tree = ast.parse(adoption_path.read_text(encoding='utf-8'))
     for node in ast.walk(tree):

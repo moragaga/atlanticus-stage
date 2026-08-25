@@ -2,7 +2,7 @@ import ada.alarms.core as core
 
 
 def test_version() -> None:
-    assert core.__version__ == '0.6.0'
+    assert core.__version__ == '0.7.0'
 
 
 def test_public_api_contains_lifecycle_foundation() -> None:

@@ -230,7 +230,6 @@ def _apply_deactivation_action(
 def _apply_deactivation_decision(
     working: dict[AlarmIdentity, AlarmRuntimeState],
     *,
-    plans: Mapping[AlarmIdentity, PlannedAlarm],
     decision: DeactivationDecision,
     pending_by_id: dict[str, DeactivationRequest],
     pending_by_alarm: dict[AlarmIdentity, str],
@@ -275,21 +274,6 @@ def _apply_deactivation_decision(
             DeactivationDecisionResult(
                 decision=decision,
                 outcome=DeactivationDecisionOutcome.EXPIRED,
-                deactivation_request=request,
-            ),
-            (),
-        )
-    plan = plans.get(request.alarm_identity)
-    if (
-        plan is None
-        or plan.deactivation_policy is None
-        or not plan.deactivation_policy.approval_required
-    ):
-        return (
-            working,
-            DeactivationDecisionResult(
-                decision=decision,
-                outcome=DeactivationDecisionOutcome.INVALIDATED,
                 deactivation_request=request,
             ),
             (),

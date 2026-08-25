@@ -1,5 +1,4 @@
-# Contratos puros de entrada para desacoplar Runtime del formato físico y del transporte.
-# La fuente entrega valores Core ya normalizados junto con cursores y locators persistibles.
+# Define contratos inmutables para inputs, locators y requests pendientes, incluida la proveniencia durable del priority_group.
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -10,13 +9,13 @@ from typing import Protocol, runtime_checkable
 from ada.alarms.core import DeactivationDecision, DeactivationRequest, ManagementAction
 
 
-# Separamos Management y Decisions porque A03.5 exige cursores independientes.
+# Contrato AlarmInputStream: agrupa datos y valida invariantes cerca de su frontera.
 class AlarmInputStream(StrEnum):
     MANAGEMENT = 'MANAGEMENT'
     DEACTIVATION_DECISION = 'DEACTIVATION_DECISION'
 
 
-# El cursor representa la posición confirmada del stream, no un estado de negocio.
+# Contrato AlarmInputCursor: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class AlarmInputCursor:
     hour_bucket: str
@@ -32,7 +31,7 @@ class AlarmInputCursor:
         object.__setattr__(self, 'hour_bucket', self.hour_bucket.strip())
 
 
-# El locator permite releer exactamente un input pendiente sin retroceder el cursor global.
+# Contrato AlarmInputLocator: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class AlarmInputLocator:
     input_id: str
@@ -60,7 +59,7 @@ class AlarmInputLocator:
 AlarmInputValue = ManagementAction | DeactivationDecision
 
 
-# Cada registro une identidad física, siguiente cursor y contrato de dominio ya validado.
+# Contrato AlarmInputRecord: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class AlarmInputRecord:
     locator: AlarmInputLocator
@@ -83,7 +82,7 @@ class AlarmInputRecord:
             raise ValueError('locator input_id must match input value identity')
 
 
-# Este Protocol es la frontera: JSONL, Storage u otra fuente se implementan fuera de Runtime.
+# Contrato AlarmInputSource: agrupa datos y valida invariantes cerca de su frontera.
 @runtime_checkable
 class AlarmInputSource(Protocol):
     def read_after(
@@ -101,18 +100,36 @@ class AlarmInputSource(Protocol):
     ) -> AlarmInputRecord: ...
 
 
-# El ciclo recibe sólo inputs correlacionables; una decisión requiere su request durable.
+# Contrato AlarmPendingDeactivationRequest: agrupa datos y valida invariantes cerca de su frontera.
+@dataclass(frozen=True, slots=True)
+class AlarmPendingDeactivationRequest:
+    request: DeactivationRequest
+    priority_group: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.request, DeactivationRequest):
+            raise TypeError('request must be DeactivationRequest')
+        if not isinstance(self.priority_group, str) or not self.priority_group.strip():
+            raise ValueError('priority_group must be a non-empty string')
+        object.__setattr__(self, 'priority_group', self.priority_group.strip())
+
+    @property
+    def request_id(self) -> str:
+        return self.request.request_id
+
+
+# Contrato AlarmOperationalInputs: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class AlarmOperationalInputs:
     management_actions: tuple[ManagementAction, ...] = ()
-    pending_deactivation_requests: tuple[DeactivationRequest, ...] = ()
+    pending_deactivation_requests: tuple[AlarmPendingDeactivationRequest, ...] = ()
     deactivation_decisions: tuple[DeactivationDecision, ...] = ()
 
     def __post_init__(self) -> None:
         _require_typed_tuple(self.management_actions, ManagementAction, 'management_actions')
         _require_typed_tuple(
             self.pending_deactivation_requests,
-            DeactivationRequest,
+            AlarmPendingDeactivationRequest,
             'pending_deactivation_requests',
         )
         _require_typed_tuple(
@@ -127,17 +144,19 @@ class AlarmOperationalInputs:
             'pending_deactivation_requests',
         )
         _require_unique(self.deactivation_decisions, 'decision_id', 'deactivation_decisions')
-        request_ids = {request.request_id for request in self.pending_deactivation_requests}
+        request_ids = {pending.request.request_id for pending in self.pending_deactivation_requests}
         for decision in self.deactivation_decisions:
             if decision.request_id not in request_ids:
                 raise ValueError('deactivation decision must reference a pending durable request')
 
 
+# Auxiliar _require_typed_tuple: mantiene una responsabilidad interna acotada y determinista.
 def _require_typed_tuple(value: object, expected: type, name: str) -> None:
     if not isinstance(value, tuple) or not all(isinstance(item, expected) for item in value):
         raise TypeError(f'{name} must contain {expected.__name__} values')
 
 
+# Auxiliar _require_unique: mantiene una responsabilidad interna acotada y determinista.
 def _require_unique(values: tuple[object, ...], attribute: str, name: str) -> None:
     identifiers = [getattr(value, attribute) for value in values]
     if len(identifiers) != len(set(identifiers)):

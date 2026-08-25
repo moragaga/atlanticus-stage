@@ -1,5 +1,4 @@
-# Consumer durable de Management y decisiones de desactivación.
-# El orden contractual es WAL durable + snapshot materializado y recién después consumer state.
+# Consume Management y Deactivation Decisions con cursores/pending durables y reconstruye requests desde WAL sin depender de la sesión vigente.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -24,6 +23,7 @@ from ada.processes.alarms_runtime.inputs import (
     AlarmInputSource,
     AlarmInputStream,
     AlarmOperationalInputs,
+    AlarmPendingDeactivationRequest,
 )
 from ada.processes.alarms_runtime.iteration import AlarmExecutionIteration
 from atlanticus.runtime import JobRuntimeContext
@@ -33,18 +33,19 @@ _CONSUMER_STATE_SCHEMA_VERSION = 'alarm-runtime-input-consumer-state.v1'
 _CONSUMER_STATE_PATH = 'runtime/state/consumers/management.json'
 
 
-# Error de frontera para corrupción, recovery pendiente o contratos de fuente inválidos.
+# Contrato AlarmDurableInputConsumerError: agrupa datos y valida invariantes cerca de su frontera.
 class AlarmDurableInputConsumerError(ValueError):
     pass
 
 
-# Cada stream conserva su cursor y los locators que deben releerse.
+# Contrato _StreamState: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class _StreamState:
     cursor: AlarmInputCursor | None = None
     pending: tuple[AlarmInputLocator, ...] = ()
 
 
+# Contrato _ConsumerState: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(frozen=True, slots=True)
 class _ConsumerState:
     management: _StreamState = _StreamState()
@@ -52,13 +53,14 @@ class _ConsumerState:
     pending_deactivation_request_ids: tuple[str, ...] = ()
 
 
-# Índice en memoria reconstruible desde WAL; nunca reemplaza al WAL como fuente durable.
+# Contrato _DurableIndex: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(slots=True)
 class _DurableIndex:
     position: JournalPosition | None = None
     receipts: dict[str, Mapping[str, Any]] | None = None
     requests: dict[str, Mapping[str, Any]] | None = None
     requests_by_management_input: dict[str, str] | None = None
+    request_priority_groups: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         if self.receipts is None:
@@ -67,9 +69,11 @@ class _DurableIndex:
             self.requests = {}
         if self.requests_by_management_input is None:
             self.requests_by_management_input = {}
+        if self.request_priority_groups is None:
+            self.request_priority_groups = {}
 
 
-# El consumer compone la fuente externa con Persistence y el estado atómico de Runtime.
+# Contrato AlarmDurableInputConsumer: agrupa datos y valida invariantes cerca de su frontera.
 @dataclass(slots=True)
 class AlarmDurableInputConsumer:
     composition: AlarmRuntimeComposition
@@ -87,8 +91,6 @@ class AlarmDurableInputConsumer:
         )
         self._index = _DurableIndex()
 
-    # Se indexa el WAL antes de leer inputs para deduplicar redeliveries por InputReceipt.
-    # Una decisión sólo se entrega al Core si su request ya era durable al iniciar la iteración.
     def execute(
         self,
         context: JobRuntimeContext,
@@ -165,7 +167,6 @@ class AlarmDurableInputConsumer:
         self._replace_state(context, next_state)
         return result
 
-    # No avanzamos cursores mientras WAL y snapshots estén desalineados.
     def _require_materialized_head(self) -> None:
         head = self.composition.durability.persistence.read_head()
         if not head.aligned:
@@ -204,6 +205,16 @@ class AlarmDurableInputConsumer:
                     )
                 self._index.requests[request_id] = request
                 self._index.requests_by_management_input[management_input_id] = request_id
+                priority_group = entry.record.commit.priority_group
+                existing_priority_group = self._index.request_priority_groups.get(request_id)
+                if (
+                    existing_priority_group is not None
+                    and existing_priority_group != priority_group
+                ):
+                    raise AlarmDurableInputConsumerError(
+                        f'durable deactivation request priority_group is inconsistent: {request_id}'
+                    )
+                self._index.request_priority_groups[request_id] = priority_group
             self._index.position = entry.end
 
     def _read_state(self) -> _ConsumerState | None:
@@ -218,7 +229,6 @@ class AlarmDurableInputConsumer:
         except (TypeError, ValueError, KeyError) as error:
             raise AlarmDurableInputConsumerError('alarm consumer state is invalid') from error
 
-    # Primer bootstrap recupera requests pendientes; con decisiones previas sin state fallamos cerrado.
     def _bootstrap_state(self) -> _ConsumerState:
         if any(
             receipt_id.startswith(f'{InputKind.DEACTIVATION_DECISION.value}:')
@@ -241,7 +251,7 @@ class AlarmDurableInputConsumer:
         request_ids: Sequence[str],
         *,
         identity_by_key: Mapping[str, AlarmIdentity],
-    ) -> tuple[DeactivationRequest, ...]:
+    ) -> tuple[AlarmPendingDeactivationRequest, ...]:
         requests = []
         for request_id in request_ids:
             document = self._index.requests.get(request_id)
@@ -251,19 +261,24 @@ class AlarmDurableInputConsumer:
                 )
             identity = identity_by_key.get(document['alarm_key'])
             if identity is None:
+                identity = _identity_from_canonical_key(document['alarm_key'])
+            priority_group = self._index.request_priority_groups.get(request_id)
+            if priority_group is None:
                 raise AlarmDurableInputConsumerError(
-                    'durable deactivation request alarm is not in the execution session: '
-                    f'{request_id}'
+                    f'durable deactivation request priority_group is missing: {request_id}'
                 )
             requests.append(
-                DeactivationRequest(
-                    request_id=request_id,
-                    alarm_identity=identity,
-                    source_management_input_id=document['source_management_input_id'],
-                    source_occurrence_id=document['source_occurrence_id'],
-                    requested_at=_parse_utc(document['requested_at']),
-                    effective_until=_parse_utc(document['effective_until']),
-                    approval_required=document['approval_required'],
+                AlarmPendingDeactivationRequest(
+                    priority_group=priority_group,
+                    request=DeactivationRequest(
+                        request_id=request_id,
+                        alarm_identity=identity,
+                        source_management_input_id=document['source_management_input_id'],
+                        source_occurrence_id=document['source_occurrence_id'],
+                        requested_at=_parse_utc(document['requested_at']),
+                        effective_until=_parse_utc(document['effective_until']),
+                        approval_required=document['approval_required'],
+                    ),
                 )
             )
         return tuple(requests)
@@ -354,7 +369,6 @@ class AlarmDurableInputConsumer:
             pending_deactivation_request_ids=tuple(sorted(request_ids)),
         )
 
-    # Esta mutación ocurre al final y bajo fencing, después de materialización confirmada.
     def _replace_state(self, context: JobRuntimeContext, state: _ConsumerState) -> None:
         document = _encode_consumer_state(state)
         context.assert_lease_current()
@@ -368,6 +382,7 @@ class AlarmDurableInputConsumer:
             ) from error
 
 
+# Auxiliar _validate_source_record: mantiene una responsabilidad interna acotada y determinista.
 def _validate_source_record(stream: AlarmInputStream, record: object) -> None:
     if not isinstance(record, AlarmInputRecord):
         raise AlarmDurableInputConsumerError('input source returned an invalid record')
@@ -379,6 +394,7 @@ def _validate_source_record(stream: AlarmInputStream, record: object) -> None:
         raise AlarmDurableInputConsumerError('decision stream returned a non-decision input')
 
 
+# Auxiliar _validate_fresh_order: mantiene una responsabilidad interna acotada y determinista.
 def _validate_fresh_order(
     records: Sequence[AlarmInputRecord],
     *,
@@ -395,6 +411,7 @@ def _validate_fresh_order(
         previous = record.next_cursor
 
 
+# Auxiliar _merge_records: mantiene una responsabilidad interna acotada y determinista.
 def _merge_records(
     pending: Sequence[AlarmInputRecord], fresh: Sequence[AlarmInputRecord]
 ) -> tuple[AlarmInputRecord, ...]:
@@ -407,6 +424,7 @@ def _merge_records(
     return tuple(merged.values())
 
 
+# Auxiliar _last_cursor: mantiene una responsabilidad interna acotada y determinista.
 def _last_cursor(
     records: Sequence[AlarmInputRecord],
     previous: AlarmInputCursor | None,
@@ -414,6 +432,7 @@ def _last_cursor(
     return previous if not records else records[-1].next_cursor
 
 
+# Auxiliar _unique_locators: mantiene una responsabilidad interna acotada y determinista.
 def _unique_locators(locators: Sequence[AlarmInputLocator]) -> tuple[AlarmInputLocator, ...]:
     unique: dict[str, AlarmInputLocator] = {}
     for locator in locators:
@@ -426,6 +445,7 @@ def _unique_locators(locators: Sequence[AlarmInputLocator]) -> tuple[AlarmInputL
     return tuple(unique.values())
 
 
+# Auxiliar _encode_consumer_state: mantiene una responsabilidad interna acotada y determinista.
 def _encode_consumer_state(state: _ConsumerState) -> dict[str, Any]:
     return {
         'consumer_state_schema_version': _CONSUMER_STATE_SCHEMA_VERSION,
@@ -435,6 +455,7 @@ def _encode_consumer_state(state: _ConsumerState) -> dict[str, Any]:
     }
 
 
+# Auxiliar _encode_stream_state: mantiene una responsabilidad interna acotada y determinista.
 def _encode_stream_state(state: _StreamState) -> dict[str, Any]:
     return {
         'cursor': None if state.cursor is None else _encode_cursor(state.cursor),
@@ -442,10 +463,12 @@ def _encode_stream_state(state: _StreamState) -> dict[str, Any]:
     }
 
 
+# Auxiliar _encode_cursor: mantiene una responsabilidad interna acotada y determinista.
 def _encode_cursor(cursor: AlarmInputCursor) -> dict[str, Any]:
     return {'hour_bucket': cursor.hour_bucket, 'byte_offset': cursor.byte_offset}
 
 
+# Auxiliar _encode_locator: mantiene una responsabilidad interna acotada y determinista.
 def _encode_locator(locator: AlarmInputLocator) -> dict[str, Any]:
     return {
         'input_id': locator.input_id,
@@ -455,6 +478,7 @@ def _encode_locator(locator: AlarmInputLocator) -> dict[str, Any]:
     }
 
 
+# Auxiliar _decode_consumer_state: mantiene una responsabilidad interna acotada y determinista.
 def _decode_consumer_state(document: Mapping[str, Any]) -> _ConsumerState:
     if set(document) != {
         'consumer_state_schema_version',
@@ -478,6 +502,7 @@ def _decode_consumer_state(document: Mapping[str, Any]) -> _ConsumerState:
     )
 
 
+# Auxiliar _decode_stream_state: mantiene una responsabilidad interna acotada y determinista.
 def _decode_stream_state(value: Any) -> _StreamState:
     if not isinstance(value, Mapping) or set(value) != {'cursor', 'pending'}:
         raise ValueError('consumer stream state is invalid')
@@ -494,12 +519,14 @@ def _decode_stream_state(value: Any) -> _StreamState:
     return _StreamState(cursor=cursor, pending=pending)
 
 
+# Auxiliar _decode_cursor: mantiene una responsabilidad interna acotada y determinista.
 def _decode_cursor(value: Mapping[str, Any]) -> AlarmInputCursor:
     if set(value) != {'hour_bucket', 'byte_offset'}:
         raise ValueError('consumer cursor contains unsupported fields')
     return AlarmInputCursor(hour_bucket=value['hour_bucket'], byte_offset=value['byte_offset'])
 
 
+# Auxiliar _decode_locator: mantiene una responsabilidad interna acotada y determinista.
 def _decode_locator(value: Any) -> AlarmInputLocator:
     if not isinstance(value, Mapping) or set(value) != {
         'input_id',
@@ -516,6 +543,7 @@ def _decode_locator(value: Any) -> AlarmInputLocator:
     )
 
 
+# Auxiliar _parse_utc: mantiene una responsabilidad interna acotada y determinista.
 def _parse_utc(value: Any) -> datetime:
     text = _non_empty_string(value, 'timestamp')
     try:
@@ -527,11 +555,22 @@ def _parse_utc(value: Any) -> datetime:
     return timestamp.astimezone(UTC)
 
 
+# Auxiliar _non_empty_string: mantiene una responsabilidad interna acotada y determinista.
 def _non_empty_string(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f'{name} must be a non-empty string')
     return value.strip()
 
 
+# Auxiliar _cursor_key: mantiene una responsabilidad interna acotada y determinista.
 def _cursor_key(cursor: AlarmInputCursor) -> tuple[str, int]:
     return cursor.hour_bucket, cursor.byte_offset
+
+
+# Auxiliar _identity_from_canonical_key: mantiene una responsabilidad interna acotada y determinista.
+def _identity_from_canonical_key(value: Any) -> AlarmIdentity:
+    canonical_key = _non_empty_string(value, 'alarm_key')
+    parts = canonical_key.split('/')
+    if len(parts) != 2 or not all(part.strip() for part in parts):
+        raise AlarmDurableInputConsumerError('durable request alarm_key is invalid')
+    return AlarmIdentity(family_key=parts[0].strip(), alarm_key=parts[1].strip())

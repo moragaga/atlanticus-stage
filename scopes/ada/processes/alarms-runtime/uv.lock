@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "ada-alarms-core"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "../../alarms/core" }
 
 [package.metadata]
@@ -43,7 +43,7 @@ dev = [
 
 [[package]]
 name = "ada-alarms-runtime-process"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "ada-alarms-core" },

@@ -218,6 +218,57 @@ def test_deactivation_only_state_round_trip_does_not_require_episode() -> None:
     assert decode_group_runtime_snapshot(snapshot, planned_alarms=(plan(),)) == state
 
 
+def test_deactivation_only_orphan_round_trip_without_current_configuration() -> None:
+    runtime = AlarmRuntimeState(
+        alarm_identity=identity(),
+        deactivation_effect=DeactivationEffect(
+            effect_id='D1',
+            effective_from=NOW,
+            effective_until=NOW + timedelta(hours=1),
+        ),
+    )
+    state = GroupLifecycleState(priority_group='mill-feed', alarms=(runtime,))
+    current = materialization(state, runtime_state_updates=(identity(),))
+    snapshot = encode_group_runtime_snapshot(
+        state,
+        commit=current.commit,
+        previous_snapshot=None,
+    )
+
+    hydrated = decode_group_runtime_snapshot(snapshot, planned_alarms=())
+
+    assert hydrated == state
+
+
+def test_decode_rejects_orphan_state_with_management_effect() -> None:
+    snapshot = GroupRuntimeSnapshot(
+        {
+            'snapshot_schema_version': 'group-runtime-snapshot.v1',
+            'priority_group': 'mill-feed',
+            'last_commit_id': 'C1',
+            'alarms': {
+                'mill/risk': {
+                    'last_commit_id': 'C1',
+                    'management_effect': {
+                        'effect_id': 'M1',
+                        'source_occurrence_id': 'O1',
+                        'effective_at': '2026-08-24T12:00:00Z',
+                        'reappearance_due_at': '2026-08-24T14:00:00Z',
+                    },
+                    'deactivation_effect': {
+                        'effect_id': 'D1',
+                        'effective_from': '2026-08-24T12:00:00Z',
+                        'effective_until': '2026-08-24T13:00:00Z',
+                    },
+                }
+            },
+        }
+    )
+
+    with pytest.raises(AlarmRuntimeCompositionError, match='current configuration'):
+        decode_group_runtime_snapshot(snapshot, planned_alarms=())
+
+
 def test_decode_rejects_duplicate_canonical_identity_in_current_configuration() -> None:
     state = group_state(active_runtime_state())
     current = materialization(state, runtime_state_updates=(identity(),))

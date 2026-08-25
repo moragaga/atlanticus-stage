@@ -207,7 +207,6 @@ def _prepare_management_state(
         ):
             working, decision_result, deactivation_changes = _apply_deactivation_decision(
                 working,
-                plans=plans,
                 decision=decision,
                 pending_by_id=pending_by_id,
                 pending_by_alarm=pending_by_alarm,
