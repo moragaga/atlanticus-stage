@@ -4,6 +4,13 @@ from ada.processes.alarms_runtime.composition import (
     AlarmRuntimeGroup,
     build_alarm_runtime_composition,
 )
+from ada.processes.alarms_runtime.cycle import (
+    AlarmCommitTimeProvider,
+    AlarmGroupCycleResult,
+    AlarmOperationalCycle,
+    AlarmOperationalCycleError,
+    AlarmOperationalCycleResult,
+)
 from ada.processes.alarms_runtime.iteration import (
     AlarmExecutionIteration,
     AlarmExecutionIterationError,
@@ -24,9 +31,10 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.4.0'
+__version__ = '0.5.0'
 
 __all__ = [
+    'AlarmCommitTimeProvider',
     'AlarmEvaluatorContract',
     'AlarmEvaluatorRegistry',
     'AlarmExecutionEntry',
@@ -34,8 +42,12 @@ __all__ = [
     'AlarmExecutionIterationError',
     'AlarmExecutionSession',
     'AlarmExecutionSessionError',
+    'AlarmGroupCycleResult',
     'AlarmIterationLoader',
     'AlarmIterationSourceLoader',
+    'AlarmOperationalCycle',
+    'AlarmOperationalCycleError',
+    'AlarmOperationalCycleResult',
     'AlarmRuntimeComposition',
     'AlarmRuntimeCompositionError',
     'AlarmRuntimeGroup',

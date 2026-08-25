@@ -63,6 +63,28 @@ def test_iteration_layer_has_no_internal_wall_clock_or_loaded_data_cache() -> No
     assert 'last_loaded' not in source
 
 
+def test_operational_cycle_orchestrates_without_physical_dataset_clients_or_wall_clock() -> None:
+    cycle_path = _SOURCE_ROOT / 'cycle.py'
+    forbidden = ('atlanticus.datasets', 'pandas', 'pyarrow')
+    tree = ast.parse(cycle_path.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            assert not node.module.startswith(forbidden)
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith(forbidden) for alias in node.names)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            assert node.func.attr not in {'now', 'utcnow'}
+
+
+def test_operational_cycle_defers_management_deactivation_and_configuration_adoption() -> None:
+    source = (_SOURCE_ROOT / 'cycle.py').read_text(encoding='utf-8')
+
+    assert 'management_actions=' not in source
+    assert 'deactivation_decisions=' not in source
+    assert 'configuration_closures=' not in source
+    assert 'controlled adoption' in source
+
+
 def test_low_level_durability_remains_core_agnostic() -> None:
     _assert_file_does_not_import(_SOURCE_ROOT / 'durability.py', 'ada.alarms.core')
 

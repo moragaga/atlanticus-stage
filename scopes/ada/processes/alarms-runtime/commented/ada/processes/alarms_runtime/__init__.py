@@ -1,10 +1,17 @@
-# La API pública separa explícitamente tres niveles: sesión estática, datos frescos de iteración
-# y composición durable Core ↔ Persistence. R3.2 todavía no expone un launcher operacional.
+# La API pública ahora expone cuatro niveles: sesión congelada, inputs frescos, ciclo
+# data-driven y composición durable. R3.3A aún no convierte la library en launcher.
 from ada.processes.alarms_runtime.commit import compose_engine_commit_record
 from ada.processes.alarms_runtime.composition import (
     AlarmRuntimeComposition,
     AlarmRuntimeGroup,
     build_alarm_runtime_composition,
+)
+from ada.processes.alarms_runtime.cycle import (
+    AlarmCommitTimeProvider,
+    AlarmGroupCycleResult,
+    AlarmOperationalCycle,
+    AlarmOperationalCycleError,
+    AlarmOperationalCycleResult,
 )
 from ada.processes.alarms_runtime.iteration import (
     AlarmExecutionIteration,
@@ -26,9 +33,10 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.4.0'
+__version__ = '0.5.0'
 
 __all__ = [
+    'AlarmCommitTimeProvider',
     'AlarmEvaluatorContract',
     'AlarmEvaluatorRegistry',
     'AlarmExecutionEntry',
@@ -36,8 +44,12 @@ __all__ = [
     'AlarmExecutionIterationError',
     'AlarmExecutionSession',
     'AlarmExecutionSessionError',
+    'AlarmGroupCycleResult',
     'AlarmIterationLoader',
     'AlarmIterationSourceLoader',
+    'AlarmOperationalCycle',
+    'AlarmOperationalCycleError',
+    'AlarmOperationalCycleResult',
     'AlarmRuntimeComposition',
     'AlarmRuntimeCompositionError',
     'AlarmRuntimeGroup',
