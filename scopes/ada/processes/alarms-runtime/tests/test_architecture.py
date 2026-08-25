@@ -85,6 +85,22 @@ def test_cycle_integrates_management_and_deactivation_but_defers_configuration()
     assert 'controlled adoption' in source
 
 
+def test_configuration_adoption_contract_has_no_io_or_durability_dependencies() -> None:
+    adoption_path = _SOURCE_ROOT / 'adoption.py'
+    forbidden = (
+        'azure',
+        'atlanticus.state',
+        'atlanticus.storage',
+        'ada.alarms.persistence',
+    )
+    tree = ast.parse(adoption_path.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            assert not node.module.startswith(forbidden)
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith(forbidden) for alias in node.names)
+
+
 def test_input_contract_and_consumer_do_not_import_physical_management_storage() -> None:
     forbidden = ('azure', 'atlanticus.storage', 'ada.processes.alarms_management')
     for name in ('inputs.py', 'consumer.py'):

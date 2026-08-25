@@ -1,5 +1,16 @@
+# R3.3C.0 expone contratos de revisión y adopción sin ejecutar todavía la transición.
+from ada.processes.alarms_runtime.adoption import (
+    AlarmConfigurationRevision,
+    AlarmConfigurationRevisionError,
+    ConfigurationAdoptionChange,
+    ConfigurationAdoptionDisposition,
+    ConfigurationAdoptionPlan,
+    ConfigurationAdoptionPlanError,
+    ConfigurationAdoptionRejectionReason,
+)
+
 # Este módulo define la API pública estable del proceso Alarm Runtime.
-# R3.3B incorpora el consumer durable y sus contratos sin exponer detalles físicos de Storage.
+# R3.3B mantiene el consumer durable sin exponer detalles físicos de Storage.
 from ada.processes.alarms_runtime.commit import compose_engine_commit_record
 from ada.processes.alarms_runtime.composition import (
     AlarmRuntimeComposition,
@@ -45,9 +56,16 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'
 
 __all__ = [
+    'AlarmConfigurationRevision',
+    'AlarmConfigurationRevisionError',
+    'ConfigurationAdoptionChange',
+    'ConfigurationAdoptionDisposition',
+    'ConfigurationAdoptionPlan',
+    'ConfigurationAdoptionPlanError',
+    'ConfigurationAdoptionRejectionReason',
     'AlarmCommitTimeProvider',
     'AlarmDurableInputConsumer',
     'AlarmDurableInputConsumerError',

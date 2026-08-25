@@ -1,3 +1,12 @@
+from ada.processes.alarms_runtime.adoption import (
+    AlarmConfigurationRevision,
+    AlarmConfigurationRevisionError,
+    ConfigurationAdoptionChange,
+    ConfigurationAdoptionDisposition,
+    ConfigurationAdoptionPlan,
+    ConfigurationAdoptionPlanError,
+    ConfigurationAdoptionRejectionReason,
+)
 from ada.processes.alarms_runtime.commit import compose_engine_commit_record
 from ada.processes.alarms_runtime.composition import (
     AlarmRuntimeComposition,
@@ -43,9 +52,16 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'
 
 __all__ = [
+    'AlarmConfigurationRevision',
+    'AlarmConfigurationRevisionError',
+    'ConfigurationAdoptionChange',
+    'ConfigurationAdoptionDisposition',
+    'ConfigurationAdoptionPlan',
+    'ConfigurationAdoptionPlanError',
+    'ConfigurationAdoptionRejectionReason',
     'AlarmCommitTimeProvider',
     'AlarmDurableInputConsumer',
     'AlarmDurableInputConsumerError',
