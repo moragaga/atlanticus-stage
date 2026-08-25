@@ -1,0 +1,38 @@
+{
+  "id": "latest",
+  "partition_id": "kpis",
+  "document_type": "ada_kpi_latest_delivery",
+  "manifest": {
+    "schema_version": 1,
+    "revision": "4c8dbe01...",
+    "published_at_utc": "2026-08-25T04:10:00Z",
+    "kpi_projection_revision": "01618ff7...",
+    "tool_projection_revision": "03ae7782..."
+  },
+  "destinations": {
+    "global_indicators": {
+      "produccion_total": {
+        "status": "ok",
+        "value_kind": "value",
+        "value": "66,00"
+      },
+      "disponibilidad": {
+        "status": "error",
+        "value_kind": "value",
+        "value": null
+      }
+    },
+    "molienda": {
+      "produccion_total": {
+        "status": "ok",
+        "value_kind": "value",
+        "value": "66,00"
+      },
+      "kpi_aun_sin_dato": {
+        "status": "missing",
+        "value_kind": null,
+        "value": null
+      }
+    }
+  }
+}
