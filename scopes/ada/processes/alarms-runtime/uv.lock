@@ -43,11 +43,13 @@ dev = [
 
 [[package]]
 name = "ada-alarms-runtime-process"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "ada-alarms-core" },
     { name = "ada-alarms-persistence" },
+    { name = "ada-operational-data-core" },
+    { name = "ada-operational-data-planner" },
     { name = "atlanticus-job-runtime" },
 ]
 
@@ -61,8 +63,40 @@ dev = [
 requires-dist = [
     { name = "ada-alarms-core", editable = "../../alarms/core" },
     { name = "ada-alarms-persistence", editable = "../../alarms/persistence" },
+    { name = "ada-operational-data-core", editable = "../../data/core" },
+    { name = "ada-operational-data-planner", editable = "../../data/planner" },
     { name = "atlanticus-job-runtime", editable = "../../../../backend/runtime" },
 ]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
+]
+
+[[package]]
+name = "ada-operational-data-core"
+version = "0.1.0"
+source = { editable = "../../data/core" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
+]
+
+[[package]]
+name = "ada-operational-data-planner"
+version = "0.1.0"
+source = { editable = "../../data/planner" }
+dependencies = [
+    { name = "ada-operational-data-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "ada-operational-data-core", editable = "../../data/core" }]
 
 [package.metadata.requires-dev]
 dev = [

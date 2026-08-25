@@ -24,6 +24,23 @@ def test_process_composition_does_not_import_concrete_alarm_engine_subsystems() 
                 assert not node.module.startswith(forbidden)
 
 
+def test_execution_session_uses_shared_planner_without_source_io() -> None:
+    session_path = _SOURCE_ROOT / 'session.py'
+    forbidden = (
+        'ada.data.sources',
+        'atlanticus.datasets',
+        'atlanticus.runtime',
+        'pandas',
+        'pyarrow',
+    )
+    tree = ast.parse(session_path.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            assert not node.module.startswith(forbidden)
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith(forbidden) for alias in node.names)
+
+
 def test_low_level_durability_remains_core_agnostic() -> None:
     _assert_file_does_not_import(_SOURCE_ROOT / 'durability.py', 'ada.alarms.core')
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # Esta raíz de composición reúne Core, Persistence y Job Runtime sin crear dependencias entre Core y Persistence.
 # El snapshot físico se conserva junto al estado funcional porque contiene el HEAD y la provenance que Core no modela.
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -79,9 +78,7 @@ class AlarmRuntimeComposition:
         records = []
         for materialization in materializations:
             if not isinstance(materialization, GroupCommitMaterialization):
-                raise TypeError(
-                    'materializations must contain GroupCommitMaterialization values'
-                )
+                raise TypeError('materializations must contain GroupCommitMaterialization values')
             previous_snapshot = self.durability.persistence.read_snapshot(
                 materialization.commit.priority_group
             )

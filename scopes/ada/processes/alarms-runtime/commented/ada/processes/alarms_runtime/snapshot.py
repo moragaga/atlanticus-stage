@@ -3,7 +3,6 @@ from __future__ import annotations
 # Este codec materializa GroupRuntimeSnapshot.v1 sin persistir AlarmEvaluation ni EvidenceSnapshot completos.
 # Las alarm_key se resuelven contra PlannedAlarm vigente; nunca se reconstruye AlarmIdentity separando strings.
 # La provenance por alarma se conserva desde el snapshot anterior y sólo avanza cuando Core declara un cambio real de hot state.
-
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -71,7 +70,7 @@ def encode_group_runtime_snapshot(
         updated_keys=updated_keys,
     )
     episode = _encode_episode(state.episode)
-        # La transición del Episode también debe coincidir con la referencia declarada por EngineCommit.
+    # La transición del Episode también debe coincidir con la referencia declarada por EngineCommit.
     _validate_episode_transition(
         previous_document=previous_document,
         next_episode=episode,

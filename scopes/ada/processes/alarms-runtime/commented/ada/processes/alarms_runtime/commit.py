@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # Este adapter convierte una materialización funcional de Core en la unidad física EngineCommitRecord.v1.
 # Persistence sigue siendo autoridad del hash y de la validación física del registro.
-
 from datetime import UTC, datetime
 
 from ada.alarms.core import GroupCommitMaterialization
