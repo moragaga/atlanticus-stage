@@ -3,8 +3,12 @@ from ada.processes.alarms_runtime import (
     AlarmEvaluatorContract,
     AlarmEvaluatorRegistry,
     AlarmExecutionEntry,
+    AlarmExecutionIteration,
+    AlarmExecutionIterationError,
     AlarmExecutionSession,
     AlarmExecutionSessionError,
+    AlarmIterationLoader,
+    AlarmIterationSourceLoader,
     AlarmRuntimeComposition,
     AlarmRuntimeCompositionError,
     AlarmRuntimeGroup,
@@ -21,8 +25,12 @@ def test_public_api_and_version() -> None:
     assert AlarmEvaluatorContract.__name__ == 'AlarmEvaluatorContract'
     assert AlarmEvaluatorRegistry.__name__ == 'AlarmEvaluatorRegistry'
     assert AlarmExecutionEntry.__name__ == 'AlarmExecutionEntry'
+    assert AlarmExecutionIteration.__name__ == 'AlarmExecutionIteration'
+    assert AlarmExecutionIterationError.__name__ == 'AlarmExecutionIterationError'
     assert AlarmExecutionSession.__name__ == 'AlarmExecutionSession'
     assert AlarmExecutionSessionError.__name__ == 'AlarmExecutionSessionError'
+    assert AlarmIterationLoader.__name__ == 'AlarmIterationLoader'
+    assert AlarmIterationSourceLoader.__name__ == 'AlarmIterationSourceLoader'
     assert AlarmRuntimeComposition.__name__ == 'AlarmRuntimeComposition'
     assert AlarmRuntimeCompositionError.__name__ == 'AlarmRuntimeCompositionError'
     assert AlarmRuntimeGroup.__name__ == 'AlarmRuntimeGroup'
@@ -31,7 +39,7 @@ def test_public_api_and_version() -> None:
     assert callable(compose_engine_commit_record)
     assert callable(decode_group_runtime_snapshot)
     assert callable(encode_group_runtime_snapshot)
-    assert __version__ == '0.3.0'
+    assert __version__ == '0.4.0'
     assert not hasattr(alarms_runtime, 'AlarmRuntimeDurability')
     assert not hasattr(alarms_runtime, 'AlarmRuntimePersistenceComposition')
     assert not hasattr(alarms_runtime, 'build_persistence_composition')

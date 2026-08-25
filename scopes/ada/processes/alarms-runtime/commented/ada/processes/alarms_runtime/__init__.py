@@ -1,10 +1,16 @@
-# Expone la composición durable ya cerrada y, desde R3.1, el contrato puro de sesión de ejecución.
-# La sesión comparte DataRequirement/DataLoadPlan con KPI sin introducir I/O ni semántica funcional nueva en Core.
+# La API pública separa explícitamente tres niveles: sesión estática, datos frescos de iteración
+# y composición durable Core ↔ Persistence. R3.2 todavía no expone un launcher operacional.
 from ada.processes.alarms_runtime.commit import compose_engine_commit_record
 from ada.processes.alarms_runtime.composition import (
     AlarmRuntimeComposition,
     AlarmRuntimeGroup,
     build_alarm_runtime_composition,
+)
+from ada.processes.alarms_runtime.iteration import (
+    AlarmExecutionIteration,
+    AlarmExecutionIterationError,
+    AlarmIterationLoader,
+    AlarmIterationSourceLoader,
 )
 from ada.processes.alarms_runtime.session import (
     AlarmEvaluatorContract,
@@ -20,14 +26,18 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 
 __all__ = [
     'AlarmEvaluatorContract',
     'AlarmEvaluatorRegistry',
     'AlarmExecutionEntry',
+    'AlarmExecutionIteration',
+    'AlarmExecutionIterationError',
     'AlarmExecutionSession',
     'AlarmExecutionSessionError',
+    'AlarmIterationLoader',
+    'AlarmIterationSourceLoader',
     'AlarmRuntimeComposition',
     'AlarmRuntimeCompositionError',
     'AlarmRuntimeGroup',

@@ -41,6 +41,28 @@ def test_execution_session_uses_shared_planner_without_source_io() -> None:
             assert all(not alias.name.startswith(forbidden) for alias in node.names)
 
 
+def test_iteration_layer_uses_shared_sources_without_physical_dataset_clients() -> None:
+    iteration_path = _SOURCE_ROOT / 'iteration.py'
+    forbidden = ('atlanticus.datasets', 'atlanticus.runtime', 'pandas', 'pyarrow')
+    tree = ast.parse(iteration_path.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            assert not node.module.startswith(forbidden)
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith(forbidden) for alias in node.names)
+
+
+def test_iteration_layer_has_no_internal_wall_clock_or_loaded_data_cache() -> None:
+    iteration_path = _SOURCE_ROOT / 'iteration.py'
+    tree = ast.parse(iteration_path.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            assert node.func.attr not in {'now', 'utcnow'}
+    source = iteration_path.read_text(encoding='utf-8')
+    assert '_cached' not in source
+    assert 'last_loaded' not in source
+
+
 def test_low_level_durability_remains_core_agnostic() -> None:
     _assert_file_does_not_import(_SOURCE_ROOT / 'durability.py', 'ada.alarms.core')
 
