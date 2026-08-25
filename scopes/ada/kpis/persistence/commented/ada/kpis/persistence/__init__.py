@@ -1,4 +1,4 @@
-# API pública del capability reusable de persistencia KPI.
+# Espejo pedagógico: esta superficie pública refleja exactamente la API productiva del paquete.
 from ada.kpis.persistence.commit import KpiEvaluationCommitter
 from ada.kpis.persistence.errors import (
     KpiEvaluationConflictError,
@@ -12,7 +12,7 @@ from ada.kpis.persistence.paths import KpiPersistencePaths
 from ada.kpis.persistence.repositories import KpiEvaluationRepository, KpiLatestRepository
 from ada.kpis.persistence.state import KpiCommitStore
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 __all__ = [
     'KpiCommitStore',

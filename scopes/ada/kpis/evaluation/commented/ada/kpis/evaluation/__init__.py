@@ -1,4 +1,4 @@
-# Expone el contrato público de evaluación KPI.
+# Espejo pedagógico: esta superficie pública refleja exactamente la API productiva del paquete.
 from ada.kpis.evaluation.dependencies import KpiDependencies
 from ada.kpis.evaluation.errors import (
     KpiDependencyNotRequestedError,
@@ -7,7 +7,7 @@ from ada.kpis.evaluation.errors import (
 )
 from ada.kpis.evaluation.evaluator import KpiEvaluationSourceLoader, KpiEvaluator
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 
 __all__ = [
     'KpiDependencies',

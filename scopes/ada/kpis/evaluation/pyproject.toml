@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ada-kpis-evaluation"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reusable KPI evaluation capability for ADA."
 requires-python = "==3.14.2"
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
-    "ada-kpis-core==0.1.0",
-    "ada-kpis-planner==0.1.0",
-    "ada-kpis-sources==0.1.0",
+    "ada-kpis-core==0.2.0",
+    "ada-operational-data-core==0.1.0",
+    "ada-operational-data-planner==0.1.0",
+    "ada-operational-data-sources==0.1.0",
 ]
 
 [dependency-groups]
@@ -19,8 +20,9 @@ dev = ["pytest==9.1.1", "ruff==0.15.22"]
 
 [tool.uv.sources]
 ada-kpis-core = { path = "../core", editable = true }
-ada-kpis-planner = { path = "../planner", editable = true }
-ada-kpis-sources = { path = "../sources", editable = true }
+ada-operational-data-core = { path = "../../data/core", editable = true }
+ada-operational-data-planner = { path = "../../data/planner", editable = true }
+ada-operational-data-sources = { path = "../../data/sources", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["src"]

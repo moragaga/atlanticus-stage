@@ -38,3 +38,14 @@ def test_process_does_not_import_concrete_pi_or_notpii_data_producer_packages() 
 def test_shared_logics_is_not_used_as_a_catalog_or_resolver_layer() -> None:
     registry_imports = _imports(_SRC / 'catalog' / 'registry.py')
     assert not any('.shared.logics' in imported for imported in registry_imports)
+
+
+def test_process_uses_shared_data_ownership_without_legacy_kpi_planner_or_sources() -> None:
+    source = '\n'.join(path.read_text(encoding='utf-8') for path in _SRC.rglob('*.py'))
+    pyproject = (_ROOT / 'pyproject.toml').read_text(encoding='utf-8')
+    assert 'ada.kpis.planner' not in source
+    assert 'ada.kpis.sources' not in source
+    assert 'ada-kpis-planner' not in pyproject
+    assert 'ada-kpis-sources' not in pyproject
+    assert 'ada-operational-data-core==0.1.0' in pyproject
+    assert 'ada-operational-data-sources==0.1.0' in pyproject

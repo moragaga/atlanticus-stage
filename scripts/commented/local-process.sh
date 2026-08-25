@@ -55,19 +55,17 @@ generate_workspace() {
 }
 
 # prepare conserva el modo histórico sin argumentos y además expone la selección que ya soporta process_bundle.py.
-# --all se normaliza a una lista vacía porque el bundler interpreta cero procesos como descubrir/exportar todos.
+# --all se consume con shift y deja cero argumentos posicionales; esto evita arrays vacíos incompatibles con Bash 3.2 + set -u.
 command_prepare() {
-    local -a processes=("$@")
-
     if [[ "${1:-}" == "--all" ]]; then
         [[ "$#" -eq 1 ]] || fail "Usage: scripts/local-process.sh prepare [--all|PROCESS [PROCESS ...]]"
-        processes=()
+        shift
     fi
 
     validate_uv
     uv run --python "${PYTHON_VERSION}" --no-python-downloads --no-project \
         "${BUNDLER}" \
-        "${processes[@]}" \
+        "$@" \
         --repository-root "${ROOT}" \
         --output-root "${ROOT}/artifacts/processes"
     printf '%s\n' "Process artifacts prepared in: ${ROOT}/artifacts/processes"

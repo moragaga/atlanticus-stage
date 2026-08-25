@@ -148,7 +148,7 @@ def _unwrap(value: object) -> object:
         return value
     try:
         parsed = json.loads(text)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return value
     if isinstance(parsed, Mapping):
         return parsed.get('value', value)

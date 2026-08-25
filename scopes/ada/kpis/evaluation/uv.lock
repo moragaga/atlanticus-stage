@@ -9,10 +9,14 @@ resolution-markers = [
 
 [[package]]
 name = "ada-kpis-core"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "../core" }
+dependencies = [
+    { name = "ada-operational-data-core" },
+]
 
 [package.metadata]
+requires-dist = [{ name = "ada-operational-data-core", editable = "../../data/core" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -22,12 +26,13 @@ dev = [
 
 [[package]]
 name = "ada-kpis-evaluation"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "ada-kpis-core" },
-    { name = "ada-kpis-planner" },
-    { name = "ada-kpis-sources" },
+    { name = "ada-operational-data-core" },
+    { name = "ada-operational-data-planner" },
+    { name = "ada-operational-data-sources" },
 ]
 
 [package.dev-dependencies]
@@ -39,54 +44,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ada-kpis-core", editable = "../core" },
-    { name = "ada-kpis-planner", editable = "../planner" },
-    { name = "ada-kpis-sources", editable = "../sources" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = "==9.1.1" },
-    { name = "ruff", specifier = "==0.15.22" },
-]
-
-[[package]]
-name = "ada-kpis-planner"
-version = "0.1.0"
-source = { editable = "../planner" }
-dependencies = [
-    { name = "ada-kpis-core" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "ada-kpis-core", editable = "../core" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = "==9.1.1" },
-    { name = "ruff", specifier = "==0.15.22" },
-]
-
-[[package]]
-name = "ada-kpis-sources"
-version = "0.1.0"
-source = { editable = "../sources" }
-dependencies = [
-    { name = "ada-kpis-core" },
-    { name = "ada-kpis-planner" },
-    { name = "ada-operational-calendar" },
-    { name = "atlanticus-datasets" },
-    { name = "atlanticus-datasets-runtime" },
-    { name = "pandas" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "ada-kpis-core", editable = "../core" },
-    { name = "ada-kpis-planner", editable = "../planner" },
-    { name = "ada-operational-calendar", editable = "../../operational-calendar" },
-    { name = "atlanticus-datasets", editable = "../../../../backend/datasets" },
-    { name = "atlanticus-datasets-runtime", editable = "../../../../backend/datasets-runtime" },
-    { name = "pandas", specifier = "==3.0.3" },
+    { name = "ada-operational-data-core", editable = "../../data/core" },
+    { name = "ada-operational-data-planner", editable = "../../data/planner" },
+    { name = "ada-operational-data-sources", editable = "../../data/sources" },
 ]
 
 [package.metadata.requires-dev]
@@ -109,43 +69,68 @@ dev = [
 ]
 
 [[package]]
-name = "atlanticus-datasets"
+name = "ada-operational-data-core"
 version = "0.1.0"
-source = { editable = "../../../../backend/datasets" }
+source = { editable = "../../data/core" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
+]
 
 [[package]]
-name = "atlanticus-datasets-parquet"
-version = "0.2.0"
-source = { editable = "../../../../backend/datasets-parquet" }
+name = "ada-operational-data-planner"
+version = "0.1.0"
+source = { editable = "../../data/planner" }
 dependencies = [
-    { name = "atlanticus-datasets" },
-    { name = "pyarrow" },
+    { name = "ada-operational-data-core" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "atlanticus-datasets", editable = "../../../../backend/datasets" },
-    { name = "pyarrow", specifier = "==25.0.0" },
+requires-dist = [{ name = "ada-operational-data-core", editable = "../../data/core" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
 ]
 
 [[package]]
-name = "atlanticus-datasets-runtime"
-version = "0.2.0"
-source = { editable = "../../../../backend/datasets-runtime" }
+name = "ada-operational-data-sources"
+version = "0.1.0"
+source = { editable = "../../data/sources" }
 dependencies = [
+    { name = "ada-operational-calendar" },
+    { name = "ada-operational-data-core" },
+    { name = "ada-operational-data-planner" },
     { name = "atlanticus-datasets" },
-    { name = "atlanticus-datasets-parquet" },
     { name = "pandas" },
     { name = "pyarrow" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "ada-operational-calendar", editable = "../../operational-calendar" },
+    { name = "ada-operational-data-core", editable = "../../data/core" },
+    { name = "ada-operational-data-planner", editable = "../../data/planner" },
     { name = "atlanticus-datasets", editable = "../../../../backend/datasets" },
-    { name = "atlanticus-datasets-parquet", editable = "../../../../backend/datasets-parquet" },
     { name = "pandas", specifier = "==3.0.3" },
     { name = "pyarrow", specifier = "==25.0.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
+]
+
+[[package]]
+name = "atlanticus-datasets"
+version = "0.1.0"
+source = { editable = "../../../../backend/datasets" }
 
 [[package]]
 name = "colorama"

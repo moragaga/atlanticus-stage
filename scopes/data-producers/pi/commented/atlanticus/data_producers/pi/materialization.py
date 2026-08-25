@@ -374,9 +374,13 @@ def _current_schema(definitions: tuple[PiTagDefinition, ...]) -> pa.Schema:
 
 def _merge_active_schema(*, existing: pa.Schema, current: pa.Schema) -> pa.Schema:
     if 'timestamp_utc' not in existing.names:
-        raise PiDataProducerMaterializationError('existing PI dataset schema has no timestamp_utc field')
+        raise PiDataProducerMaterializationError(
+            'existing PI dataset schema has no timestamp_utc field'
+        )
     if existing.field('timestamp_utc').type != _TIMESTAMP_FIELD.type:
-        raise PiDataProducerMaterializationError('existing PI dataset timestamp_utc type is incompatible')
+        raise PiDataProducerMaterializationError(
+            'existing PI dataset timestamp_utc type is incompatible'
+        )
     current_by_name = {field.name: field for field in current}
     fields = [_TIMESTAMP_FIELD]
     seen = {'timestamp_utc'}
@@ -461,7 +465,7 @@ def _normalize_value(value: Any, definition: PiTagDefinition) -> float | str | N
             return None
         try:
             return float(value)
-        except (TypeError, ValueError, OverflowError):
+        except TypeError, ValueError, OverflowError:
             return None
     if isinstance(value, str):
         return value

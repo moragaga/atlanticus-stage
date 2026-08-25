@@ -15,4 +15,4 @@ def test_public_api_exposes_explicit_remanentes_contracts() -> None:
     assert 'RemanentesProducerState' in exported
     assert 'build_remanentes_data_producer' in exported
     assert 'RemanentesTransformKind' not in exported
-    assert producer.__version__ == '0.1.0'
+    assert producer.__version__ == '0.1.1'

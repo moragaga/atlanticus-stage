@@ -28,10 +28,7 @@ def active_extraction_modes(catalog: PiCatalog) -> tuple[PiExtractionMode, ...]:
     modes = tuple(
         mode
         for mode in _MODE_ORDER
-        if any(
-            item.is_active and item.extraction_mode is mode
-            for item in catalog.definitions
-        )
+        if any(item.is_active and item.extraction_mode is mode for item in catalog.definitions)
     )
     if not modes:
         raise NotPiiCatalogError('NOT PII catalog must contain active definitions')

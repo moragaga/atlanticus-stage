@@ -3,37 +3,26 @@ from __future__ import annotations
 import ada.kpis.core as core
 
 
-def test_public_api_contains_the_closed_core_contract() -> None:
+def test_public_api_contains_only_kpi_domain_contracts() -> None:
     expected = {
-        'DataRuntimeContext',
         'KpiArea',
         'KpiCatalog',
-        'KpiColumnNotRequestedError',
         'KpiEvaluation',
         'KpiJsonContainer',
         'KpiJsonValue',
         'KpiMode',
-        'KpiOperationalScope',
-        'KpiPartition',
         'KpiNativeValue',
         'KpiResolver',
         'KpiResult',
         'KpiScalar',
-        'KpiSource',
-        'KpiSourceNotRequestedError',
         'KpiSourceTrace',
-        'KpiSourceView',
         'KpiSpec',
         'KpiStatus',
-        'KpiTimeWindow',
-        'KpiTimeWindowUnit',
         'KpiValueKind',
         'KpiWatermark',
         'OverKpiResolver',
         'OverKpiSpec',
-        'RuntimeFrameContext',
-        'ShiftScope',
-        'ShiftSelection',
-        'SourceRequirement',
+        '__version__',
     }
     assert set(core.__all__) == expected
+    assert core.__version__ == '0.2.0'

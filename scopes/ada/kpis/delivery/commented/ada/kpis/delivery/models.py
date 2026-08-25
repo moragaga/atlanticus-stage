@@ -42,7 +42,9 @@ class KpiDeliveryValue:
             raise KpiDeliveryValidationError('value_kind must be KpiValueKind or None')
         if self.status is KpiDeliveryStatus.MISSING:
             if self.value_kind is not None or self.value is not None:
-                raise KpiDeliveryValidationError('missing value must not contain value_kind or value')
+                raise KpiDeliveryValidationError(
+                    'missing value must not contain value_kind or value'
+                )
             return
         if self.value_kind is None:
             raise KpiDeliveryValidationError('resolved value requires value_kind')
@@ -104,9 +106,7 @@ class KpiDeliverySnapshot:
             'partition_id': self.partition_id,
             'manifest': self.manifest.as_payload(),
             'stores': {
-                store_key: {
-                    kpi_key: value.as_payload() for kpi_key, value in values.items()
-                }
+                store_key: {kpi_key: value.as_payload() for kpi_key, value in values.items()}
                 for store_key, values in self.stores.items()
             },
         }

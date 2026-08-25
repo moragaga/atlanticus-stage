@@ -34,7 +34,7 @@ from atlanticus.data_producers.sql.producer_state import (
 )
 from atlanticus.data_producers.sql.settings import SqlRetryPolicy
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 __all__ = [
     'DataValueKind',

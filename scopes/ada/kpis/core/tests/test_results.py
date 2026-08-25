@@ -4,11 +4,11 @@ from datetime import UTC, datetime
 
 import pytest
 
+from ada.data.core import DataSource
 from ada.kpis.core import (
     KpiArea,
     KpiEvaluation,
     KpiResult,
-    KpiSource,
     KpiSourceTrace,
     KpiStatus,
     KpiValueKind,
@@ -99,7 +99,7 @@ def test_error_result_has_no_values_and_keeps_safe_diagnostic() -> None:
 def test_evaluation_exposes_history_and_error_projections_independently() -> None:
     evaluation = KpiEvaluation(
         watermark=_watermark(),
-        sources=(KpiSourceTrace(KpiSource.PI_INTERPOLATED, _watermark()),),
+        sources=(KpiSourceTrace(DataSource.PI_INTERPOLATED, _watermark()),),
         results=(
             KpiResult(
                 key='historical-ok',

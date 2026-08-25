@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from numbers import Integral, Real
 
-from ada.kpis.core import DataRuntimeContext, KpiMode, KpiNativeValue, KpiSpec
+from ada.data.core import DataRuntimeContext
+from ada.kpis.core import KpiMode, KpiNativeValue, KpiSpec
 from ada.kpis.evaluation.errors import KpiInvalidValueError
 
 
@@ -20,23 +21,24 @@ def resolve_base_value(*, spec: KpiSpec, data_context: DataRuntimeContext) -> Kp
     assert spec.partition is not None
     source_context = data_context.get(spec.source, spec.partition)
     if spec.mode is KpiMode.LATEST:
-        return source_context.last_value(spec.columns[0])
+        return source_context.last_value(spec.columns[0].name)
     if spec.mode is KpiMode.LATEST_NUMBER:
-        return source_context.last_value_number(spec.columns[0])
+        return source_context.last_value_number(spec.columns[0].name)
     if spec.mode is KpiMode.STATUS:
-        value = source_context.last_value(spec.columns[0])
+        value = source_context.last_value(spec.columns[0].name)
         if value is None:
             return None
         return _resolve_status(value)
     if spec.mode is KpiMode.SUM_LATESTS_NUMBERS:
         return sum(
-            source_context.last_value_number(column, default=0.0) or 0.0 for column in spec.columns
+            source_context.last_value_number(column.name, default=0.0) or 0.0
+            for column in spec.columns
         )
     if spec.mode is KpiMode.MAX_LATESTS_NUMBERS:
         values = tuple(
             value
             for column in spec.columns
-            if (value := source_context.last_value_number(column, default=None)) is not None
+            if (value := source_context.last_value_number(column.name, default=None)) is not None
         )
         return max(values) if values else None
     raise ValueError(f'{spec.key}: unsupported KPI mode: {spec.mode.value}')

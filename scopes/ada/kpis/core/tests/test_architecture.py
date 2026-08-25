@@ -4,19 +4,14 @@ import ast
 from pathlib import Path
 
 
-def test_core_has_no_runtime_or_infrastructure_dependencies() -> None:
+def test_core_only_depends_on_shared_data_contracts() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject = (root / 'pyproject.toml').read_text(encoding='utf-8')
-    assert 'dependencies = []' in pyproject
+    assert 'ada-operational-data-core==0.1.0' in pyproject
+    assert 'ada-operational-data-planner' not in pyproject
+    assert 'ada-operational-data-sources' not in pyproject
 
-    forbidden_roots = {
-        'atlanticus',
-        'azure',
-        'cosmos',
-        'flask',
-        'pandas',
-        'pyarrow',
-    }
+    forbidden_roots = {'atlanticus', 'azure', 'cosmos', 'flask', 'pandas', 'pyarrow'}
     for path in (root / 'src').rglob('*.py'):
         tree = ast.parse(path.read_text(encoding='utf-8'))
         for node in ast.walk(tree):
@@ -29,3 +24,10 @@ def test_core_has_no_runtime_or_infrastructure_dependencies() -> None:
             assert not names & forbidden_roots, (
                 f'{path}: forbidden imports {names & forbidden_roots}'
             )
+
+
+def test_legacy_shared_data_modules_are_removed_from_kpi_core() -> None:
+    root = Path(__file__).resolve().parents[1]
+    package = root / 'src' / 'ada' / 'kpis' / 'core'
+    assert not (package / 'requirements.py').exists()
+    assert not (package / 'runtime.py').exists()

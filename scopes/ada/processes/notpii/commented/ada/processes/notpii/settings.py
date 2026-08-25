@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from ada.processes.notpii.errors import NotPiiProcessConfigurationError
-from atlanticus.configuration import ConfigurationValueError, ConfigurationVariableSpec, ResolvedConfiguration
+from atlanticus.configuration import (
+    ConfigurationValueError,
+    ConfigurationVariableSpec,
+    ResolvedConfiguration,
+)
 from atlanticus.connectivity.service_bus import ServiceBusConfigurationError, ServiceBusSettings
 from atlanticus.integrations.pi.contracts import PiExtractionMode
 
@@ -64,9 +68,7 @@ def configuration_specs(
 ) -> tuple[ConfigurationVariableSpec, ...]:
     modes = _normalize_active_modes(active_modes)
     service_bus_specs = tuple(
-        spec
-        for mode in modes
-        for spec in _service_bus_specs(_MODE_PREFIXES[mode])
+        spec for mode in modes for spec in _service_bus_specs(_MODE_PREFIXES[mode])
     )
     return (
         ConfigurationVariableSpec(key='APPLICATION'),
@@ -86,7 +88,9 @@ def configuration_specs(
 
 def _normalize_active_modes(values: Iterable[PiExtractionMode]) -> tuple[PiExtractionMode, ...]:
     if isinstance(values, PiExtractionMode | str | bytes):
-        raise NotPiiProcessConfigurationError('active_modes must be an iterable of extraction modes')
+        raise NotPiiProcessConfigurationError(
+            'active_modes must be an iterable of extraction modes'
+        )
     try:
         modes = tuple(values)
     except TypeError as error:

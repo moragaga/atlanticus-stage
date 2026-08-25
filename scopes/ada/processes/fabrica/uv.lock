@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "ada-fabrica-process"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "atlanticus-configuration" },
@@ -61,7 +61,7 @@ requires-dist = [
 
 [[package]]
 name = "atlanticus-data-producers-fabrica"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "../../../data-producers/fabrica" }
 dependencies = [
     { name = "atlanticus-datasets" },
@@ -101,7 +101,7 @@ source = { editable = "../../../../backend/datasets" }
 
 [[package]]
 name = "atlanticus-datasets-parquet"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "../../../../backend/datasets-parquet" }
 dependencies = [
     { name = "atlanticus-datasets" },
@@ -116,7 +116,7 @@ requires-dist = [
 
 [[package]]
 name = "atlanticus-datasets-runtime"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "../../../../backend/datasets-runtime" }
 dependencies = [
     { name = "atlanticus-datasets" },
@@ -203,26 +203,6 @@ requires-dist = [
 ]
 
 [[package]]
-name = "atlanticus-pi-contracts"
-version = "0.1.0"
-source = { editable = "../../../../integrations/pi/contracts" }
-
-[[package]]
-name = "atlanticus-service-bus"
-version = "0.1.0"
-source = { editable = "../../../../connectivity/service-bus" }
-dependencies = [
-    { name = "atlanticus-observability" },
-    { name = "azure-servicebus" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atlanticus-observability", editable = "../../../../backend/observability" },
-    { name = "azure-servicebus", specifier = "==7.14.3" },
-]
-
-[[package]]
 name = "atlanticus-state"
 version = "0.2.0"
 source = { editable = "../../../../backend/state" }
@@ -306,20 +286,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ab/21/178fed00e9738e4c953e147d46f5f803bfeb3fde50b11efdb99ae016f05f/azure_monitor_opentelemetry_exporter-1.0.0b55.tar.gz", hash = "sha256:6701307124e5eeb1837b269ddafab0affb69020fdb842d7c5ff1a3122514595a", size = 342308, upload-time = "2026-07-01T23:59:14.53Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/70/80/c1e58ea1c7dd7452579ab98912e9a3aa9a5fdb22f24a676f3cdaac3ab096/azure_monitor_opentelemetry_exporter-1.0.0b55-py2.py3-none-any.whl", hash = "sha256:5f0bcfcfd36d82f3f55cf5fe894ea05c5c0a32d2e38adf571eaa0e2b655aeb9e", size = 251064, upload-time = "2026-07-01T23:59:16.305Z" },
-]
-
-[[package]]
-name = "azure-servicebus"
-version = "7.14.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "azure-core" },
-    { name = "isodate" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a8/d2/a5c11d4c955e2875de2383c1af8e43ce4899e8418b22e61d32d2bf103626/azure_servicebus-7.14.3.tar.gz", hash = "sha256:70a63384557aec0bee727740e7b25ded29e9e701b77611764577fd7402389402", size = 534786, upload-time = "2025-10-31T05:30:03.342Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/04/e9/d9fd0b2bef14d85b408c51802142b1c8b7bc3ab08514c89432547b1d87d3/azure_servicebus-7.14.3-py3-none-any.whl", hash = "sha256:386f8d32dae8881661ec8d791c38978eca2bbf7ea9f489d6cff8ad9cc6990234", size = 412522, upload-time = "2025-10-31T05:30:05.252Z" },
 ]
 
 [[package]]

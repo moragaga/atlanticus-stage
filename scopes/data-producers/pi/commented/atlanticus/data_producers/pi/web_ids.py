@@ -53,7 +53,9 @@ class WebIdRegistry:
         if not isinstance(tag_names, tuple) or any(
             not isinstance(item, str) or not item for item in tag_names
         ):
-            raise PiDataProducerWebIdRegistryError('tag_names must be a tuple of non-empty text values')
+            raise PiDataProducerWebIdRegistryError(
+                'tag_names must be a tuple of non-empty text values'
+            )
         entries = self.current()
         return MappingProxyType({name: entries[name] for name in tag_names if name in entries})
 
@@ -86,7 +88,9 @@ class WebIdRegistry:
         if not isinstance(payload, Mapping):
             raise PiDataProducerWebIdRegistryError('WebID registry must be a JSON object')
         if set(payload) != {'schema_version', 'web_ids'}:
-            raise PiDataProducerWebIdRegistryError('WebID registry has unexpected or missing fields')
+            raise PiDataProducerWebIdRegistryError(
+                'WebID registry has unexpected or missing fields'
+            )
         if payload.get('schema_version') != _SCHEMA_VERSION:
             raise PiDataProducerWebIdRegistryError('WebID registry schema version is not supported')
         web_ids = payload.get('web_ids')
@@ -128,7 +132,9 @@ def _normalize_entries(entries: Mapping[str, object]) -> dict[str, str]:
     seen: set[str] = set()
     for raw_tag_name, raw_web_id in entries.items():
         if not isinstance(raw_tag_name, str) or not raw_tag_name:
-            raise PiDataProducerWebIdRegistryError('WebID registry tag names must be non-empty text')
+            raise PiDataProducerWebIdRegistryError(
+                'WebID registry tag names must be non-empty text'
+            )
         if raw_tag_name != raw_tag_name.strip():
             raise PiDataProducerWebIdRegistryError(
                 'WebID registry tag names must not contain surrounding whitespace'

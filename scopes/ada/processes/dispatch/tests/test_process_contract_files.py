@@ -35,7 +35,7 @@ def test_data_producer_dependencies_are_split_by_capability() -> None:
     sources = project['tool']['uv']['sources']
 
     assert 'atlanticus-data-producers-core==0.1.0' in dependencies
-    assert 'atlanticus-data-producers-sql==0.1.0' in dependencies
+    assert 'atlanticus-data-producers-sql==0.1.1' in dependencies
     assert 'atlanticus-data-producers==0.1.0' not in dependencies
     assert 'atlanticus-data-producers' not in sources
 

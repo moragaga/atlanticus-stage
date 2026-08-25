@@ -1,6 +1,7 @@
 import pytest
 
-from ada.kpis.core import KpiArea, KpiMode, KpiPartition, KpiSource, KpiSpec, OverKpiSpec
+from ada.data.core import DataColumn, DataColumnType, DataPartition, DataSource
+from ada.kpis.core import KpiArea, KpiMode, KpiSpec, OverKpiSpec
 from ada.processes.kpis.catalog import registry
 from ada.processes.kpis.errors import KpiProcessCatalogError
 
@@ -14,9 +15,9 @@ def _base(key: str) -> KpiSpec:
         key=key,
         area=KpiArea.GENERAL,
         mode=KpiMode.LATEST_NUMBER,
-        source=KpiSource.PI_INTERPOLATED,
-        partition=KpiPartition.LATEST,
-        columns=('value',),
+        source=DataSource.PI_INTERPOLATED,
+        partition=DataPartition.LATEST,
+        columns=(DataColumn('value', DataColumnType.FLOAT),),
     )
 
 

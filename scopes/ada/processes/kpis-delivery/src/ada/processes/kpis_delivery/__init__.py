@@ -21,7 +21,7 @@ from ada.processes.kpis_delivery.models import (
 from ada.processes.kpis_delivery.repository import KpiLatestSnapshotRepository
 from ada.processes.kpis_delivery.settings import KpiDeliveryProcessSettings, configuration_specs
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 __all__ = [
     'KpiDeliveryBindingsReader',

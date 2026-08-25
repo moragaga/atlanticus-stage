@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlanticus-data-producers-sql"
-version = "0.1.0"
+version = "0.1.1"
 description = "Reusable SQL data producer capability for Atlanticus scopes."
 requires-python = "==3.14.2"
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "atlanticus-data-producers-core==0.1.0",
     "atlanticus-datasets==0.1.0",
-    "atlanticus-datasets-parquet==0.2.0",
-    "atlanticus-datasets-runtime==0.2.0",
+    "atlanticus-datasets-parquet==0.2.1",
+    "atlanticus-datasets-runtime==0.2.1",
     "atlanticus-job-runtime==0.7.0",
     "atlanticus-sql==0.1.0",
     "atlanticus-state==0.2.0",

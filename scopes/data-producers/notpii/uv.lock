@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "atlanticus-data-producers-notpii"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "atlanticus-datasets" },
@@ -57,7 +57,7 @@ source = { editable = "../../../backend/datasets" }
 
 [[package]]
 name = "atlanticus-datasets-parquet"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "../../../backend/datasets-parquet" }
 dependencies = [
     { name = "atlanticus-datasets" },
@@ -72,7 +72,7 @@ requires-dist = [
 
 [[package]]
 name = "atlanticus-datasets-runtime"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "../../../backend/datasets-runtime" }
 dependencies = [
     { name = "atlanticus-datasets" },

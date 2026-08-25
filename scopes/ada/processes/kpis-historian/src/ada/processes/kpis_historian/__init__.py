@@ -16,7 +16,7 @@ from ada.processes.kpis_historian.job import (
 from ada.processes.kpis_historian.settings import KpiHistorianSettings
 from ada.processes.kpis_historian.state import KpiHistorianCommitStore
 
-__version__ = '0.1.0'
+__version__ = '0.1.2'
 
 __all__ = [
     'KpiHistorianCommitStore',

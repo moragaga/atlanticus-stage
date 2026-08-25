@@ -63,9 +63,7 @@ class RemanentesRowsStreamDefinition:
         return _source_local_date(self, value)
 
 
-type RemanentesStreamDefinition = (
-    RemanentesStocksStreamDefinition | RemanentesRowsStreamDefinition
-)
+type RemanentesStreamDefinition = RemanentesStocksStreamDefinition | RemanentesRowsStreamDefinition
 
 
 def parse_source_timestamp(
@@ -85,7 +83,7 @@ def parse_source_timestamp(
             f'{file_date}{match.group("file_time")}',
             '%Y%m%d%H%M',
         )
-    except (IndexError, ValueError):
+    except IndexError, ValueError:
         return None
     timezone = ZoneInfo(definition.source_timezone_name)
     return parsed.replace(tzinfo=timezone).astimezone(UTC)

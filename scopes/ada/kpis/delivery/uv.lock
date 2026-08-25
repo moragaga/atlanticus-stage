@@ -4,10 +4,14 @@ requires-python = "==3.14.2"
 
 [[package]]
 name = "ada-kpis-core"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "../core" }
+dependencies = [
+    { name = "ada-operational-data-core" },
+]
 
 [package.metadata]
+requires-dist = [{ name = "ada-operational-data-core", editable = "../../data/core" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -17,7 +21,7 @@ dev = [
 
 [[package]]
 name = "ada-kpis-delivery"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "ada-kpis-core" },
@@ -31,6 +35,19 @@ dev = [
 
 [package.metadata]
 requires-dist = [{ name = "ada-kpis-core", editable = "../core" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==9.1.1" },
+    { name = "ruff", specifier = "==0.15.22" },
+]
+
+[[package]]
+name = "ada-operational-data-core"
+version = "0.1.0"
+source = { editable = "../../data/core" }
+
+[package.metadata]
 
 [package.metadata.requires-dev]
 dev = [

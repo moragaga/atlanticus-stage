@@ -1,11 +1,12 @@
-# Modela resultados reales como OK o ERROR y conserva un diagnóstico seguro en la evaluation.
 from __future__ import annotations
 
+# Espejo pedagógico: los resultados y trazas siguen siendo propiedad de KPI aunque la fuente sea un DataSource compartido.
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from ada.kpis.core.enums import KpiArea, KpiSource, KpiStatus, KpiValueKind
+from ada.data.core import DataSource
+from ada.kpis.core.enums import KpiArea, KpiStatus, KpiValueKind
 from ada.kpis.core.values import KpiNativeValue, KpiScalar
 from ada.kpis.core.watermark import KpiWatermark
 
@@ -89,11 +90,11 @@ class KpiResult:
 
 @dataclass(frozen=True, slots=True)
 class KpiSourceTrace:
-    source: KpiSource
+    source: DataSource
     watermark: KpiWatermark | None = None
 
     def __post_init__(self) -> None:
-        _require_enum(self.source, KpiSource, 'source')
+        _require_enum(self.source, DataSource, 'source')
         if self.watermark is not None and not isinstance(self.watermark, KpiWatermark):
             raise TypeError(f'{self.source.value}: watermark must be KpiWatermark')
 
@@ -104,7 +105,7 @@ class KpiSourceTrace:
     def from_payload(
         cls,
         *,
-        source: KpiSource,
+        source: DataSource,
         payload: Mapping[str, object],
     ) -> KpiSourceTrace:
         if not isinstance(payload, Mapping):
@@ -175,7 +176,7 @@ class KpiEvaluation:
             raise ValueError('kpi evaluation kpis must be a mapping')
         sources = tuple(
             KpiSourceTrace.from_payload(
-                source=KpiSource(str(key)),
+                source=DataSource(str(key)),
                 payload=_require_mapping(value),
             )
             for key, value in source_payload.items()

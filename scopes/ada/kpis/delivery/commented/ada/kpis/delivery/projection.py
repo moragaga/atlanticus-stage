@@ -77,9 +77,7 @@ def calculate_kpi_latest_revision(
     payload = {
         'schema_version': KPI_LATEST_SCHEMA_VERSION,
         'stores': {
-            store_key: {
-                kpi_key: value.as_payload() for kpi_key, value in values.items()
-            }
+            store_key: {kpi_key: value.as_payload() for kpi_key, value in values.items()}
             for store_key, values in stores.items()
         },
     }

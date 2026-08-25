@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from ada.kpis.core import (
+from ada.data.core import (
+    DataColumnNotRequestedError,
     DataRuntimeContext,
+    DataSource,
+    DataSourceNotRequestedError,
+)
+from ada.data.planner import DataLoadPlan, DataRequirementPlanner
+from ada.data.sources import DataSourcesError, LoadedDataSources
+from ada.kpis.core import (
     KpiCatalog,
-    KpiColumnNotRequestedError,
     KpiEvaluation,
     KpiResult,
-    KpiSource,
-    KpiSourceNotRequestedError,
     KpiSourceTrace,
     KpiSpec,
     KpiStatus,
@@ -21,13 +26,11 @@ from ada.kpis.evaluation.dependencies import KpiDependencies
 from ada.kpis.evaluation.errors import KpiInvalidValueError
 from ada.kpis.evaluation.modes import resolve_base_value
 from ada.kpis.evaluation.values import build_result, error_result
-from ada.kpis.planner import KpiLoadPlan, KpiRequirementPlanner
-from ada.kpis.sources import KpiSourcesError, LoadedKpiSources
 
 
 @runtime_checkable
 class KpiEvaluationSourceLoader(Protocol):
-    def load(self, *, plan: KpiLoadPlan, watermark: KpiWatermark) -> LoadedKpiSources: ...
+    def load(self, *, plan: DataLoadPlan, as_of: datetime) -> LoadedDataSources: ...
 
 
 class KpiEvaluator:
@@ -35,29 +38,31 @@ class KpiEvaluator:
         self,
         *,
         source_loader: KpiEvaluationSourceLoader,
-        planner: KpiRequirementPlanner | None = None,
+        planner: DataRequirementPlanner | None = None,
     ) -> None:
         if not isinstance(source_loader, KpiEvaluationSourceLoader):
             raise TypeError('source_loader must implement KpiEvaluationSourceLoader')
-        if planner is not None and not isinstance(planner, KpiRequirementPlanner):
-            raise TypeError('planner must be KpiRequirementPlanner or None')
+        if planner is not None and not isinstance(planner, DataRequirementPlanner):
+            raise TypeError('planner must be DataRequirementPlanner or None')
         self._source_loader = source_loader
-        self._planner = planner or KpiRequirementPlanner()
+        self._planner = planner or DataRequirementPlanner()
 
     def evaluate(
         self,
         *,
         catalog: KpiCatalog,
         watermark: KpiWatermark,
-        source_watermarks: Mapping[KpiSource, KpiWatermark | None] | None = None,
+        source_watermarks: Mapping[DataSource, KpiWatermark | None] | None = None,
     ) -> KpiEvaluation:
         if not isinstance(catalog, KpiCatalog):
             raise TypeError('catalog must be KpiCatalog')
         if not isinstance(watermark, KpiWatermark):
             raise TypeError('watermark must be KpiWatermark')
         watermarks = _normalize_source_watermarks(source_watermarks)
-        plan = self._planner.plan(catalog)
-        loaded = self._source_loader.load(plan=plan, watermark=watermark)
+        requirements_by_key = {spec.key: spec.requirements for spec in catalog.specs}
+        requirements_by_key.update({spec.key: () for spec in catalog.over_specs})
+        plan = self._planner.plan(requirements_by_key)
+        loaded = self._source_loader.load(plan=plan, as_of=watermark.timestamp_utc)
         results: list[KpiResult] = []
         resolved: dict[str, KpiResult] = {}
         for spec in catalog.specs:
@@ -79,7 +84,7 @@ class KpiEvaluator:
         )
 
     @staticmethod
-    def _evaluate_base(*, spec: KpiSpec, loaded: LoadedKpiSources) -> KpiResult:
+    def _evaluate_base(*, spec: KpiSpec, loaded: LoadedDataSources) -> KpiResult:
         try:
             data_context = loaded.context_for(spec.key)
             if not isinstance(data_context, DataRuntimeContext):
@@ -93,7 +98,7 @@ class KpiEvaluator:
                 persist_history=spec.persist_history,
                 error=_safe_error(error, include_message=True),
             )
-        except KpiSourcesError as error:
+        except DataSourcesError as error:
             return error_result(
                 key=spec.key,
                 area=spec.area,
@@ -101,7 +106,7 @@ class KpiEvaluator:
                 persist_history=spec.persist_history,
                 error=_safe_error(error, include_message=True),
             )
-        except (KpiSourceNotRequestedError, KpiColumnNotRequestedError) as error:
+        except (DataSourceNotRequestedError, DataColumnNotRequestedError) as error:
             return error_result(
                 key=spec.key,
                 area=spec.area,
@@ -184,16 +189,16 @@ def _safe_error(error: Exception, *, include_message: bool) -> str:
 
 
 def _normalize_source_watermarks(
-    value: Mapping[KpiSource, KpiWatermark | None] | None,
-) -> Mapping[KpiSource, KpiWatermark | None]:
+    value: Mapping[DataSource, KpiWatermark | None] | None,
+) -> Mapping[DataSource, KpiWatermark | None]:
     if value is None:
         return {}
     if not isinstance(value, Mapping):
         raise TypeError('source_watermarks must be a mapping or None')
-    normalized: dict[KpiSource, KpiWatermark | None] = {}
+    normalized: dict[DataSource, KpiWatermark | None] = {}
     for source, watermark in value.items():
-        if not isinstance(source, KpiSource):
-            raise TypeError('source_watermarks keys must be KpiSource values')
+        if not isinstance(source, DataSource):
+            raise TypeError('source_watermarks keys must be DataSource values')
         if watermark is not None and not isinstance(watermark, KpiWatermark):
             raise TypeError(f'{source.value}: source watermark must be KpiWatermark or None')
         normalized[source] = watermark

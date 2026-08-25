@@ -46,7 +46,7 @@ from atlanticus.data_producers.fabrica.transform import (
     merge_partition_frame,
 )
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 __all__ = [
     'FabricaContractError',

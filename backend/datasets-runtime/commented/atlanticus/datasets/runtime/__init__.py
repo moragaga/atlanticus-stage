@@ -18,7 +18,7 @@ from atlanticus.datasets.runtime.models import (
     TableReadResult,
 )
 
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 
 # La lista explícita evita que detalles internos se conviertan accidentalmente en contrato público.
 __all__ = [

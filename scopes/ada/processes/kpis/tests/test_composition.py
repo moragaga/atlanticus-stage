@@ -1,7 +1,8 @@
 import pytest
 
-from ada.kpis.core import KpiArea, KpiCatalog, KpiMode, KpiPartition, KpiSource, KpiSpec
-from ada.kpis.sources import PiSourceProvider
+from ada.data.core import DataColumn, DataColumnType, DataPartition, DataSource
+from ada.data.sources import PiSourceProvider
+from ada.kpis.core import KpiArea, KpiCatalog, KpiMode, KpiSpec
 from ada.processes.kpis.composition import build_composition
 from ada.processes.kpis.errors import KpiProcessConfigurationError
 from atlanticus.configuration import ConfigurationSource, ResolvedConfiguration
@@ -9,7 +10,7 @@ from atlanticus.kernel import Environment
 from atlanticus.state import AtomicStateStore, StateKey
 
 
-def _catalog(source=KpiSource.PI_INTERPOLATED) -> KpiCatalog:
+def _catalog(source=DataSource.PI_INTERPOLATED) -> KpiCatalog:
     return KpiCatalog(
         specs=(
             KpiSpec(
@@ -17,8 +18,8 @@ def _catalog(source=KpiSource.PI_INTERPOLATED) -> KpiCatalog:
                 area=KpiArea.GENERAL,
                 mode=KpiMode.LATEST_NUMBER,
                 source=source,
-                partition=KpiPartition.LATEST,
-                columns=('value',),
+                partition=DataPartition.LATEST,
+                columns=(DataColumn('value', DataColumnType.FLOAT),),
             ),
         )
     )
@@ -84,8 +85,8 @@ def test_composition_requires_non_pi_application_only_when_catalog_uses_it(tmp_p
 
     build_composition(configuration=configuration, catalog=_catalog())
 
-    with pytest.raises(KpiProcessConfigurationError, match='REMANENTES_APPLICATION is required'):
+    with pytest.raises(KpiProcessConfigurationError, match='application route is not configured'):
         build_composition(
             configuration=configuration,
-            catalog=_catalog(KpiSource.REMANENTES_STOCKS),
+            catalog=_catalog(DataSource.REMANENTES_STOCKS),
         )

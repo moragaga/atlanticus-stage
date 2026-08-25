@@ -1,9 +1,10 @@
-# Valida que cada vista solicitada tenga binding físico antes de iniciar el proceso.
 from __future__ import annotations
 
+# Espejo pedagógico: esta raíz compone KPI con ada.data, datasets-runtime y persistencia sin duplicar el planner ni el loader.
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ada.data.sources import DataSourceLoader, DataSourceRegistry, build_current_source_registry
 from ada.kpis.core import KpiCatalog
 from ada.kpis.evaluation import KpiEvaluator
 from ada.kpis.persistence import (
@@ -13,7 +14,6 @@ from ada.kpis.persistence import (
     KpiLatestRepository,
     KpiPersistencePaths,
 )
-from ada.kpis.sources import KpiSourceLoader, KpiSourceRegistry, build_current_source_registry
 from ada.processes.kpis.catalog import build_catalog
 from ada.processes.kpis.clock import StatePiClock
 from ada.processes.kpis.job import KpiProcessJob
@@ -63,7 +63,7 @@ def build_composition(
         raise TypeError('catalog must be KpiCatalog')
 
     settings = KpiProcessSettings.from_configuration(configuration)
-    settings.source_applications.validate_catalog(resolved_catalog)
+    settings.validate_catalog(resolved_catalog)
     runtime_configuration = RuntimeConfiguration.from_sources(environ=configuration.values)
 
     kpi_state_store = AtomicStateStore(
@@ -81,7 +81,7 @@ def build_composition(
         catalog=resolved_catalog,
         registry=source_registry,
     )
-    source_loader = KpiSourceLoader(
+    source_loader = DataSourceLoader(
         reader=DatasetRuntimeSourceReader(runtimes=source_runtimes),
         registry=source_registry,
     )
@@ -121,7 +121,7 @@ def _build_source_runtimes(
     runtime_configuration: RuntimeConfiguration,
     settings: KpiProcessSettings,
     catalog: KpiCatalog,
-    registry: KpiSourceRegistry,
+    registry: DataSourceRegistry,
 ) -> dict[DatasetKey, DatasetFrameRuntime]:
     routes: dict[DatasetKey, DatasetFrameRuntime] = {}
     runtimes_by_application: dict[str, DatasetRuntime] = {}

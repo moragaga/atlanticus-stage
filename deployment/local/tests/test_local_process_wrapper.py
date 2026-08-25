@@ -69,6 +69,13 @@ def test_prepare_all_normalizes_to_bundler_discovery(tmp_path: Path) -> None:
     assert "process_bundle.py" in " ".join(uv_arguments)
 
 
+def test_prepare_all_avoids_empty_array_expansion_for_macos_bash_32() -> None:
+    wrapper = (REPOSITORY_ROOT / "scripts/local-process.sh").read_text(encoding="utf-8")
+
+    assert "local -a processes" not in wrapper
+    assert "${processes[@]}" not in wrapper
+
+
 def test_prepare_forwards_selected_processes_to_bundler(tmp_path: Path) -> None:
     result, uv_arguments = _run_prepare(
         tmp_path,

@@ -71,9 +71,7 @@ def build_fabrica_data_producer(
         definition for definition in resolved_definitions if definition.metrics
     )
     storages = {
-        definition.stream_key: StorageClient(
-            settings=connections[definition.stream_key].settings
-        )
+        definition.stream_key: StorageClient(settings=connections[definition.stream_key].settings)
         for definition in enabled_definitions
     }
     dataset_runtime = DatasetRuntime(

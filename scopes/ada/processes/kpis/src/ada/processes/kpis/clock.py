@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
-from ada.kpis.core import KpiSource, KpiWatermark
-from ada.kpis.sources import PiSourceProvider
+from ada.data.core import DataSource
+from ada.data.sources import PiSourceProvider
+from ada.kpis.core import KpiWatermark
 from ada.processes.kpis.errors import KpiProcessWatermarkError
 from atlanticus.state import AtomicStateStore, StateKey
 
@@ -19,17 +20,17 @@ _NOTPII_RECORDED = 'recorded'
 @dataclass(frozen=True, slots=True)
 class PiClockSnapshot:
     watermark: KpiWatermark | None
-    source_watermarks: Mapping[KpiSource, KpiWatermark | None]
+    source_watermarks: Mapping[DataSource, KpiWatermark | None]
 
     def __post_init__(self) -> None:
         if self.watermark is not None and not isinstance(self.watermark, KpiWatermark):
             raise TypeError('watermark must be KpiWatermark or None')
         if not isinstance(self.source_watermarks, Mapping):
             raise TypeError('source_watermarks must be a mapping')
-        normalized: dict[KpiSource, KpiWatermark | None] = {}
+        normalized: dict[DataSource, KpiWatermark | None] = {}
         for source, watermark in self.source_watermarks.items():
-            if not isinstance(source, KpiSource):
-                raise TypeError('source_watermarks keys must be KpiSource values')
+            if not isinstance(source, DataSource):
+                raise TypeError('source_watermarks keys must be DataSource values')
             if watermark is not None and not isinstance(watermark, KpiWatermark):
                 raise TypeError(f'{source.value}: watermark must be KpiWatermark or None')
             normalized[source] = watermark
@@ -74,8 +75,8 @@ class StatePiClock:
         return PiClockSnapshot(
             watermark=watermark,
             source_watermarks={
-                KpiSource.PI_INTERPOLATED: watermark,
-                KpiSource.PI_RECORDED: watermark,
+                DataSource.PI_INTERPOLATED: watermark,
+                DataSource.PI_RECORDED: watermark,
             },
         )
 
@@ -97,8 +98,8 @@ class StatePiClock:
         return PiClockSnapshot(
             watermark=interpolated,
             source_watermarks={
-                KpiSource.PI_INTERPOLATED: interpolated,
-                KpiSource.PI_RECORDED: recorded,
+                DataSource.PI_INTERPOLATED: interpolated,
+                DataSource.PI_RECORDED: recorded,
             },
         )
 
@@ -150,7 +151,7 @@ def _empty_snapshot() -> PiClockSnapshot:
     return PiClockSnapshot(
         watermark=None,
         source_watermarks={
-            KpiSource.PI_INTERPOLATED: None,
-            KpiSource.PI_RECORDED: None,
+            DataSource.PI_INTERPOLATED: None,
+            DataSource.PI_RECORDED: None,
         },
     )

@@ -91,7 +91,7 @@ def configuration_specs() -> tuple[ConfigurationVariableSpec, ...]:
 def _positive_integer(value: str | int, field_name: str) -> int:
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise RemanentesProcessConfigurationError(
             f'{field_name} must be an integer greater than zero'
         ) from None

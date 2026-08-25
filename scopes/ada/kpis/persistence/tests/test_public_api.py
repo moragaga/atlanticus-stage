@@ -16,4 +16,4 @@ def test_public_api_is_explicit() -> None:
         'KpiWatermarkRegressionError',
         '__version__',
     }
-    assert persistence.__version__ == '0.1.0'
+    assert persistence.__version__ == '0.1.1'

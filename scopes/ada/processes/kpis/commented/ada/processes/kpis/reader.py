@@ -1,14 +1,15 @@
-# Adapta DatasetRuntime y enruta cada DatasetKey a la APPLICATION física que lo publicó.
 from __future__ import annotations
 
+# Espejo pedagógico: el adapter traduce el projection_schema compartido a datasets-runtime y conserva filtros temporales estrictos.
 from collections.abc import Mapping
 from datetime import datetime
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 import pandas as pd
+import pyarrow as pa
 
-from ada.kpis.sources import KpiSourceReadError
+from ada.data.sources import DataSourceReadError
 from atlanticus.datasets.models import DatasetDefinition, DatasetKey, DatasetTarget
 from atlanticus.datasets.runtime import (
     ColumnFilter,
@@ -26,7 +27,7 @@ class DatasetFrameRuntime(Protocol):
         *,
         definition: DatasetDefinition,
         targets,
-        columns=None,
+        projection_schema: pa.Schema | None = None,
         filters=(),
     ): ...
 
@@ -49,15 +50,17 @@ class DatasetRuntimeSourceReader:
         *,
         definition: DatasetDefinition,
         target: DatasetTarget,
-        columns: tuple[str, ...],
+        projection_schema: pa.Schema,
         timestamp_column: str | None = None,
         start_utc: datetime | None = None,
         end_utc: datetime | None = None,
     ) -> pd.DataFrame | None:
+        if not isinstance(projection_schema, pa.Schema):
+            raise TypeError('projection_schema must be pyarrow.Schema')
         try:
             runtime = self._runtimes[definition.key]
         except KeyError as error:
-            raise KpiSourceReadError(
+            raise DataSourceReadError(
                 f'{definition.key.identifier}: dataset source has no application route'
             ) from error
         filters = _time_filters(
@@ -69,16 +72,16 @@ class DatasetRuntimeSourceReader:
             result = runtime.scan_dataframe(
                 definition=definition,
                 targets=(target,),
-                columns=columns,
+                projection_schema=projection_schema,
                 filters=filters,
             )
         except DatasetRuntimeNotFoundError:
             return None
         except (DatasetRuntimeReadError, DatasetRuntimeValidationError) as error:
-            raise KpiSourceReadError(f'{target.identifier}: dataset source read failed') from error
+            raise DataSourceReadError(f'{target.identifier}: dataset source read failed') from error
         dataframe = getattr(result, 'dataframe', None)
         if not isinstance(dataframe, pd.DataFrame):
-            raise KpiSourceReadError(f'{target.identifier}: dataset runtime returned invalid data')
+            raise DataSourceReadError(f'{target.identifier}: dataset runtime returned invalid data')
         return dataframe
 
 

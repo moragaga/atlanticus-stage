@@ -3,7 +3,7 @@ from ada.processes.kpis.composition import KpiProcessComposition, build_composit
 from ada.processes.kpis.job import KpiIterationResult, KpiIterationStatus, KpiProcessJob
 from ada.processes.kpis.settings import KpiProcessSettings
 
-__version__ = '0.1.0'
+__version__ = '0.2.1'
 
 __all__ = [
     'KpiIterationResult',

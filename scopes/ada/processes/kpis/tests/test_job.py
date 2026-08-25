@@ -3,16 +3,21 @@ from datetime import UTC, datetime
 import pandas as pd
 import pytest
 
-from ada.kpis.core import (
-    KpiArea,
-    KpiCatalog,
-    KpiMode,
-    KpiPartition,
-    KpiSource,
-    KpiSourceView,
-    KpiSpec,
-    KpiWatermark,
+from ada.data.core import (
+    DataColumn,
+    DataColumnType,
+    DataPartition,
+    DataSource,
+    DataSourceView,
 )
+from ada.data.sources import (
+    DataPartitionBinding,
+    DataSourceBinding,
+    DataSourceRegistry,
+    LoadedDataSources,
+    LoadedDataSourceView,
+)
+from ada.kpis.core import KpiArea, KpiCatalog, KpiMode, KpiSpec, KpiWatermark
 from ada.kpis.evaluation import KpiEvaluator
 from ada.kpis.persistence import (
     KpiCommitStore,
@@ -21,14 +26,6 @@ from ada.kpis.persistence import (
     KpiEvaluationWriteStatus,
     KpiLatestRepository,
     KpiPersistencePaths,
-)
-from ada.kpis.planner import KpiRequirementPlanner
-from ada.kpis.sources import (
-    KpiPartitionBinding,
-    KpiSourceBinding,
-    KpiSourceRegistry,
-    LoadedKpiSources,
-    LoadedKpiSourceView,
 )
 from ada.processes.kpis.clock import PiClockSnapshot
 from ada.processes.kpis.errors import KpiProcessWatermarkError
@@ -56,17 +53,17 @@ class SourceLoader:
         self.calls = 0
         self.binding = _binding()
 
-    def load(self, *, plan, watermark):
+    def load(self, *, plan, as_of):
         self.calls += 1
-        view = KpiSourceView(KpiSource.PI_INTERPOLATED, KpiPartition.LATEST)
-        loaded = LoadedKpiSourceView(
+        view = DataSourceView(DataSource.PI_INTERPOLATED, DataPartition.LATEST)
+        loaded = LoadedDataSourceView(
             view=view,
             frame=pd.DataFrame({'value': [self.value]}),
         )
-        return LoadedKpiSources(
-            watermark=watermark,
+        return LoadedDataSources(
+            as_of=as_of,
             plan=plan,
-            registry=KpiSourceRegistry({KpiSource.PI_INTERPOLATED: self.binding}),
+            registry=DataSourceRegistry({DataSource.PI_INTERPOLATED: self.binding}),
             loaded={view: loaded},
             failures={},
         )
@@ -77,12 +74,12 @@ def _binding():
         key=DatasetKey(namespace=('pi', 'web-api'), name='interpolated'),
         materializations=(MaterializationDefinition(name='latest', layout=SingleArtifactLayout()),),
     )
-    return KpiSourceBinding(
-        source=KpiSource.PI_INTERPOLATED,
+    return DataSourceBinding(
+        source=DataSource.PI_INTERPOLATED,
         definition=definition,
         partitions={
-            KpiPartition.LATEST: KpiPartitionBinding(
-                partition=KpiPartition.LATEST,
+            DataPartition.LATEST: DataPartitionBinding(
+                partition=DataPartition.LATEST,
                 materialization='latest',
             )
         },
@@ -96,9 +93,9 @@ def _catalog():
                 key='value',
                 area=KpiArea.GENERAL,
                 mode=KpiMode.LATEST_NUMBER,
-                source=KpiSource.PI_INTERPOLATED,
-                partition=KpiPartition.LATEST,
-                columns=('value',),
+                source=DataSource.PI_INTERPOLATED,
+                partition=DataPartition.LATEST,
+                columns=(DataColumn('value', DataColumnType.FLOAT),),
             ),
         )
     )
@@ -135,7 +132,7 @@ def _context(tmp_path) -> JobRuntimeContext:
 def _job(tmp_path, *, snapshot, source_loader=None):
     catalog = _catalog()
     loader = source_loader or SourceLoader(catalog)
-    evaluator = KpiEvaluator(source_loader=loader, planner=KpiRequirementPlanner())
+    evaluator = KpiEvaluator(source_loader=loader)
     state_store = AtomicStateStore(volume_path=tmp_path, application='ada')
     state = KpiCommitStore(store=state_store)
     paths = KpiPersistencePaths(tmp_path / 'ada')
@@ -157,7 +154,7 @@ def _job(tmp_path, *, snapshot, source_loader=None):
 def test_no_pi_watermark_skips_without_creating_kpi_state(tmp_path) -> None:
     snapshot = PiClockSnapshot(
         watermark=None,
-        source_watermarks={KpiSource.PI_INTERPOLATED: None},
+        source_watermarks={DataSource.PI_INTERPOLATED: None},
     )
     job, loader, state, _, _ = _job(tmp_path, snapshot=snapshot)
     context = _context(tmp_path)
@@ -175,7 +172,7 @@ def test_first_pi_watermark_is_evaluated_and_committed(tmp_path) -> None:
     target = _watermark(10)
     snapshot = PiClockSnapshot(
         watermark=target,
-        source_watermarks={KpiSource.PI_INTERPOLATED: target},
+        source_watermarks={DataSource.PI_INTERPOLATED: target},
     )
     job, loader, state, evaluations, latest = _job(tmp_path, snapshot=snapshot)
     context = _context(tmp_path)
@@ -196,7 +193,7 @@ def test_equal_pi_and_kpi_watermarks_skip(tmp_path) -> None:
     target = _watermark(10)
     snapshot = PiClockSnapshot(
         watermark=target,
-        source_watermarks={KpiSource.PI_INTERPOLATED: target},
+        source_watermarks={DataSource.PI_INTERPOLATED: target},
     )
     job, loader, state, _, _ = _job(tmp_path, snapshot=snapshot)
     state.commit_watermark(target)
@@ -212,7 +209,7 @@ def test_pi_watermark_greater_than_committed_evaluates_only_current_target(tmp_p
     target = _watermark(40)
     snapshot = PiClockSnapshot(
         watermark=target,
-        source_watermarks={KpiSource.PI_INTERPOLATED: target},
+        source_watermarks={DataSource.PI_INTERPOLATED: target},
     )
     job, loader, state, evaluations, _ = _job(tmp_path, snapshot=snapshot)
     state.commit_watermark(committed)
@@ -232,7 +229,7 @@ def test_pi_watermark_lower_than_committed_is_error(tmp_path) -> None:
     target = _watermark(10)
     snapshot = PiClockSnapshot(
         watermark=target,
-        source_watermarks={KpiSource.PI_INTERPOLATED: target},
+        source_watermarks={DataSource.PI_INTERPOLATED: target},
     )
     job, loader, state, _, _ = _job(tmp_path, snapshot=snapshot)
     state.commit_watermark(committed)
@@ -248,7 +245,7 @@ def test_same_target_retry_reuses_persisted_evaluation_instead_of_recalculating(
     target = _watermark(10)
     snapshot = PiClockSnapshot(
         watermark=target,
-        source_watermarks={KpiSource.PI_INTERPOLATED: target},
+        source_watermarks={DataSource.PI_INTERPOLATED: target},
     )
     job, loader, state, evaluations, _ = _job(tmp_path, snapshot=snapshot)
     evaluation = job._evaluator.evaluate(
@@ -275,14 +272,14 @@ def test_retry_finishes_real_persisted_evaluation_before_newer_pi_without_recalc
     current = _watermark(40)
     snapshot = PiClockSnapshot(
         watermark=current,
-        source_watermarks={KpiSource.PI_INTERPOLATED: current},
+        source_watermarks={DataSource.PI_INTERPOLATED: current},
     )
     job, loader, state, evaluations, _ = _job(tmp_path, snapshot=snapshot)
     state.commit_watermark(committed)
     persisted = job._evaluator.evaluate(
         catalog=job._catalog,
         watermark=pending,
-        source_watermarks={KpiSource.PI_INTERPOLATED: pending},
+        source_watermarks={DataSource.PI_INTERPOLATED: pending},
     )
     evaluations.write_once(persisted)
     loader.calls = 0

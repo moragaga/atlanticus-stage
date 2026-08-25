@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from ada.data.core import DataSource
 from ada.kpis.core import (
     KpiArea,
     KpiEvaluation,
     KpiResult,
-    KpiSource,
     KpiSourceTrace,
     KpiStatus,
     KpiValueKind,
@@ -22,7 +22,7 @@ def evaluation(second: int, *, value: float | None = None) -> KpiEvaluation:
     resolved_value = float(second) if value is None else value
     return KpiEvaluation(
         watermark=watermark(second),
-        sources=(KpiSourceTrace(KpiSource.PI_INTERPOLATED, watermark(second)),),
+        sources=(KpiSourceTrace(DataSource.PI_INTERPOLATED, watermark(second)),),
         results=(
             KpiResult(
                 key='test_kpi',

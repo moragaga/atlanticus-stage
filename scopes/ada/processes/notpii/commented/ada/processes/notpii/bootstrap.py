@@ -10,7 +10,11 @@ from ada.processes.notpii.composition import build_composition
 from ada.processes.notpii.errors import NotPiiProcessConfigurationError
 from ada.processes.notpii.settings import configuration_specs
 from atlanticus.configuration import ConfigurationBootstrap, ResolvedConfiguration, SecretsManifest
-from atlanticus.connectivity.key_vault import KeyVaultClient, KeyVaultConfigurationError, KeyVaultSettings
+from atlanticus.connectivity.key_vault import (
+    KeyVaultClient,
+    KeyVaultConfigurationError,
+    KeyVaultSettings,
+)
 from atlanticus.integrations.pi.contracts import PiExtractionMode
 from atlanticus.kernel import Environment
 from atlanticus.runtime import RuntimeExecutionResult

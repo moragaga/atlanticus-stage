@@ -1,19 +1,21 @@
-# Valida KpiSpec y permite múltiples vistas del mismo source cuando cambian de partición.
 from __future__ import annotations
 
+# Espejo pedagógico: las reglas KPI conservan la semántica KPI y consumen contratos tipados compartidos desde ada.data.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from ada.kpis.core.enums import (
-    KpiArea,
-    KpiMode,
-    KpiOperationalScope,
-    KpiPartition,
-    KpiSource,
-    KpiValueKind,
+from ada.data.core import (
+    DataColumn,
+    DataColumnType,
+    DataPartition,
+    DataRequirement,
+    DataRuntimeContext,
+    DataSource,
+    OperationalScope,
+    ShiftSelection,
+    TimeWindow,
 )
-from ada.kpis.core.requirements import KpiTimeWindow, ShiftSelection, SourceRequirement
-from ada.kpis.core.runtime import DataRuntimeContext
+from ada.kpis.core.enums import KpiArea, KpiMode, KpiValueKind
 from ada.kpis.core.values import KpiNativeValue
 
 KpiResolver = Callable[[DataRuntimeContext], KpiNativeValue]
@@ -21,6 +23,8 @@ OverKpiResolver = Callable[[Mapping[str, KpiNativeValue]], KpiNativeValue]
 
 _SINGLE_COLUMN_MODES = frozenset({KpiMode.LATEST, KpiMode.LATEST_NUMBER, KpiMode.STATUS})
 _MULTI_COLUMN_MODES = frozenset({KpiMode.SUM_LATESTS_NUMBERS, KpiMode.MAX_LATESTS_NUMBERS})
+_NUMERIC_COLUMN_TYPES = frozenset({DataColumnType.INTEGER, DataColumnType.FLOAT})
+_VALUE_COLUMN_TYPES = frozenset({DataColumnType.TEXT, DataColumnType.INTEGER, DataColumnType.FLOAT})
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,16 +32,16 @@ class KpiSpec:
     key: str
     area: KpiArea
     mode: KpiMode
-    source: KpiSource | None = None
-    partition: KpiPartition | None = None
-    columns: tuple[str, ...] = ()
-    source_requirements: tuple[SourceRequirement, ...] = ()
+    source: DataSource | None = None
+    partition: DataPartition | None = None
+    columns: tuple[DataColumn, ...] = ()
+    source_requirements: tuple[DataRequirement, ...] = ()
     decimals: int | None = None
     is_truncated: bool = True
     value_kind: KpiValueKind = KpiValueKind.VALUE
     persist_history: bool = False
-    time_window: KpiTimeWindow | None = None
-    operational_scope: KpiOperationalScope | None = None
+    time_window: TimeWindow | None = None
+    operational_scope: OperationalScope | None = None
     shift: ShiftSelection | None = None
     constant_value: KpiNativeValue = None
     custom_resolver: KpiResolver | None = None
@@ -48,27 +52,30 @@ class KpiSpec:
         _require_enum(self.mode, KpiMode, 'mode')
         _require_enum(self.value_kind, KpiValueKind, 'value_kind')
         if self.source is not None:
-            _require_enum(self.source, KpiSource, 'source')
+            _require_enum(self.source, DataSource, 'source')
         if self.partition is not None:
-            _require_enum(self.partition, KpiPartition, 'partition')
-        columns = tuple(_required_text(column, 'column') for column in self.columns)
-        if len(columns) != len(set(columns)):
-            raise ValueError(f'{key}: columns must be unique')
+            _require_enum(self.partition, DataPartition, 'partition')
+        columns = tuple(self.columns)
+        if not all(isinstance(column, DataColumn) for column in columns):
+            raise TypeError(f'{key}: columns must contain DataColumn values')
+        column_names = tuple(column.name for column in columns)
+        if len(column_names) != len(set(column_names)):
+            raise ValueError(f'{key}: column names must be unique')
         requirements = tuple(self.source_requirements)
-        if not all(isinstance(item, SourceRequirement) for item in requirements):
-            raise TypeError(f'{key}: source_requirements must contain SourceRequirement values')
+        if not all(isinstance(item, DataRequirement) for item in requirements):
+            raise TypeError(f'{key}: source_requirements must contain DataRequirement values')
         views = tuple(item.view for item in requirements)
         if len(views) != len(set(views)):
             raise ValueError(f'{key}: source_requirements must be unique by source and partition')
         _validate_decimals(self.decimals, key)
         _validate_boolean(self.is_truncated, 'is_truncated', key)
         _validate_boolean(self.persist_history, 'persist_history', key)
-        if self.time_window is not None and not isinstance(self.time_window, KpiTimeWindow):
-            raise TypeError(f'{key}: time_window must be KpiTimeWindow')
+        if self.time_window is not None and not isinstance(self.time_window, TimeWindow):
+            raise TypeError(f'{key}: time_window must be TimeWindow')
         if self.operational_scope is not None and not isinstance(
-            self.operational_scope, KpiOperationalScope
+            self.operational_scope, OperationalScope
         ):
-            raise TypeError(f'{key}: operational_scope must be KpiOperationalScope')
+            raise TypeError(f'{key}: operational_scope must be OperationalScope')
         if self.shift is not None and not isinstance(self.shift, ShiftSelection):
             raise TypeError(f'{key}: shift must be ShiftSelection')
 
@@ -85,14 +92,18 @@ class KpiSpec:
         self._validate_simple_mode()
 
     @property
-    def requirements(self) -> tuple[SourceRequirement, ...]:
+    def column_names(self) -> tuple[str, ...]:
+        return tuple(column.name for column in self.columns)
+
+    @property
+    def requirements(self) -> tuple[DataRequirement, ...]:
         if self.source_requirements:
             return self.source_requirements
         if self.source is None:
             return ()
         assert self.partition is not None
         return (
-            SourceRequirement(
+            DataRequirement(
                 source=self.source,
                 partition=self.partition,
                 columns=self.columns,
@@ -129,7 +140,9 @@ class KpiSpec:
             )
         if has_requirements:
             if self.columns:
-                raise ValueError(f'{self.key}: custom with source_requirements must not declare columns')
+                raise ValueError(
+                    f'{self.key}: custom with source_requirements must not declare columns'
+                )
             if any(
                 value is not None
                 for value in (self.time_window, self.operational_scope, self.shift)
@@ -141,7 +154,7 @@ class KpiSpec:
         self._require_simple_source()
         if not self.columns:
             raise ValueError(f'{self.key}: custom with source requires columns')
-        self.requirements
+        _ = self.requirements
 
     def _validate_simple_mode(self) -> None:
         if self.source_requirements:
@@ -153,7 +166,18 @@ class KpiSpec:
             raise ValueError(f'{self.key}: {self.mode.value} requires exactly one column')
         if self.mode in _MULTI_COLUMN_MODES and not self.columns:
             raise ValueError(f'{self.key}: {self.mode.value} requires at least one column')
-        self.requirements
+        self._validate_simple_column_types()
+        _ = self.requirements
+
+    def _validate_simple_column_types(self) -> None:
+        if self.mode is KpiMode.LATEST:
+            _require_column_types(self.key, self.mode, self.columns, _VALUE_COLUMN_TYPES)
+            return
+        if self.mode is KpiMode.LATEST_NUMBER or self.mode in _MULTI_COLUMN_MODES:
+            _require_column_types(self.key, self.mode, self.columns, _NUMERIC_COLUMN_TYPES)
+            return
+        if self.mode is KpiMode.STATUS:
+            _require_column_types(self.key, self.mode, self.columns, _VALUE_COLUMN_TYPES)
 
     def _require_simple_source(self) -> None:
         if self.source is None:
@@ -191,6 +215,18 @@ class OverKpiSpec:
         _validate_boolean(self.persist_history, 'persist_history', key)
         object.__setattr__(self, 'key', key)
         object.__setattr__(self, 'dependencies', dependencies)
+
+
+def _require_column_types(
+    key: str,
+    mode: KpiMode,
+    columns: tuple[DataColumn, ...],
+    allowed: frozenset[DataColumnType],
+) -> None:
+    invalid = tuple(column for column in columns if column.data_type not in allowed)
+    if invalid:
+        details = ', '.join(f'{column.name}:{column.data_type.value}' for column in invalid)
+        raise ValueError(f'{key}: {mode.value} does not support column types: {details}')
 
 
 def _validate_decimals(value: int | None, key: str, *, allow_none: bool = True) -> None:

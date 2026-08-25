@@ -1,4 +1,4 @@
-# API pública mínima del módulo de KPI Latest Delivery.
+# Espejo pedagógico: esta superficie pública refleja exactamente la API productiva del paquete.
 from ada.kpis.delivery.errors import KpiDeliveryError, KpiDeliveryValidationError
 from ada.kpis.delivery.models import (
     KpiDeliveryBinding,
@@ -15,7 +15,7 @@ from ada.kpis.delivery.projection import (
     project_kpi_latest,
 )
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 __all__ = [
     'KPI_LATEST_DELIVERY_ID',

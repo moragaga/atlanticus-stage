@@ -101,7 +101,5 @@ def build_notpii_data_producer(
 
 
 def _active_modes(catalog: PiCatalog) -> tuple[PiExtractionMode, ...]:
-    configured = {
-        item.extraction_mode for item in catalog.definitions if item.is_active
-    }
+    configured = {item.extraction_mode for item in catalog.definitions if item.is_active}
     return tuple(mode for mode in _MODE_ORDER if mode in configured)

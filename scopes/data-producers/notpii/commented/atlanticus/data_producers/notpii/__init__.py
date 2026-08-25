@@ -26,7 +26,7 @@ from atlanticus.data_producers.notpii.producer_state import (
 )
 
 # Superficie pública de la capacidad reusable; no expone nombres de process ni connector ADA.
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 __all__ = [
     'NotPiiBatch',

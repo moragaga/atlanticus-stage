@@ -4,7 +4,7 @@ import atlanticus.datasets.runtime as runtime_package
 
 
 def test_public_api_and_version_are_explicit() -> None:
-    assert runtime_package.__version__ == '0.2.0'
+    assert runtime_package.__version__ == '0.2.1'
     assert set(runtime_package.__all__) == {
         'ColumnFilter',
         'DataFrameReadResult',

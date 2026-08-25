@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "atlanticus-data-producers-fabrica"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "atlanticus-datasets" },
@@ -55,7 +55,7 @@ source = { editable = "../../../backend/datasets" }
 
 [[package]]
 name = "atlanticus-datasets-parquet"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "../../../backend/datasets-parquet" }
 dependencies = [
     { name = "atlanticus-datasets" },
@@ -70,7 +70,7 @@ requires-dist = [
 
 [[package]]
 name = "atlanticus-datasets-runtime"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "../../../backend/datasets-runtime" }
 dependencies = [
     { name = "atlanticus-datasets" },
@@ -123,26 +123,6 @@ dependencies = [
 requires-dist = [{ name = "atlanticus-kernel", editable = "../../../backend/kernel" }]
 
 [[package]]
-name = "atlanticus-pi-contracts"
-version = "0.1.0"
-source = { editable = "../../../integrations/pi/contracts" }
-
-[[package]]
-name = "atlanticus-service-bus"
-version = "0.1.0"
-source = { editable = "../../../connectivity/service-bus" }
-dependencies = [
-    { name = "atlanticus-observability" },
-    { name = "azure-servicebus" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "atlanticus-observability", editable = "../../../backend/observability" },
-    { name = "azure-servicebus", specifier = "==7.14.3" },
-]
-
-[[package]]
 name = "atlanticus-state"
 version = "0.2.0"
 source = { editable = "../../../backend/state" }
@@ -179,20 +159,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a6/f3/b416179e408990df5db0d516283022dde0f5d0111d98c1a848e41853e81c/azure_core-1.41.0.tar.gz", hash = "sha256:f46ff5dfcd230f25cf1c19e8a34b8dc08a337b2503e268bb600a16c00db8ad5a", size = 381042, upload-time = "2026-05-07T23:30:54.302Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/db/325c6d7312d2200251c52323878281045aaffcb5586612296484e4280eaa/azure_core-1.41.0-py3-none-any.whl", hash = "sha256:522b4011e8180b1a3dcd2024396a4e7fe9ac37fb8597db47163d230b5efe892d", size = 220920, upload-time = "2026-05-07T23:30:56.357Z" },
-]
-
-[[package]]
-name = "azure-servicebus"
-version = "7.14.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "azure-core" },
-    { name = "isodate" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a8/d2/a5c11d4c955e2875de2383c1af8e43ce4899e8418b22e61d32d2bf103626/azure_servicebus-7.14.3.tar.gz", hash = "sha256:70a63384557aec0bee727740e7b25ded29e9e701b77611764577fd7402389402", size = 534786, upload-time = "2025-10-31T05:30:03.342Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/04/e9/d9fd0b2bef14d85b408c51802142b1c8b7bc3ab08514c89432547b1d87d3/azure_servicebus-7.14.3-py3-none-any.whl", hash = "sha256:386f8d32dae8881661ec8d791c38978eca2bbf7ea9f489d6cff8ad9cc6990234", size = 412522, upload-time = "2025-10-31T05:30:05.252Z" },
 ]
 
 [[package]]

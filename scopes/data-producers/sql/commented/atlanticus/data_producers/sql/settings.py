@@ -25,7 +25,7 @@ class SqlRetryPolicy:
             raise ValueError('delay_seconds must be a number greater than or equal to zero')
         try:
             delay_seconds = float(self.delay_seconds)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             raise ValueError(
                 'delay_seconds must be a number greater than or equal to zero'
             ) from None
@@ -59,7 +59,7 @@ def _parse_positive_integer(value: Any, *, default: int, field_name: str) -> int
         raise ValueError(f'{field_name} must be an integer greater than zero')
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise ValueError(f'{field_name} must be an integer greater than zero') from None
     if parsed <= 0 or str(value).strip() not in {str(parsed), f'+{parsed}'}:
         raise ValueError(f'{field_name} must be an integer greater than zero')
@@ -73,7 +73,7 @@ def _parse_non_negative_number(value: Any, *, default: float, field_name: str) -
         raise ValueError(f'{field_name} must be a number greater than or equal to zero')
     try:
         parsed = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise ValueError(f'{field_name} must be a number greater than or equal to zero') from None
     if parsed < 0:
         raise ValueError(f'{field_name} must be a number greater than or equal to zero')

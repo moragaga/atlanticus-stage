@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ada-kpis-persistence"
-version = "0.1.0"
+version = "0.1.1"
 description = "Reusable KPI evaluation persistence capability for ADA."
 requires-python = "==3.14.2"
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
-    "ada-kpis-core==0.1.0",
+    "ada-kpis-core==0.2.0",
     "atlanticus-json==0.1.0",
     "atlanticus-state==0.2.0",
 ]

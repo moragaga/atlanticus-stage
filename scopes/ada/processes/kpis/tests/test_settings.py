@@ -1,20 +1,18 @@
 import pytest
 
-from ada.kpis.core import (
-    KpiArea,
-    KpiCatalog,
-    KpiMode,
-    KpiPartition,
-    KpiSource,
-    KpiSpec,
+from ada.data.core import (
+    DataColumn,
+    DataColumnType,
+    DataPartition,
+    DataSource,
     ShiftScope,
     ShiftSelection,
 )
-from ada.kpis.sources import PiSourceProvider
+from ada.data.sources import DataSourceApplications, PiSourceProvider
+from ada.kpis.core import KpiArea, KpiCatalog, KpiMode, KpiSpec
 from ada.processes.kpis.errors import KpiProcessConfigurationError
 from ada.processes.kpis.settings import (
     KpiProcessSettings,
-    KpiSourceApplications,
     catalog_sources,
     configuration_specs,
 )
@@ -39,23 +37,25 @@ def _configuration(**values):
     )
 
 
-def _catalog(*sources: KpiSource) -> KpiCatalog:
+def _catalog(*sources: DataSource) -> KpiCatalog:
     specs = tuple(
         _spec_for_source(index=index, source=source) for index, source in enumerate(sources)
     )
     return KpiCatalog(specs=specs)
 
 
-def _spec_for_source(*, index: int, source: KpiSource) -> KpiSpec:
-    partition = KpiPartition.SHIFT if source.value.startswith('dispatch.') else KpiPartition.LATEST
-    shift = ShiftSelection(scope=ShiftScope.CURRENT) if partition is KpiPartition.SHIFT else None
+def _spec_for_source(*, index: int, source: DataSource) -> KpiSpec:
+    partition = (
+        DataPartition.SHIFT if source.value.startswith('dispatch.') else DataPartition.LATEST
+    )
+    shift = ShiftSelection(scope=ShiftScope.CURRENT) if partition is DataPartition.SHIFT else None
     return KpiSpec(
         key=f'kpi_{index}',
         area=KpiArea.GENERAL,
         mode=KpiMode.LATEST_NUMBER,
         source=source,
         partition=partition,
-        columns=('value',),
+        columns=(DataColumn('value', DataColumnType.FLOAT),),
         shift=shift,
     )
 
@@ -93,17 +93,17 @@ def test_pi_application_is_explicit_and_not_derived_from_kpi_application() -> No
 
 def test_non_pi_applications_are_required_only_when_catalog_uses_the_source() -> None:
     settings = KpiProcessSettings.from_configuration(_configuration())
-    settings.source_applications.validate_catalog(_catalog(KpiSource.PI_INTERPOLATED))
+    settings.validate_catalog(_catalog(DataSource.PI_INTERPOLATED))
 
-    with pytest.raises(KpiProcessConfigurationError, match='DISPATCH_APPLICATION is required'):
-        settings.source_applications.validate_catalog(_catalog(KpiSource.DISPATCH_STD_SHIFT_STATE))
+    with pytest.raises(KpiProcessConfigurationError, match='application route is not configured'):
+        settings.validate_catalog(_catalog(DataSource.DISPATCH_STD_SHIFT_STATE))
 
-    routed = KpiSourceApplications(
+    routed = DataSourceApplications(
         pi='ada-pi-web-api-local',
         dispatch='ada-dispatch-local',
     )
-    routed.validate_catalog(_catalog(KpiSource.DISPATCH_STD_SHIFT_STATE))
-    assert routed.application_for(KpiSource.DISPATCH_STD_SHIFT_STATE) == 'ada-dispatch-local'
+    routed.validate_sources((DataSource.DISPATCH_STD_SHIFT_STATE,))
+    assert routed.application_for(DataSource.DISPATCH_STD_SHIFT_STATE) == 'ada-dispatch-local'
 
 
 def test_blank_optional_source_applications_are_treated_as_unconfigured() -> None:
@@ -123,7 +123,7 @@ def test_blank_optional_source_applications_are_treated_as_unconfigured() -> Non
 
 
 def test_source_application_contract_covers_every_typed_kpi_source() -> None:
-    applications = KpiSourceApplications(
+    applications = DataSourceApplications(
         pi='pi',
         dispatch='dispatch',
         blockgrade='blockgrade',
@@ -131,18 +131,18 @@ def test_source_application_contract_covers_every_typed_kpi_source() -> None:
         fabrica='fabrica',
     )
 
-    assert {source: applications.application_for(source) for source in KpiSource}
+    assert {source: applications.application_for(source) for source in DataSource}
 
 
 def test_catalog_sources_are_derived_from_spec_requirements() -> None:
     catalog = _catalog(
-        KpiSource.PI_INTERPOLATED,
-        KpiSource.REMANENTES_STOCKS,
+        DataSource.PI_INTERPOLATED,
+        DataSource.REMANENTES_STOCKS,
     )
 
     assert catalog_sources(catalog) == (
-        KpiSource.PI_INTERPOLATED,
-        KpiSource.REMANENTES_STOCKS,
+        DataSource.PI_INTERPOLATED,
+        DataSource.REMANENTES_STOCKS,
     )
 
 

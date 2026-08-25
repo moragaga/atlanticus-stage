@@ -8,4 +8,4 @@ def test_public_api_exposes_fabrica_producer_vocabulary() -> None:
     assert 'FabricaMaterializer' in exported
     assert 'FabricaProducerState' in exported
     assert 'build_fabrica_data_producer' in exported
-    assert producer.__version__ == '0.1.0'
+    assert producer.__version__ == '0.1.1'

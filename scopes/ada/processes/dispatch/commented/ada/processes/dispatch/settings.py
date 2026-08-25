@@ -22,9 +22,7 @@ class DispatchSettings:
     @classmethod
     def from_configuration(cls, configuration: ResolvedConfiguration) -> DispatchSettings:
         if not isinstance(configuration, ResolvedConfiguration):
-            raise DispatchProcessConfigurationError(
-                'configuration must be a ResolvedConfiguration'
-            )
+            raise DispatchProcessConfigurationError('configuration must be a ResolvedConfiguration')
         return cls(
             sql=SqlSettings.from_mapping(
                 values=configuration.values,

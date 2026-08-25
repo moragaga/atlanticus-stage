@@ -35,7 +35,7 @@ from atlanticus.data_producers.pi.watermarks import (
 )
 from atlanticus.data_producers.pi.web_ids import WebIdRegistry
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 __all__ = [
     'PiAcquisitionResult',

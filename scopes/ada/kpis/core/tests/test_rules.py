@@ -4,26 +4,28 @@ from collections.abc import Mapping
 
 import pytest
 
-from ada.kpis.core import (
+from ada.data.core import (
+    DataColumn,
+    DataColumnType,
+    DataPartition,
+    DataRequirement,
     DataRuntimeContext,
-    KpiArea,
-    KpiMode,
-    KpiPartition,
-    KpiSource,
-    KpiSpec,
-    KpiTimeWindow,
-    KpiTimeWindowUnit,
-    KpiValueKind,
-    OverKpiSpec,
+    DataSource,
     ShiftScope,
     ShiftSelection,
-    SourceRequirement,
+    TimeWindow,
+    TimeWindowUnit,
 )
+from ada.kpis.core import KpiArea, KpiMode, KpiSpec, KpiValueKind, OverKpiSpec
 from ada.kpis.core.values import KpiNativeValue
 
 
+def _column(name: str, data_type: DataColumnType = DataColumnType.FLOAT) -> DataColumn:
+    return DataColumn(name=name, data_type=data_type)
+
+
 def _resolver(data_context: DataRuntimeContext) -> KpiNativeValue:
-    frame = data_context.get(KpiSource.PI_INTERPOLATED, KpiPartition.DAILY)
+    frame = data_context.get(DataSource.PI_INTERPOLATED, DataPartition.DAILY)
     return frame.last_value_number('tag_a')
 
 
@@ -36,59 +38,62 @@ def test_simple_spec_requires_explicit_source_partition() -> None:
         key='pi_value',
         area=KpiArea.GENERAL,
         mode=KpiMode.LATEST_NUMBER,
-        source=KpiSource.PI_INTERPOLATED,
-        partition=KpiPartition.LATEST,
-        columns=('tag_a',),
+        source=DataSource.PI_INTERPOLATED,
+        partition=DataPartition.LATEST,
+        columns=(_column('tag_a'),),
         decimals=2,
         is_truncated=True,
         persist_history=True,
     )
 
     requirement = spec.requirements[0]
-    assert requirement.source is KpiSource.PI_INTERPOLATED
-    assert requirement.partition is KpiPartition.LATEST
+    assert requirement.source is DataSource.PI_INTERPOLATED
+    assert requirement.partition is DataPartition.LATEST
+    assert requirement.columns == (_column('tag_a'),)
+    assert spec.column_names == ('tag_a',)
     assert spec.persist_history is True
 
 
 def test_custom_spec_can_use_single_source_with_exact_partition_and_window() -> None:
-    window = KpiTimeWindow(2, KpiTimeWindowUnit.HOURS)
+    window = TimeWindow(2, TimeWindowUnit.HOURS)
+    columns = (_column('tag_a'), _column('tag_b'), _column('tag_c'))
     spec = KpiSpec(
         key='pi_custom',
         area=KpiArea.PLANTA,
         mode=KpiMode.CUSTOM,
-        source=KpiSource.PI_INTERPOLATED,
-        partition=KpiPartition.DAILY,
-        columns=('tag_a', 'tag_b', 'tag_c'),
+        source=DataSource.PI_INTERPOLATED,
+        partition=DataPartition.DAILY,
+        columns=columns,
         time_window=window,
         custom_resolver=_resolver,
     )
 
     assert spec.requirements == (
-        SourceRequirement(
-            source=KpiSource.PI_INTERPOLATED,
-            partition=KpiPartition.DAILY,
-            columns=('tag_a', 'tag_b', 'tag_c'),
+        DataRequirement(
+            source=DataSource.PI_INTERPOLATED,
+            partition=DataPartition.DAILY,
+            columns=columns,
             time_window=window,
         ),
     )
 
 
-def test_custom_spec_supports_same_source_with_multiple_partitions() -> None:
-    latest = SourceRequirement(
-        source=KpiSource.PI_INTERPOLATED,
-        partition=KpiPartition.LATEST,
-        columns=('tag_latest',),
+def test_custom_spec_supports_same_source_with_multiple_partitions_and_types() -> None:
+    latest = DataRequirement(
+        source=DataSource.PI_INTERPOLATED,
+        partition=DataPartition.LATEST,
+        columns=(_column('tag_latest'),),
     )
-    daily = SourceRequirement(
-        source=KpiSource.PI_INTERPOLATED,
-        partition=KpiPartition.DAILY,
-        columns=('tag_series',),
-        time_window=KpiTimeWindow(2, KpiTimeWindowUnit.HOURS),
+    daily = DataRequirement(
+        source=DataSource.PI_INTERPOLATED,
+        partition=DataPartition.DAILY,
+        columns=(_column('tag_series'),),
+        time_window=TimeWindow(2, TimeWindowUnit.HOURS),
     )
-    dispatch = SourceRequirement(
-        source=KpiSource.DISPATCH_STD_SHIFT_STATE,
-        partition=KpiPartition.SHIFT,
-        columns=('state',),
+    dispatch = DataRequirement(
+        source=DataSource.DISPATCH_STD_SHIFT_STATE,
+        partition=DataPartition.SHIFT,
+        columns=(_column('state', DataColumnType.TEXT),),
         shift=ShiftSelection(ShiftScope.DAYS, days=3),
     )
     spec = KpiSpec(
@@ -110,63 +115,92 @@ def test_custom_spec_rejects_duplicate_source_partition_views() -> None:
             area=KpiArea.MINA,
             mode=KpiMode.CUSTOM,
             source_requirements=(
-                SourceRequirement(
-                    source=KpiSource.PI_INTERPOLATED,
-                    partition=KpiPartition.LATEST,
-                    columns=('a',),
+                DataRequirement(
+                    source=DataSource.PI_INTERPOLATED,
+                    partition=DataPartition.LATEST,
+                    columns=(_column('a'),),
                 ),
-                SourceRequirement(
-                    source=KpiSource.PI_INTERPOLATED,
-                    partition=KpiPartition.LATEST,
-                    columns=('b',),
+                DataRequirement(
+                    source=DataSource.PI_INTERPOLATED,
+                    partition=DataPartition.LATEST,
+                    columns=(_column('b'),),
                 ),
             ),
             custom_resolver=_resolver,
         )
 
 
-def test_spec_requires_enums_instead_of_free_strings() -> None:
+def test_spec_requires_shared_data_contracts_instead_of_free_strings() -> None:
     with pytest.raises(TypeError, match='area must be KpiArea'):
         KpiSpec(
             key='invalid',
             area='mina',  # type: ignore[arg-type]
             mode=KpiMode.LATEST,
-            source=KpiSource.PI_INTERPOLATED,
-            partition=KpiPartition.LATEST,
-            columns=('tag_a',),
+            source=DataSource.PI_INTERPOLATED,
+            partition=DataPartition.LATEST,
+            columns=(_column('tag_a'),),
         )
 
-    with pytest.raises(TypeError, match='source must be KpiSource'):
+    with pytest.raises(TypeError, match='source must be DataSource'):
         KpiSpec(
             key='invalid',
             area=KpiArea.MINA,
             mode=KpiMode.LATEST,
             source='pi.interpolated',  # type: ignore[arg-type]
-            partition=KpiPartition.LATEST,
-            columns=('tag_a',),
+            partition=DataPartition.LATEST,
+            columns=(_column('tag_a'),),
+        )
+
+    with pytest.raises(TypeError, match='columns must contain DataColumn'):
+        KpiSpec(
+            key='invalid',
+            area=KpiArea.MINA,
+            mode=KpiMode.LATEST,
+            source=DataSource.PI_INTERPOLATED,
+            partition=DataPartition.LATEST,
+            columns=('tag_a',),  # type: ignore[arg-type]
         )
 
 
-def test_simple_modes_keep_column_rules() -> None:
+def test_simple_modes_keep_column_count_and_type_rules() -> None:
     with pytest.raises(ValueError, match='requires exactly one column'):
         KpiSpec(
             key='latest',
             area=KpiArea.MINA,
             mode=KpiMode.LATEST,
-            source=KpiSource.PI_INTERPOLATED,
-            partition=KpiPartition.LATEST,
-            columns=('a', 'b'),
+            source=DataSource.PI_INTERPOLATED,
+            partition=DataPartition.LATEST,
+            columns=(_column('a'), _column('b')),
         )
 
     spec = KpiSpec(
         key='sum',
         area=KpiArea.MINA,
         mode=KpiMode.SUM_LATESTS_NUMBERS,
-        source=KpiSource.PI_INTERPOLATED,
-        partition=KpiPartition.LATEST,
-        columns=('a', 'b'),
+        source=DataSource.PI_INTERPOLATED,
+        partition=DataPartition.LATEST,
+        columns=(_column('a', DataColumnType.INTEGER), _column('b')),
     )
     assert spec.mode is KpiMode.SUM_LATESTS_NUMBERS
+
+    with pytest.raises(ValueError, match='does not support column types'):
+        KpiSpec(
+            key='sum-text',
+            area=KpiArea.MINA,
+            mode=KpiMode.SUM_LATESTS_NUMBERS,
+            source=DataSource.PI_INTERPOLATED,
+            partition=DataPartition.LATEST,
+            columns=(_column('a', DataColumnType.TEXT),),
+        )
+
+    KpiSpec(
+        key='status-text',
+        area=KpiArea.MINA,
+        mode=KpiMode.STATUS,
+        source=DataSource.PI_INTERPOLATED,
+        partition=DataPartition.LATEST,
+        columns=(_column('state', DataColumnType.TEXT),),
+    )
 
 
 def test_constant_and_custom_contracts_are_mutually_exclusive() -> None:
@@ -183,14 +217,14 @@ def test_constant_and_custom_contracts_are_mutually_exclusive() -> None:
             key='bad-custom',
             area=KpiArea.MINA,
             mode=KpiMode.CUSTOM,
-            source=KpiSource.PI_INTERPOLATED,
-            partition=KpiPartition.LATEST,
-            columns=('a',),
+            source=DataSource.PI_INTERPOLATED,
+            partition=DataPartition.LATEST,
+            columns=(_column('a'),),
             source_requirements=(
-                SourceRequirement(
-                    source=KpiSource.REMANENTES_STOCKS,
-                    partition=KpiPartition.LATEST,
-                    columns=('b',),
+                DataRequirement(
+                    source=DataSource.REMANENTES_STOCKS,
+                    partition=DataPartition.LATEST,
+                    columns=(_column('b'),),
                 ),
             ),
             custom_resolver=_resolver,

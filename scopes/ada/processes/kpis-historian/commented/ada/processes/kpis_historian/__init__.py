@@ -1,4 +1,4 @@
-# API pública del proceso Historian.
+# Espejo pedagógico: la API pública conserva el mismo contrato que producción tras actualizar los pins KPI.
 from ada.processes.kpis_historian.bootstrap import load_configuration, run
 from ada.processes.kpis_historian.composition import KpiHistorianComposition, build_composition
 from ada.processes.kpis_historian.history import (
@@ -17,7 +17,7 @@ from ada.processes.kpis_historian.job import (
 from ada.processes.kpis_historian.settings import KpiHistorianSettings
 from ada.processes.kpis_historian.state import KpiHistorianCommitStore
 
-__version__ = '0.1.0'
+__version__ = '0.1.2'
 
 __all__ = [
     'KpiHistorianCommitStore',

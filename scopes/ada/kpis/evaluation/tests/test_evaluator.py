@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ada.data.core import DataColumn, DataColumnType, DataPartition, DataRuntimeContext, DataSource
 from ada.kpis.core import (
-    DataRuntimeContext,
     KpiArea,
     KpiCatalog,
     KpiMode,
-    KpiPartition,
-    KpiSource,
     KpiSpec,
     KpiStatus,
     KpiValueKind,
@@ -34,11 +32,11 @@ class FakeLoadedSources:
 class FakeSourceLoader:
     loaded: FakeLoadedSources
     last_plan: object = None
-    last_watermark: object = None
+    last_as_of: object = None
 
-    def load(self, *, plan, watermark):
+    def load(self, *, plan, as_of):
         self.last_plan = plan
-        self.last_watermark = watermark
+        self.last_as_of = as_of
         return self.loaded
 
 
@@ -51,15 +49,15 @@ def _latest_spec(key: str, *, column: str = 'value', decimals: int | None = 0) -
         key=key,
         area=KpiArea.MINA,
         mode=KpiMode.LATEST_NUMBER,
-        source=KpiSource.PI_INTERPOLATED,
-        partition=KpiPartition.LATEST,
-        columns=(column,),
+        source=DataSource.PI_INTERPOLATED,
+        partition=DataPartition.LATEST,
+        columns=(DataColumn(column, DataColumnType.FLOAT),),
         decimals=decimals,
     )
 
 
 def test_evaluator_runs_entire_catalog_and_isolates_base_failures() -> None:
-    source = KpiSource.PI_INTERPOLATED
+    source = DataSource.PI_INTERPOLATED
 
     def explode(_):
         raise RuntimeError('boom')
@@ -72,8 +70,8 @@ def test_evaluator_runs_entire_catalog_and_isolates_base_failures() -> None:
                 area=KpiArea.MINA,
                 mode=KpiMode.CUSTOM,
                 source=source,
-                partition=KpiPartition.LATEST,
-                columns=('value',),
+                partition=DataPartition.LATEST,
+                columns=(DataColumn('value', DataColumnType.FLOAT),),
                 custom_resolver=explode,
             ),
             _latest_spec('source_error'),
@@ -105,7 +103,7 @@ def test_evaluator_runs_entire_catalog_and_isolates_base_failures() -> None:
 
 
 def test_status_contract_violation_is_evaluation_error() -> None:
-    source = KpiSource.PI_INTERPOLATED
+    source = DataSource.PI_INTERPOLATED
     catalog = KpiCatalog(
         specs=(
             KpiSpec(
@@ -113,8 +111,8 @@ def test_status_contract_violation_is_evaluation_error() -> None:
                 area=KpiArea.PLANTA,
                 mode=KpiMode.STATUS,
                 source=source,
-                partition=KpiPartition.LATEST,
-                columns=('status',),
+                partition=DataPartition.LATEST,
+                columns=(DataColumn('status', DataColumnType.TEXT),),
                 is_truncated=False,
             ),
         )
@@ -140,7 +138,7 @@ def test_status_contract_violation_is_evaluation_error() -> None:
 
 
 def test_over_kpi_runs_only_when_all_dependencies_are_ok() -> None:
-    source = KpiSource.PI_INTERPOLATED
+    source = DataSource.PI_INTERPOLATED
     catalog = KpiCatalog(
         specs=(
             _latest_spec('real', column='real'),
@@ -281,7 +279,7 @@ def test_over_kpi_gets_only_declared_native_values() -> None:
 
 
 def test_evaluation_source_traces_are_deduplicated_across_partitions() -> None:
-    source = KpiSource.PI_INTERPOLATED
+    source = DataSource.PI_INTERPOLATED
     source_watermark = KpiWatermark.parse('2026-08-19T18:15:10Z')
     catalog = KpiCatalog(specs=(_latest_spec('value'),))
     loader = FakeSourceLoader(
@@ -296,7 +294,7 @@ def test_evaluation_source_traces_are_deduplicated_across_partitions() -> None:
         watermark=_watermark(),
         source_watermarks={
             source: source_watermark,
-            KpiSource.DISPATCH_TIEMPOS_MLP: None,
+            DataSource.DISPATCH_TIEMPOS_MLP: None,
         },
     )
 
@@ -309,10 +307,10 @@ def test_evaluation_source_traces_are_deduplicated_across_partitions() -> None:
 
 
 def test_custom_resolver_contract_error_keeps_safe_context_in_evaluation() -> None:
-    source = KpiSource.PI_INTERPOLATED
+    source = DataSource.PI_INTERPOLATED
 
     def resolver(data_context: DataRuntimeContext):
-        return data_context.get(KpiSource.PI_RECORDED, KpiPartition.DAILY).last_value('value')
+        return data_context.get(DataSource.PI_RECORDED, DataPartition.DAILY).last_value('value')
 
     catalog = KpiCatalog(
         specs=(
@@ -321,8 +319,8 @@ def test_custom_resolver_contract_error_keeps_safe_context_in_evaluation() -> No
                 area=KpiArea.MINA,
                 mode=KpiMode.CUSTOM,
                 source=source,
-                partition=KpiPartition.LATEST,
-                columns=('value',),
+                partition=DataPartition.LATEST,
+                columns=(DataColumn('value', DataColumnType.FLOAT),),
                 custom_resolver=resolver,
             ),
         )
@@ -345,5 +343,5 @@ def test_custom_resolver_contract_error_keeps_safe_context_in_evaluation() -> No
 
     assert result.status is KpiStatus.ERROR
     assert result.error is not None
-    assert result.error.startswith('KpiSourceNotRequestedError:')
+    assert result.error.startswith('DataSourceNotRequestedError:')
     assert 'pi.recorded/daily' in result.error

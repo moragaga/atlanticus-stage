@@ -147,7 +147,9 @@ def _required_key(value: object) -> str:
 
 def _require_exact_fields(value, fields: set[str], *, kind: Literal['producer', 'source']) -> None:
     if not hasattr(value, 'keys') or set(value.keys()) != fields:
-        raise PiDataProducerWatermarkError(f'PI Web API {kind} state has unexpected or missing fields')
+        raise PiDataProducerWatermarkError(
+            f'PI Web API {kind} state has unexpected or missing fields'
+        )
 
 
 def _optional_utc_second(value, *, field_name: str) -> datetime | None:
