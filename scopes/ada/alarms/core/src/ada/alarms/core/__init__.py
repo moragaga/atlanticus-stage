@@ -1,6 +1,7 @@
 from ada.alarms.core.commit import (
     AssignmentChangeRecord,
     DeactivationEffectRecord,
+    DeactivationRequestRecord,
     EngineCommit,
     EngineCommitRecords,
     EpisodeChangeReference,
@@ -98,15 +99,19 @@ from ada.alarms.core.models import (
     ToolAssignment,
 )
 from ada.alarms.core.priority import resolve_group_priority
-from ada.alarms.core.routing import GroupRoutingDecision, resolve_alarm_routing, resolve_group_routing
+from ada.alarms.core.routing import (
+    GroupRoutingDecision,
+    resolve_alarm_routing,
+    resolve_group_routing,
+)
 
-
-__version__ = '0.5.1'
+__version__ = '0.6.0'
 
 __all__ = [
     'AssignmentChangeRecord',
     'DEFAULT_EVIDENCE_SAMPLING_INTERVAL_SECONDS',
     'DeactivationEffectRecord',
+    'DeactivationRequestRecord',
     'EngineCommit',
     'EngineCommitRecords',
     'EpisodeChangeReference',

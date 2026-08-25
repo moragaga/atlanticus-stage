@@ -2,15 +2,25 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ada.kpis.core import KpiValueKind
+from ada.kpis.core import KpiValueKind, KpiWatermark
 from ada.kpis.delivery import (
-    KpiDeliveryBinding,
     KpiDeliveryManifest,
     KpiDeliverySnapshot,
     KpiDeliveryStatus,
     KpiDeliveryValidationError,
     KpiDeliveryValue,
 )
+
+
+def _manifest() -> KpiDeliveryManifest:
+    return KpiDeliveryManifest(
+        schema_version=1,
+        watermark=KpiWatermark(datetime(2026, 8, 25, 10, 0, tzinfo=UTC)),
+        configuration_revision='config-1',
+        tool_projection_revision='tools-1',
+        published_at_utc=datetime(2026, 8, 25, 10, 0, 1, tzinfo=UTC),
+        revision='0123456789abcdef',
+    )
 
 
 def test_missing_contract_requires_null_kind_and_value() -> None:
@@ -31,12 +41,7 @@ def test_error_contract_requires_value_kind_and_null_value() -> None:
         )
 
 
-def test_binding_rejects_blank_identifiers() -> None:
-    with pytest.raises(KpiDeliveryValidationError, match='store_key'):
-        KpiDeliveryBinding(store_key='', kpi_key='kpi')
-
-
-def test_snapshot_defensively_copies_store_mappings() -> None:
+def test_snapshot_defensively_copies_destination_mappings() -> None:
     values = {
         'kpi': KpiDeliveryValue(
             status=KpiDeliveryStatus.OK,
@@ -44,20 +49,17 @@ def test_snapshot_defensively_copies_store_mappings() -> None:
             value='10',
         )
     }
-    stores = {'store': values}
+    destinations = {'global': values}
     snapshot = KpiDeliverySnapshot(
-        id='snapshot',
+        id='latest',
         partition_id='kpis',
-        manifest=KpiDeliveryManifest(
-            schema_version=1,
-            updated_at_utc=datetime(2026, 8, 20, 14, 30, tzinfo=UTC),
-            revision='0123456789abcdef',
-        ),
-        stores=stores,
+        document_type='ada_kpi_latest_delivery',
+        manifest=_manifest(),
+        destinations=destinations,
     )
 
     values.clear()
-    stores.clear()
+    destinations.clear()
 
-    assert tuple(snapshot.stores) == ('store',)
-    assert tuple(snapshot.stores['store']) == ('kpi',)
+    assert tuple(snapshot.destinations) == ('global',)
+    assert tuple(snapshot.destinations['global']) == ('kpi',)

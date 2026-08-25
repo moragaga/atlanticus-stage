@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_delivery_projection_has_no_process_or_infrastructure_dependencies() -> None:
+def test_delivery_contract_has_no_process_or_infrastructure_dependencies() -> None:
     source = '\n'.join(path.read_text(encoding='utf-8') for path in Path('src').rglob('*.py'))
     forbidden = (
         'ada.processes',

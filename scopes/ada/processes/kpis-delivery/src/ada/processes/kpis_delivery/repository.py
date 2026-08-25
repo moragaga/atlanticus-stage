@@ -15,24 +15,17 @@ from ada.processes.kpis_delivery.models import (
 )
 from atlanticus.connectivity.cosmos import CosmosClient
 
+KPI_LATEST_DELIVERY_CONTAINER_NAME = 'kpis-latest-delivery'
+
 
 @dataclass(slots=True)
 class KpiLatestSnapshotRepository:
     client: CosmosClient
-    container_name: str
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.container_name, str) or not self.container_name:
-            raise KpiDeliveryRepositoryError('container_name must be a non-empty string')
-        if self.container_name != self.container_name.strip():
-            raise KpiDeliveryRepositoryError(
-                'container_name must not contain surrounding whitespace'
-            )
 
     def publish(self, snapshot: KpiDeliverySnapshot) -> KpiLatestPublication:
         self._validate_snapshot(snapshot)
         current = self.client.find_item(
-            container_name=self.container_name,
+            container_name=KPI_LATEST_DELIVERY_CONTAINER_NAME,
             item_id=snapshot.id,
             partition_key=snapshot.partition_id,
         )
@@ -44,7 +37,7 @@ class KpiLatestSnapshotRepository:
                     revision=snapshot.manifest.revision,
                 )
         self.client.upsert_item(
-            container_name=self.container_name,
+            container_name=KPI_LATEST_DELIVERY_CONTAINER_NAME,
             item=snapshot.as_document(),
         )
         return KpiLatestPublication(

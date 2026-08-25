@@ -49,7 +49,7 @@ def test_public_api_and_version() -> None:
     assert callable(compose_engine_commit_record)
     assert callable(decode_group_runtime_snapshot)
     assert callable(encode_group_runtime_snapshot)
-    assert __version__ == '0.5.0'
+    assert __version__ == '0.5.1'
     assert not hasattr(alarms_runtime, 'AlarmRuntimeDurability')
     assert not hasattr(alarms_runtime, 'AlarmRuntimePersistenceComposition')
     assert not hasattr(alarms_runtime, 'build_persistence_composition')

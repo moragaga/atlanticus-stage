@@ -1,4 +1,6 @@
-# Espejo comentado: el código ejecutable conserva exactamente el contrato productivo.
+# Proceso Latest: congela configuración por job, observa watermark fresco y publica sólo cuando corresponde.
+# Encapsula persistencia Cosmos y protege la idempotencia de publicación.
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,24 +18,19 @@ from ada.processes.kpis_delivery.models import (
 )
 from atlanticus.connectivity.cosmos import CosmosClient
 
+# Constante interna o contractual centralizada para evitar literales dispersos.
+KPI_LATEST_DELIVERY_CONTAINER_NAME = 'kpis-latest-delivery'
+
 
 @dataclass(slots=True)
+# La clase encapsula una responsabilidad con estado o contrato propio.
 class KpiLatestSnapshotRepository:
     client: CosmosClient
-    container_name: str
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.container_name, str) or not self.container_name:
-            raise KpiDeliveryRepositoryError('container_name must be a non-empty string')
-        if self.container_name != self.container_name.strip():
-            raise KpiDeliveryRepositoryError(
-                'container_name must not contain surrounding whitespace'
-            )
 
     def publish(self, snapshot: KpiDeliverySnapshot) -> KpiLatestPublication:
         self._validate_snapshot(snapshot)
         current = self.client.find_item(
-            container_name=self.container_name,
+            container_name=KPI_LATEST_DELIVERY_CONTAINER_NAME,
             item_id=snapshot.id,
             partition_key=snapshot.partition_id,
         )
@@ -45,7 +42,7 @@ class KpiLatestSnapshotRepository:
                     revision=snapshot.manifest.revision,
                 )
         self.client.upsert_item(
-            container_name=self.container_name,
+            container_name=KPI_LATEST_DELIVERY_CONTAINER_NAME,
             item=snapshot.as_document(),
         )
         return KpiLatestPublication(

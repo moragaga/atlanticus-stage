@@ -901,7 +901,9 @@ class DeactivationRequestResult:
             if self.deactivation_request is None or self.deactivation_effect_id is not None:
                 raise ValueError('PENDING_APPROVAL result requires request without effect')
         elif self.deactivation_request is not None or self.deactivation_effect_id is not None:
-            raise ValueError('non-effective deactivation request result must not contain request/effect')
+            raise ValueError(
+                'non-effective deactivation request result must not contain request/effect'
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -948,7 +950,9 @@ class DeactivationEffectChange:
             if self.effective_at != self.deactivation_effect.effective_from:
                 raise ValueError('STARTED deactivation effect effective_at must match effect')
         elif self.deactivation_effect is not None:
-            raise ValueError('CLEARED deactivation effect change must not contain deactivation_effect')
+            raise ValueError(
+                'CLEARED deactivation effect change must not contain deactivation_effect'
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1079,7 +1083,9 @@ class GroupPriorityResolution:
         expected = predominant[0] if predominant else None
         if self.predominant_alarm_identity != expected:
             raise ValueError('predominant_alarm_identity must match PREDOMINANT decision')
-        object.__setattr__(self, 'alarms', tuple(sorted(normalized, key=lambda item: item.alarm_identity)))
+        object.__setattr__(
+            self, 'alarms', tuple(sorted(normalized, key=lambda item: item.alarm_identity))
+        )
 
 
 @dataclass(frozen=True, slots=True)

@@ -24,9 +24,11 @@ GROUP_RUNTIME_SNAPSHOT_SCHEMA_VERSION = 'group-runtime-snapshot.v1'
 JOURNAL_HEAD_SCHEMA_VERSION = 'journal-head.v1'
 
 _SEGMENT_ID_PATTERN = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}Z#\d{4}')
+# Las colecciones de records son aditivas dentro de engine-commit-record.v1; cada item sigue siendo un objeto JSON autosuficiente.
 _RECORD_COLLECTIONS = {
     'assignment_changes',
     'deactivation_effects',
+    'deactivation_requests',
     'episode_changes',
     'evidence_records',
     'input_receipts',

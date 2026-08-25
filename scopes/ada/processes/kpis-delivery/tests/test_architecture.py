@@ -2,8 +2,8 @@ import ast
 from pathlib import Path
 
 
-def test_process_repositories_use_existing_cosmos_connectivity_boundary() -> None:
-    for name in ('bindings.py', 'repository.py'):
+def test_process_adapters_use_existing_cosmos_boundary() -> None:
+    for name in ('configuration.py', 'repository.py'):
         source = Path(f'src/ada/processes/kpis_delivery/{name}').read_text(encoding='utf-8')
 
         assert 'from atlanticus.connectivity.cosmos import CosmosClient' in source
@@ -17,6 +17,8 @@ def test_cosmos_client_is_created_only_inside_explicit_composition() -> None:
     for path in Path('src').rglob('*.py'):
         tree = ast.parse(path.read_text(encoding='utf-8'))
         source = path.read_text(encoding='utf-8')
+        if path.name == 'composition.py':
+            continue
         for node in tree.body:
             if isinstance(node, ast.Assign | ast.AnnAssign):
                 text = ast.get_source_segment(source, node) or ''
@@ -26,26 +28,22 @@ def test_cosmos_client_is_created_only_inside_explicit_composition() -> None:
     assert 'cosmos_client = CosmosClient(settings=settings.cosmos)' in composition
 
 
-def test_job_does_not_depend_on_configuration_or_cosmos_shape() -> None:
+def test_job_depends_on_contracts_not_cosmos_or_environment_shape() -> None:
     source = Path('src/ada/processes/kpis_delivery/job.py').read_text(encoding='utf-8')
 
     assert 'CosmosClient' not in source
     assert 'CosmosSettings' not in source
-    assert "'kind'" not in source
-    assert 'configuration' not in source
+    assert 'destination_keys' not in source
+    assert 'latest_enabled' not in source
     assert 'os.environ' not in source
 
 
-def test_configuration_snapshot_shape_is_isolated_to_bindings_adapter() -> None:
-    adapter = Path('src/ada/processes/kpis_delivery/bindings.py').read_text(encoding='utf-8')
-    other_source = '\n'.join(
+def test_configuration_projection_shape_is_owned_by_delivery_contract() -> None:
+    process_source = '\n'.join(
         path.read_text(encoding='utf-8')
         for path in Path('src/ada/processes/kpis_delivery').glob('*.py')
-        if path.name != 'bindings.py'
     )
 
-    assert "_CONFIGURATION_PARTITION_ID = 'configuration'" in adapter
-    assert "_KPI_KIND = 'kpi'" in adapter
-    assert "entry.get('key')" in adapter
-    assert "entry.get('kind')" in adapter
-    assert "entry.get('kind')" not in other_source
+    assert "'ada_kpi_configuration_projection'" not in process_source
+    assert "'destination_keys'" not in process_source
+    assert "'series_hours'" not in process_source

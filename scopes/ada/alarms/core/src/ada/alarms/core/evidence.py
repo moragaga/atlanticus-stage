@@ -65,7 +65,9 @@ class EvidenceRecord:
         else:
             error = self.evaluation.error
             if error is None or self.technical_contract is None:
-                raise AlarmContractError('technical Evidence requires evaluation error and contract')
+                raise AlarmContractError(
+                    'technical Evidence requires evaluation error and contract'
+                )
             contract_key = self.technical_contract.contract_key
             contract_version = self.technical_contract.contract_version
             payload = {

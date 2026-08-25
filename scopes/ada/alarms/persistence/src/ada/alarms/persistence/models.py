@@ -21,6 +21,7 @@ _SEGMENT_ID_PATTERN = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}Z#\d{4}')
 _RECORD_COLLECTIONS = {
     'assignment_changes',
     'deactivation_effects',
+    'deactivation_requests',
     'episode_changes',
     'evidence_records',
     'input_receipts',

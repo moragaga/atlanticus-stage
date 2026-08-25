@@ -301,6 +301,7 @@ def materialization(
         journey_event_ids=(),
         evidence_record_ids=(),
         management_effect_ids=(),
+        deactivation_request_ids=(),
         deactivation_effect_ids=(),
         assignment_change_ids=(),
         receipt_ids=receipt_ids,

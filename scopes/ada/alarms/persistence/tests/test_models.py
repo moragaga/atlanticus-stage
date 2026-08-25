@@ -87,6 +87,30 @@ def test_engine_commit_record_detects_payload_tampering() -> None:
         EngineCommitRecord.from_document(payload)
 
 
+def test_engine_commit_record_accepts_durable_deactivation_request_collection() -> None:
+    commit = build_record().commit
+    snapshot = build_snapshot()
+    request = {
+        'request_id': 'DR1',
+        'alarm_key': 'mill/risk',
+        'source_management_input_id': 'M1',
+        'source_occurrence_id': 'O1',
+        'requested_at': '2026-08-24T12:00:00Z',
+        'effective_until': '2026-08-24T19:00:00Z',
+        'approval_required': True,
+    }
+
+    record = EngineCommitRecord.create(
+        commit=commit,
+        snapshot_after=snapshot,
+        records={'deactivation_requests': [request]},
+    )
+    rebuilt = EngineCommitRecord.from_document(record.as_document())
+
+    assert rebuilt.records == {'deactivation_requests': [request]}
+    assert rebuilt.record_hash == record.record_hash
+
+
 def test_engine_commit_record_rejects_unknown_record_collection() -> None:
     commit = build_record().commit
     snapshot = build_snapshot()

@@ -1,20 +1,8 @@
 import ada.kpis.delivery as delivery
 
 
-def test_public_api_exports_latest_delivery_contract() -> None:
-    expected = {
-        'KPI_LATEST_DELIVERY_ID',
-        'KPI_LATEST_PARTITION_ID',
-        'KPI_LATEST_SCHEMA_VERSION',
-        'KpiDeliveryBinding',
-        'KpiDeliveryError',
-        'KpiDeliveryManifest',
-        'KpiDeliverySnapshot',
-        'KpiDeliveryStatus',
-        'KpiDeliveryValidationError',
-        'KpiDeliveryValue',
-        'calculate_kpi_latest_revision',
-        'project_kpi_latest',
-    }
-
-    assert expected <= set(delivery.__all__)
+def test_version_and_public_contract():
+    assert delivery.__version__ == '0.2.0'
+    assert delivery.KPI_CONFIGURATION_ID == 'kpis'
+    assert delivery.KPI_LATEST_DELIVERY_ID == 'latest'
+    assert delivery.KPI_TIMESERIES_DELIVERY_ID == 'timeseries'

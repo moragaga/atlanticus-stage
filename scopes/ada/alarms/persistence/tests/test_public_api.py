@@ -2,7 +2,7 @@ import ada.alarms.persistence as persistence
 
 
 def test_public_api_exports_stable_persistence_contract() -> None:
-    assert persistence.__version__ == '0.1.0'
+    assert persistence.__version__ == '0.2.0'
     assert persistence.ENGINE_COMMIT_RECORD_SCHEMA_VERSION == 'engine-commit-record.v1'
     assert persistence.GROUP_RUNTIME_SNAPSHOT_SCHEMA_VERSION == 'group-runtime-snapshot.v1'
     assert persistence.JOURNAL_HEAD_SCHEMA_VERSION == 'journal-head.v1'

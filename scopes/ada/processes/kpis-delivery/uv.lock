@@ -21,7 +21,7 @@ dev = [
 
 [[package]]
 name = "ada-kpis-delivery"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "../../kpis/delivery" }
 dependencies = [
     { name = "ada-kpis-core" },
@@ -38,7 +38,7 @@ dev = [
 
 [[package]]
 name = "ada-kpis-delivery-process"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "ada-kpis-core" },
@@ -51,6 +51,7 @@ dependencies = [
     { name = "atlanticus-kernel" },
     { name = "atlanticus-key-vault" },
     { name = "atlanticus-observability-azure" },
+    { name = "atlanticus-state" },
 ]
 
 [package.dev-dependencies]
@@ -71,6 +72,7 @@ requires-dist = [
     { name = "atlanticus-kernel", editable = "../../../../backend/kernel" },
     { name = "atlanticus-key-vault", editable = "../../../../connectivity/key-vault" },
     { name = "atlanticus-observability-azure", editable = "../../../../backend/observability-azure" },
+    { name = "atlanticus-state", editable = "../../../../backend/state" },
 ]
 
 [package.metadata.requires-dev]

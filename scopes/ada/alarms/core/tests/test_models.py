@@ -210,8 +210,8 @@ def test_group_state_requires_episode_for_open_occurrence() -> None:
                     alarm_identity=identity(),
                     occurrence=occurrence,
                     last_evaluation=RuntimeEvaluationState.from_evaluation(
-                physical('risk', AlarmStatus.ACTIVE)
-            ),
+                        physical('risk', AlarmStatus.ACTIVE)
+                    ),
                     management_cycle=1,
                 ),
             ),
@@ -388,7 +388,6 @@ def test_group_lifecycle_decision_validates_all_change_collections() -> None:
         )
 
 
-
 def test_routing_contract_matches_criticality_semantics() -> None:
     c1 = plan(
         'impact',
@@ -443,13 +442,11 @@ def test_runtime_assignments_are_decision_complete_and_mutually_exclusive() -> N
         alarm_identity=identity(),
         occurrence=occurrence,
         last_evaluation=RuntimeEvaluationState.from_evaluation(
-                physical('risk', AlarmStatus.ACTIVE)
-            ),
+            physical('risk', AlarmStatus.ACTIVE)
+        ),
         management_cycle=1,
         assignments=(ToolAssignment('tool-a', NOW),),
-        pending_assignments=(
-            PendingToolAssignment('tool-b', NOW + timedelta(minutes=15)),
-        ),
+        pending_assignments=(PendingToolAssignment('tool-b', NOW + timedelta(minutes=15)),),
     )
     assert state.assignments[0].tool_key == 'tool-a'
     with pytest.raises(ValueError, match='both assigned and pending'):
@@ -461,9 +458,7 @@ def test_runtime_assignments_are_decision_complete_and_mutually_exclusive() -> N
             ),
             management_cycle=1,
             assignments=(ToolAssignment('tool-a', NOW),),
-            pending_assignments=(
-                PendingToolAssignment('tool-a', NOW + timedelta(minutes=15)),
-            ),
+            pending_assignments=(PendingToolAssignment('tool-a', NOW + timedelta(minutes=15)),),
         )
 
 

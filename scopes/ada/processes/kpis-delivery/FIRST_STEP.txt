@@ -1,39 +1,46 @@
 KPIS DELIVERY - PRIMEROS PASOS
 ==============================
 
-Este proceso consume el latest KPI y una proyección de configuración desde Cosmos, y publica el
-snapshot agregado de consumo en el mismo contenedor. No calcula KPI, no historiza y no usa pip.
+Este proceso consume KPI Latest y la KPI Configuration Projection estable desde Cosmos. Publica
+una fotografía Latest orientada por destination_key. No calcula KPI, no historiza y no usa pip.
 
 1. CONFIGURACIÓN LOCAL
 ----------------------
 
     cp .env.detail .env
 
-APPLICATION debe ser el mismo scope compartido usado por KPI Evaluation e Historian.
-COSMOS_CONSUMPTION_* identifica una conexión Cosmos nombrada de consumo.
+APPLICATION y VOLUMEN_PATH deben apuntar al mismo scope compartido usado por KPI Evaluation.
+Para Cosmos se configuran endpoint, key y database. Los contenedores son internos al proceso:
 
-El contenedor debe usar /partition_id como partition key y contener el snapshot de configuración:
+    configuration        -> KPI Configuration Projection
+    kpis-latest-delivery -> fotografía Latest de consumo
 
-    id = snapshot
-    partition_id = configuration
+La proyección de configuración esperada es:
 
-Su payload runtime mínimo es:
+    id = kpis
+    partition_key = kpis
+    document_type = ada_kpi_configuration_projection
 
-    stores -> store_key -> [{"key": "...", "kind": "kpi"}, ...]
+Cada binding utiliza key, destination_keys y latest_enabled. La configuración se lee una sola vez
+por job y permanece congelada durante toda la ejecución.
 
-El store_key exterior define el destino. Latest Delivery solo consume entradas kind=kpi; otros kinds
-se ignoran. stores={} es una configuración válida y publica el contrato mínimo vacío. Un snapshot
-inexistente o inválido falla y no reemplaza el último snapshot KPI válido.
+2. CHECKPOINT Y SALIDA
+----------------------
 
-2. SALIDA
----------
+El proceso mantiene checkpoint durable propio con el último watermark despachado y la última
+revision de configuración despachada. En cada iteración lee el committed watermark de KPI.
 
-El proceso publica mediante point read/upsert:
+Si watermark y revision de configuración ya están confirmados, hace skip sin leer KPI Latest ni
+tocar Cosmos de consumo. Si alguno cambió, publica primero la fotografía Latest y sólo después
+confirma el checkpoint.
 
-    id = snapshot
+La salida usa:
+
+    id = latest
     partition_id = kpis
 
-Si manifest.revision no cambia, no escribe nuevamente en Cosmos.
+manifest.revision es la identidad que debe observar Web para decidir si refresca sus stores.
+manifest.watermark_utc identifica la fotografía temporal KPI despachada.
 
 3. VALIDACIÓN
 -------------
@@ -43,4 +50,4 @@ Desde la raíz del proceso:
     scripts/check.sh --clean
 
 El check valida source, genera artifacts/processes/kpis-delivery, instala el lock frozen del artifact
-y verifica el comando ada-kpis-delivery.
+y verifica el comando ada-kpis-delivery con Python 3.14.2 y UV.

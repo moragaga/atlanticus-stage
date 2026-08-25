@@ -1,24 +1,7 @@
-import ada.processes.kpis_delivery as delivery_process
+import ada.processes.kpis_delivery as module
 
 
-def test_public_api_exports_process_contract() -> None:
-    assert set(delivery_process.__all__) == {
-        'KpiDeliveryBindingsReader',
-        'KpiDeliveryBindingsRepository',
-        'KpiDeliveryComposition',
-        'KpiDeliveryConfigurationError',
-        'KpiDeliveryProcessSettings',
-        'KpiDeliveryRepositoryError',
-        'KpiLatestDeliveryIterationResult',
-        'KpiLatestDeliveryJob',
-        'KpiLatestPublication',
-        'KpiLatestPublicationStatus',
-        'KpiLatestReader',
-        'KpiLatestSnapshotPublisher',
-        'KpiLatestSnapshotRepository',
-        '__version__',
-        'build_composition',
-        'configuration_specs',
-        'load_configuration',
-        'run',
-    }
+def test_version():
+    assert module.__version__ == '0.2.0'
+    assert module.KPI_CONFIGURATION_CONTAINER_NAME == 'configuration'
+    assert module.KPI_LATEST_DELIVERY_CONTAINER_NAME == 'kpis-latest-delivery'

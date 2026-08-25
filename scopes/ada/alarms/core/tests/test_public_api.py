@@ -2,7 +2,7 @@ import ada.alarms.core as core
 
 
 def test_version() -> None:
-    assert core.__version__ == '0.5.1'
+    assert core.__version__ == '0.6.0'
 
 
 def test_public_api_contains_lifecycle_foundation() -> None:
@@ -16,6 +16,7 @@ def test_public_api_contains_lifecycle_foundation() -> None:
         'AssignmentChangeRecord',
         'ManagementEffectRecord',
         'DeactivationEffectRecord',
+        'DeactivationRequestRecord',
         'InputReceipt',
         'GroupCommitMaterialization',
         'materialize_group_commit',

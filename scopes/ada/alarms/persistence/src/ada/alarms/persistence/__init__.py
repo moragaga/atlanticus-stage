@@ -24,7 +24,7 @@ from ada.alarms.persistence.models import (
 from ada.alarms.persistence.paths import AlarmPersistencePaths
 from ada.alarms.persistence.store import AlarmPersistence, AuthorityCheck, MutationFence
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 
 __all__ = [
     'ENGINE_COMMIT_RECORD_SCHEMA_VERSION',

@@ -1,33 +1,67 @@
+from ada.kpis.delivery.configuration import (
+    KPI_CONFIGURATION_DOCUMENT_TYPE,
+    KPI_CONFIGURATION_ID,
+    KPI_CONFIGURATION_PARTITION_ID,
+    KPI_CONFIGURATION_SCHEMA_VERSION,
+    KpiDeliveryConfiguration,
+    KpiDeliveryConfigurationBinding,
+)
 from ada.kpis.delivery.errors import KpiDeliveryError, KpiDeliveryValidationError
 from ada.kpis.delivery.models import (
-    KpiDeliveryBinding,
     KpiDeliveryManifest,
     KpiDeliverySnapshot,
     KpiDeliveryStatus,
     KpiDeliveryValue,
+    KpiTimeseriesManifest,
+    KpiTimeseriesPoint,
+    KpiTimeseriesSnapshot,
+    KpiTimeseriesWindow,
 )
 from ada.kpis.delivery.projection import (
     KPI_LATEST_DELIVERY_ID,
+    KPI_LATEST_DOCUMENT_TYPE,
     KPI_LATEST_PARTITION_ID,
     KPI_LATEST_SCHEMA_VERSION,
+    KPI_TIMESERIES_DELIVERY_ID,
+    KPI_TIMESERIES_DOCUMENT_TYPE,
+    KPI_TIMESERIES_PARTITION_ID,
+    KPI_TIMESERIES_SCHEMA_VERSION,
     calculate_kpi_latest_revision,
+    calculate_kpi_timeseries_revision,
     project_kpi_latest,
+    project_kpi_timeseries,
 )
 
-__version__ = '0.1.1'
+__version__ = '0.2.0'
 
 __all__ = [
+    'KPI_CONFIGURATION_DOCUMENT_TYPE',
+    'KPI_CONFIGURATION_ID',
+    'KPI_CONFIGURATION_PARTITION_ID',
+    'KPI_CONFIGURATION_SCHEMA_VERSION',
     'KPI_LATEST_DELIVERY_ID',
+    'KPI_LATEST_DOCUMENT_TYPE',
     'KPI_LATEST_PARTITION_ID',
     'KPI_LATEST_SCHEMA_VERSION',
-    'KpiDeliveryBinding',
+    'KPI_TIMESERIES_DELIVERY_ID',
+    'KPI_TIMESERIES_DOCUMENT_TYPE',
+    'KPI_TIMESERIES_PARTITION_ID',
+    'KPI_TIMESERIES_SCHEMA_VERSION',
+    'KpiDeliveryConfiguration',
+    'KpiDeliveryConfigurationBinding',
     'KpiDeliveryError',
     'KpiDeliveryManifest',
     'KpiDeliverySnapshot',
     'KpiDeliveryStatus',
     'KpiDeliveryValidationError',
     'KpiDeliveryValue',
+    'KpiTimeseriesManifest',
+    'KpiTimeseriesPoint',
+    'KpiTimeseriesSnapshot',
+    'KpiTimeseriesWindow',
     '__version__',
     'calculate_kpi_latest_revision',
+    'calculate_kpi_timeseries_revision',
     'project_kpi_latest',
+    'project_kpi_timeseries',
 ]

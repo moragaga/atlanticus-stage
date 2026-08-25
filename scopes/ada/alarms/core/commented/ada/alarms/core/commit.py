@@ -25,6 +25,7 @@ from ada.alarms.core.models import (
     AssignmentChangeKind,
     DeactivationDecisionOutcome,
     DeactivationEffectChangeKind,
+    DeactivationRequest,
     EpisodeChange,
     GroupLifecycleDecision,
     GroupLifecycleState,
@@ -107,6 +108,57 @@ class ManagementEffectRecord:
             'source_occurrence_id': self.source_occurrence_id,
             'effect_effective_at': _timestamp(self.effect_effective_at),
             'reappearance_due_at': _timestamp(self.reappearance_due_at),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+# DeactivationRequestRecord conserva la solicitud exacta que nació del ManagementAction.
+# Cruza la misma frontera durable que su InputReceipt para que recovery no tenga que recrearla.
+class DeactivationRequestRecord:
+    request_id: str
+    alarm_identity: AlarmIdentity
+    source_management_input_id: str
+    source_occurrence_id: str
+    requested_at: datetime
+    effective_until: datetime
+    approval_required: bool
+
+    def __post_init__(self) -> None:
+        _require_non_empty_string(self.request_id, 'request_id')
+        if not isinstance(self.alarm_identity, AlarmIdentity):
+            raise TypeError('alarm_identity must be an AlarmIdentity')
+        _require_non_empty_string(self.source_management_input_id, 'source_management_input_id')
+        _require_non_empty_string(self.source_occurrence_id, 'source_occurrence_id')
+        _require_utc_datetime(self.requested_at, 'requested_at')
+        _require_utc_datetime(self.effective_until, 'effective_until')
+        if self.effective_until <= self.requested_at:
+            raise ValueError('effective_until must be after requested_at')
+        if not isinstance(self.approval_required, bool):
+            raise TypeError('approval_required must be a bool')
+
+    @classmethod
+    def from_request(cls, request: DeactivationRequest) -> DeactivationRequestRecord:
+        if not isinstance(request, DeactivationRequest):
+            raise TypeError('request must be a DeactivationRequest')
+        return cls(
+            request_id=request.request_id,
+            alarm_identity=request.alarm_identity,
+            source_management_input_id=request.source_management_input_id,
+            source_occurrence_id=request.source_occurrence_id,
+            requested_at=request.requested_at,
+            effective_until=request.effective_until,
+            approval_required=request.approval_required,
+        )
+
+    def as_document(self) -> dict[str, Any]:
+        return {
+            'request_id': self.request_id,
+            'alarm_key': self.alarm_identity.canonical_key,
+            'source_management_input_id': self.source_management_input_id,
+            'source_occurrence_id': self.source_occurrence_id,
+            'requested_at': _timestamp(self.requested_at),
+            'effective_until': _timestamp(self.effective_until),
+            'approval_required': self.approval_required,
         }
 
 
@@ -236,6 +288,7 @@ class EngineCommit:
     journey_event_ids: tuple[str, ...]
     evidence_record_ids: tuple[str, ...]
     management_effect_ids: tuple[str, ...]
+    deactivation_request_ids: tuple[str, ...]
     deactivation_effect_ids: tuple[str, ...]
     assignment_change_ids: tuple[str, ...]
     receipt_ids: tuple[str, ...]
@@ -281,6 +334,7 @@ class EngineCommit:
             'journey_event_ids',
             'evidence_record_ids',
             'management_effect_ids',
+            'deactivation_request_ids',
             'deactivation_effect_ids',
             'assignment_change_ids',
             'receipt_ids',
@@ -309,6 +363,7 @@ class EngineCommit:
             'journey_event_ids': list(self.journey_event_ids),
             'evidence_record_ids': list(self.evidence_record_ids),
             'management_effect_ids': list(self.management_effect_ids),
+            'deactivation_request_ids': list(self.deactivation_request_ids),
             'deactivation_effect_ids': list(self.deactivation_effect_ids),
             'assignment_change_ids': list(self.assignment_change_ids),
             'receipt_ids': list(self.receipt_ids),
@@ -323,6 +378,7 @@ class EngineCommitRecords:
     journey_events: tuple[JourneyEvent, ...] = ()
     evidence_records: tuple[EvidenceRecord, ...] = ()
     management_effects: tuple[ManagementEffectRecord, ...] = ()
+    deactivation_requests: tuple[DeactivationRequestRecord, ...] = ()
     deactivation_effects: tuple[DeactivationEffectRecord, ...] = ()
     assignment_changes: tuple[AssignmentChangeRecord, ...] = ()
     input_receipts: tuple[InputReceipt, ...] = ()
@@ -338,6 +394,11 @@ class EngineCommitRecords:
             'management_effects',
         )
         _require_typed_tuple(
+            self.deactivation_requests,
+            DeactivationRequestRecord,
+            'deactivation_requests',
+        )
+        _require_typed_tuple(
             self.deactivation_effects,
             DeactivationEffectRecord,
             'deactivation_effects',
@@ -347,6 +408,7 @@ class EngineCommitRecords:
         _require_unique_ids(self.journey_events, 'event_id', 'journey_events')
         _require_unique_ids(self.evidence_records, 'evidence_id', 'evidence_records')
         _require_unique_ids(self.management_effects, 'record_id', 'management_effects')
+        _require_unique_ids(self.deactivation_requests, 'request_id', 'deactivation_requests')
         _require_unique_ids(self.deactivation_effects, 'record_id', 'deactivation_effects')
         _require_unique_ids(self.assignment_changes, 'change_id', 'assignment_changes')
         _require_unique_ids(self.input_receipts, 'receipt_id', 'input_receipts')
@@ -370,6 +432,10 @@ class EngineCommitRecords:
         if self.management_effects:
             document['management_effects'] = [
                 record.as_document() for record in self.management_effects
+            ]
+        if self.deactivation_requests:
+            document['deactivation_requests'] = [
+                record.as_document() for record in self.deactivation_requests
             ]
         if self.deactivation_effects:
             document['deactivation_effects'] = [
@@ -475,6 +541,7 @@ def materialize_group_commit(
     )
     episode_change = _episode_change_reference(decision.episode_changes)
     management_effect_records = _management_effect_records(previous_state, decision)
+    deactivation_request_records = _deactivation_request_records(decision)
     deactivation_effect_records = _deactivation_effect_records(previous_state, decision)
     assignment_change_records = _assignment_change_records(
         decision.assignment_changes,
@@ -496,6 +563,7 @@ def materialize_group_commit(
         journey_events=journey_events,
         evidence_records=evidence.records,
         management_effects=management_effect_records,
+        deactivation_requests=deactivation_request_records,
         deactivation_effects=deactivation_effect_records,
         assignment_changes=assignment_change_records,
         input_receipts=receipts,
@@ -518,6 +586,9 @@ def materialize_group_commit(
         evidence_record_ids=tuple(record.evidence_id for record in evidence.records),
         management_effect_ids=tuple(
             sorted({record.effect_id for record in management_effect_records})
+        ),
+        deactivation_request_ids=tuple(
+            record.request_id for record in deactivation_request_records
         ),
         deactivation_effect_ids=tuple(
             sorted({record.effect_id for record in deactivation_effect_records})
@@ -639,6 +710,18 @@ def _management_effect_records(
             )
         )
     return tuple(sorted(records, key=lambda item: (item.effective_at, item.record_id)))
+
+
+# Sólo los requests creados por este ciclo se registran aquí; una decisión posterior no recrea el request.
+def _deactivation_request_records(
+    decision: GroupLifecycleDecision,
+) -> tuple[DeactivationRequestRecord, ...]:
+    records = tuple(
+        DeactivationRequestRecord.from_request(result.deactivation_request)
+        for result in decision.deactivation_request_results
+        if result.deactivation_request is not None
+    )
+    return tuple(sorted(records, key=lambda item: (item.requested_at, item.request_id)))
 
 
 # Función _deactivation_effect_records: transformación determinística; sus efectos externos se componen fuera del Core.

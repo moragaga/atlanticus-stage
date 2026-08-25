@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "ada-alarms-core"
-version = "0.5.1"
+version = "0.6.0"
 source = { editable = "../../alarms/core" }
 
 [package.metadata]
@@ -22,7 +22,7 @@ dev = [
 
 [[package]]
 name = "ada-alarms-persistence"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "../../alarms/persistence" }
 dependencies = [
     { name = "atlanticus-json" },
@@ -43,7 +43,7 @@ dev = [
 
 [[package]]
 name = "ada-alarms-runtime-process"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "." }
 dependencies = [
     { name = "ada-alarms-core" },

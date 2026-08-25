@@ -4,11 +4,11 @@ import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
 
-from ada.kpis.core import KpiValueKind
+from ada.kpis.core import KpiValueKind, KpiWatermark
 from ada.kpis.delivery.errors import KpiDeliveryValidationError
 
 
@@ -16,16 +16,6 @@ class KpiDeliveryStatus(StrEnum):
     OK = 'ok'
     ERROR = 'error'
     MISSING = 'missing'
-
-
-@dataclass(frozen=True, slots=True)
-class KpiDeliveryBinding:
-    store_key: str
-    kpi_key: str
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, 'store_key', _required_text(self.store_key, 'store_key'))
-        object.__setattr__(self, 'kpi_key', _required_text(self.kpi_key, 'kpi_key'))
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,23 +54,40 @@ class KpiDeliveryValue:
 @dataclass(frozen=True, slots=True)
 class KpiDeliveryManifest:
     schema_version: int
-    updated_at_utc: datetime
+    watermark: KpiWatermark | None
+    configuration_revision: str
+    tool_projection_revision: str
+    published_at_utc: datetime
     revision: str
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.schema_version, int)
-            or isinstance(self.schema_version, bool)
-            or self.schema_version <= 0
-        ):
-            raise KpiDeliveryValidationError('schema_version must be a positive integer')
-        object.__setattr__(self, 'updated_at_utc', _utc_datetime(self.updated_at_utc))
+        _positive_integer(self.schema_version, 'schema_version')
+        if self.watermark is not None and not isinstance(self.watermark, KpiWatermark):
+            raise KpiDeliveryValidationError('watermark must be KpiWatermark or None')
+        object.__setattr__(
+            self,
+            'configuration_revision',
+            _required_text(self.configuration_revision, 'configuration_revision'),
+        )
+        object.__setattr__(
+            self,
+            'tool_projection_revision',
+            _required_text(self.tool_projection_revision, 'tool_projection_revision'),
+        )
+        object.__setattr__(
+            self,
+            'published_at_utc',
+            _utc_datetime(self.published_at_utc, 'published_at_utc'),
+        )
         object.__setattr__(self, 'revision', _required_text(self.revision, 'revision'))
 
     def as_payload(self) -> dict[str, object]:
         return {
             'schema_version': self.schema_version,
-            'updated_at_utc': _format_utc(self.updated_at_utc),
+            'watermark_utc': None if self.watermark is None else self.watermark.text,
+            'configuration_revision': self.configuration_revision,
+            'tool_projection_revision': self.tool_projection_revision,
+            'published_at_utc': _format_utc(self.published_at_utc),
             'revision': self.revision,
         }
 
@@ -89,47 +96,208 @@ class KpiDeliveryManifest:
 class KpiDeliverySnapshot:
     id: str
     partition_id: str
+    document_type: str
     manifest: KpiDeliveryManifest
-    stores: Mapping[str, Mapping[str, KpiDeliveryValue]]
+    destinations: Mapping[str, Mapping[str, KpiDeliveryValue]]
 
     def __post_init__(self) -> None:
         object.__setattr__(self, 'id', _required_text(self.id, 'id'))
         object.__setattr__(self, 'partition_id', _required_text(self.partition_id, 'partition_id'))
+        object.__setattr__(
+            self, 'document_type', _required_text(self.document_type, 'document_type')
+        )
         if not isinstance(self.manifest, KpiDeliveryManifest):
             raise KpiDeliveryValidationError('manifest must be KpiDeliveryManifest')
-        object.__setattr__(self, 'stores', _normalize_stores(self.stores))
+        object.__setattr__(self, 'destinations', _normalize_destinations(self.destinations))
 
     def as_document(self) -> dict[str, object]:
         return {
             'id': self.id,
             'partition_id': self.partition_id,
+            'document_type': self.document_type,
             'manifest': self.manifest.as_payload(),
-            'stores': {
-                store_key: {kpi_key: value.as_payload() for kpi_key, value in values.items()}
-                for store_key, values in self.stores.items()
+            'destinations': {
+                destination: {key: value.as_payload() for key, value in values.items()}
+                for destination, values in self.destinations.items()
             },
         }
 
 
-def _normalize_stores(
-    stores: Mapping[str, Mapping[str, KpiDeliveryValue]],
+@dataclass(frozen=True, slots=True)
+class KpiTimeseriesPoint:
+    timestamp_utc: datetime
+    key: str
+    value: object = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            'timestamp_utc',
+            _utc_datetime(self.timestamp_utc, 'timestamp_utc'),
+        )
+        object.__setattr__(self, 'key', _required_text(self.key, 'key'))
+        _validate_series_value(self.value)
+
+
+@dataclass(frozen=True, slots=True)
+class KpiTimeseriesWindow:
+    hours: int
+    start_utc: datetime
+    keys: tuple[str, ...]
+    values: tuple[tuple[object, ...], ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.hours, int)
+            or isinstance(self.hours, bool)
+            or not 1 <= self.hours <= 24
+        ):
+            raise KpiDeliveryValidationError('hours must be an integer from 1 to 24')
+        object.__setattr__(self, 'start_utc', _utc_datetime(self.start_utc, 'start_utc'))
+        keys = tuple(_required_text(value, 'key') for value in self.keys)
+        if not keys:
+            raise KpiDeliveryValidationError('keys must not be empty')
+        if len(keys) != len(set(keys)):
+            raise KpiDeliveryValidationError('keys must not contain duplicates')
+        rows = tuple(tuple(row) for row in self.values)
+        if len(rows) != len(keys):
+            raise KpiDeliveryValidationError('values row count must match keys')
+        lengths = {len(row) for row in rows}
+        if len(lengths) > 1:
+            raise KpiDeliveryValidationError('all timeseries rows must have the same length')
+        for row in rows:
+            for value in row:
+                _validate_series_value(value)
+        object.__setattr__(self, 'keys', keys)
+        object.__setattr__(self, 'values', rows)
+
+
+@dataclass(frozen=True, slots=True)
+class KpiTimeseriesManifest:
+    schema_version: int
+    watermark: KpiWatermark
+    configuration_revision: str
+    tool_projection_revision: str
+    published_at_utc: datetime
+    revision: str
+
+    def __post_init__(self) -> None:
+        _positive_integer(self.schema_version, 'schema_version')
+        if not isinstance(self.watermark, KpiWatermark):
+            raise KpiDeliveryValidationError('watermark must be KpiWatermark')
+        object.__setattr__(
+            self,
+            'configuration_revision',
+            _required_text(self.configuration_revision, 'configuration_revision'),
+        )
+        object.__setattr__(
+            self,
+            'tool_projection_revision',
+            _required_text(self.tool_projection_revision, 'tool_projection_revision'),
+        )
+        object.__setattr__(
+            self,
+            'published_at_utc',
+            _utc_datetime(self.published_at_utc, 'published_at_utc'),
+        )
+        object.__setattr__(self, 'revision', _required_text(self.revision, 'revision'))
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            'schema_version': self.schema_version,
+            'watermark_utc': self.watermark.text,
+            'configuration_revision': self.configuration_revision,
+            'tool_projection_revision': self.tool_projection_revision,
+            'published_at_utc': _format_utc(self.published_at_utc),
+            'revision': self.revision,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class KpiTimeseriesSnapshot:
+    id: str
+    partition_id: str
+    document_type: str
+    manifest: KpiTimeseriesManifest
+    end_utc: datetime
+    step_seconds: int
+    destinations: Mapping[str, tuple[str, ...]]
+    windows: tuple[KpiTimeseriesWindow, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, 'id', _required_text(self.id, 'id'))
+        object.__setattr__(self, 'partition_id', _required_text(self.partition_id, 'partition_id'))
+        object.__setattr__(
+            self, 'document_type', _required_text(self.document_type, 'document_type')
+        )
+        if not isinstance(self.manifest, KpiTimeseriesManifest):
+            raise KpiDeliveryValidationError('manifest must be KpiTimeseriesManifest')
+        end_utc = _utc_datetime(self.end_utc, 'end_utc')
+        if end_utc != self.manifest.watermark.timestamp_utc:
+            raise KpiDeliveryValidationError('end_utc must match manifest watermark')
+        _positive_integer(self.step_seconds, 'step_seconds')
+        destinations = _normalize_series_destinations(self.destinations)
+        windows = tuple(self.windows)
+        if not all(isinstance(window, KpiTimeseriesWindow) for window in windows):
+            raise KpiDeliveryValidationError('windows must contain KpiTimeseriesWindow values')
+        hours = tuple(window.hours for window in windows)
+        if len(hours) != len(set(hours)):
+            raise KpiDeliveryValidationError('timeseries window hours must be unique')
+        for window in windows:
+            expected_start = end_utc - timedelta(hours=window.hours)
+            if window.start_utc != expected_start:
+                raise KpiDeliveryValidationError(
+                    'timeseries window start_utc must equal end_utc minus hours'
+                )
+            duration_seconds = window.hours * 3600
+            if duration_seconds % self.step_seconds != 0:
+                raise KpiDeliveryValidationError(
+                    'timeseries window duration must be divisible by step_seconds'
+                )
+            expected_points = duration_seconds // self.step_seconds
+            if any(len(row) != expected_points for row in window.values):
+                raise KpiDeliveryValidationError(
+                    'timeseries row length must match hours and step_seconds'
+                )
+        object.__setattr__(self, 'end_utc', end_utc)
+        object.__setattr__(self, 'destinations', destinations)
+        object.__setattr__(self, 'windows', windows)
+
+
+def _normalize_destinations(
+    destinations: Mapping[str, Mapping[str, KpiDeliveryValue]],
 ) -> Mapping[str, Mapping[str, KpiDeliveryValue]]:
-    if not isinstance(stores, Mapping):
-        raise KpiDeliveryValidationError('stores must be a mapping')
+    if not isinstance(destinations, Mapping):
+        raise KpiDeliveryValidationError('destinations must be a mapping')
     normalized: dict[str, Mapping[str, KpiDeliveryValue]] = {}
-    for raw_store_key, raw_values in stores.items():
-        store_key = _required_text(raw_store_key, 'store key')
+    for raw_destination, raw_values in destinations.items():
+        destination = _required_text(raw_destination, 'destination key')
         if not isinstance(raw_values, Mapping):
-            raise KpiDeliveryValidationError(f'{store_key}: values must be a mapping')
+            raise KpiDeliveryValidationError(f'{destination}: values must be a mapping')
         values: dict[str, KpiDeliveryValue] = {}
-        for raw_kpi_key, value in raw_values.items():
-            kpi_key = _required_text(raw_kpi_key, f'{store_key}: kpi key')
+        for raw_key, value in raw_values.items():
+            key = _required_text(raw_key, f'{destination}: KPI key')
             if not isinstance(value, KpiDeliveryValue):
                 raise KpiDeliveryValidationError(
-                    f'{store_key}/{kpi_key}: value must be KpiDeliveryValue'
+                    f'{destination}/{key}: value must be KpiDeliveryValue'
                 )
-            values[kpi_key] = value
-        normalized[store_key] = MappingProxyType(values)
+            values[key] = value
+        normalized[destination] = MappingProxyType(values)
+    return MappingProxyType(normalized)
+
+
+def _normalize_series_destinations(
+    destinations: Mapping[str, tuple[str, ...]],
+) -> Mapping[str, tuple[str, ...]]:
+    if not isinstance(destinations, Mapping):
+        raise KpiDeliveryValidationError('destinations must be a mapping')
+    normalized: dict[str, tuple[str, ...]] = {}
+    for raw_destination, raw_keys in destinations.items():
+        destination = _required_text(raw_destination, 'destination key')
+        keys = tuple(_required_text(key, f'{destination}: KPI key') for key in raw_keys)
+        if len(keys) != len(set(keys)):
+            raise KpiDeliveryValidationError(f'{destination}: KPI keys must not contain duplicates')
+        normalized[destination] = keys
     return MappingProxyType(normalized)
 
 
@@ -141,16 +309,34 @@ def _required_text(value: object, field_name: str) -> str:
     return value
 
 
-def _utc_datetime(value: object) -> datetime:
+def _positive_integer(value: object, field_name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise KpiDeliveryValidationError(f'{field_name} must be a positive integer')
+    return value
+
+
+def _utc_datetime(value: object, field_name: str) -> datetime:
     if not isinstance(value, datetime):
-        raise KpiDeliveryValidationError('updated_at_utc must be datetime')
+        raise KpiDeliveryValidationError(f'{field_name} must be datetime')
     if value.tzinfo is None or value.utcoffset() is None:
-        raise KpiDeliveryValidationError('updated_at_utc must be timezone-aware')
+        raise KpiDeliveryValidationError(f'{field_name} must be timezone-aware')
     return value.astimezone(UTC)
 
 
 def _format_utc(value: datetime) -> str:
     return value.isoformat(timespec='microseconds').replace('+00:00', 'Z')
+
+
+def _validate_series_value(value: object) -> None:
+    if value is None or isinstance(value, str | int):
+        if isinstance(value, bool):
+            raise KpiDeliveryValidationError('timeseries value must not be boolean')
+        return
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise KpiDeliveryValidationError('timeseries value must be finite')
+        return
+    raise KpiDeliveryValidationError('timeseries value must be numeric, text, or null')
 
 
 def _validate_json_value(value: object, field_name: str) -> None:

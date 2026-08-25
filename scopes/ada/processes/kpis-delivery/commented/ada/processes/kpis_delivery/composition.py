@@ -1,15 +1,17 @@
-# La composición crea una sola conexión Cosmos nombrada y la comparte entre lectura de configuración y publicación.
-# El job sigue dependiendo de contratos, no de Cosmos ni del formato físico del snapshot.
+# Proceso Latest: congela configuración por job, observa watermark fresco y publica sólo cuando corresponde.
+# Compone dependencias concretas sobre contratos ya definidos.
+
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ada.kpis.persistence import KpiLatestRepository, KpiPersistencePaths
-from ada.processes.kpis_delivery.bindings import KpiDeliveryBindingsRepository
+from ada.kpis.persistence import KpiCommitStore, KpiLatestRepository, KpiPersistencePaths
+from ada.processes.kpis_delivery.configuration import KpiDeliveryConfigurationRepository
 from ada.processes.kpis_delivery.job import KpiLatestDeliveryJob
 from ada.processes.kpis_delivery.repository import KpiLatestSnapshotRepository
 from ada.processes.kpis_delivery.settings import KpiDeliveryProcessSettings
+from ada.processes.kpis_delivery.state import KpiLatestDeliveryCheckpointStore
 from atlanticus.configuration import ResolvedConfiguration
 from atlanticus.connectivity.cosmos import CosmosClient
 from atlanticus.json import JsonDocumentStore
@@ -19,9 +21,11 @@ from atlanticus.runtime import (
     RuntimeExecutionResult,
     execute_job,
 )
+from atlanticus.state import AtomicStateStore
 
 
 @dataclass(slots=True)
+# La clase encapsula una responsabilidad con estado o contrato propio.
 class KpiDeliveryComposition:
     configuration: ResolvedConfiguration
     runtime_configuration: RuntimeConfiguration
@@ -40,30 +44,28 @@ class KpiDeliveryComposition:
             )
 
 
+# La función mantiene una operación pequeña y verificable de esta frontera.
 def build_composition(*, configuration: ResolvedConfiguration) -> KpiDeliveryComposition:
     if not isinstance(configuration, ResolvedConfiguration):
         raise TypeError('configuration must be a ResolvedConfiguration')
-
     settings = KpiDeliveryProcessSettings.from_configuration(configuration)
     runtime_configuration = RuntimeConfiguration.from_sources(environ=configuration.values)
     persistence_paths = KpiPersistencePaths(runtime_configuration.application_root)
+    state_store = AtomicStateStore(
+        volume_path=runtime_configuration.volume_path,
+        application=runtime_configuration.application,
+    )
     latest = KpiLatestRepository(
         store=JsonDocumentStore(),
         paths=persistence_paths,
     )
     cosmos_client = CosmosClient(settings=settings.cosmos)
-    bindings = KpiDeliveryBindingsRepository(
-        client=cosmos_client,
-        container_name=settings.container_name,
-    )
-    snapshots = KpiLatestSnapshotRepository(
-        client=cosmos_client,
-        container_name=settings.container_name,
-    )
     job = KpiLatestDeliveryJob(
+        configuration=KpiDeliveryConfigurationRepository(client=cosmos_client),
+        kpi_state=KpiCommitStore(store=state_store),
         latest=latest,
-        bindings=bindings,
-        snapshots=snapshots,
+        checkpoint=KpiLatestDeliveryCheckpointStore(store=state_store),
+        snapshots=KpiLatestSnapshotRepository(client=cosmos_client),
     )
     job_definition = _job_definition(poll_interval_seconds=settings.poll_interval_seconds)
     return KpiDeliveryComposition(
@@ -76,6 +78,7 @@ def build_composition(*, configuration: ResolvedConfiguration) -> KpiDeliveryCom
     )
 
 
+# La función mantiene una operación pequeña y verificable de esta frontera.
 def _job_definition(*, poll_interval_seconds: int) -> JobDefinition:
     return JobDefinition(
         module_name='ada.processes.kpis_delivery',

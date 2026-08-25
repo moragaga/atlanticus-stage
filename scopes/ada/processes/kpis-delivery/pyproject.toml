@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ada-kpis-delivery-process"
-version = "0.1.1"
+version = "0.2.0"
 description = "ADA KPI latest delivery process infrastructure boundary."
 requires-python = "==3.14.2"
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "ada-kpis-core==0.2.0",
-    "ada-kpis-delivery==0.1.1",
+    "ada-kpis-delivery==0.2.0",
     "ada-kpis-persistence==0.1.1",
     "atlanticus-configuration==0.1.0",
     "atlanticus-cosmos==0.1.0",
@@ -19,6 +19,7 @@ dependencies = [
     "atlanticus-kernel==0.1.0",
     "atlanticus-key-vault==0.1.0",
     "atlanticus-observability-azure==0.1.0",
+    "atlanticus-state==0.2.0",
 ]
 
 [dependency-groups]
@@ -42,6 +43,7 @@ atlanticus-kernel = { path = "../../../../backend/kernel", editable = true }
 atlanticus-key-vault = { path = "../../../../connectivity/key-vault", editable = true }
 atlanticus-observability = { path = "../../../../backend/observability", editable = true }
 atlanticus-observability-azure = { path = "../../../../backend/observability-azure", editable = true }
+atlanticus-state = { path = "../../../../backend/state", editable = true }
 atlanticus-job-runtime = { path = "../../../../backend/runtime", editable = true }
 
 [tool.setuptools.packages.find]

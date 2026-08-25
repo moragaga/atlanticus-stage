@@ -39,7 +39,6 @@ from .support import (
     reappear_after,
 )
 
-
 TECHNICAL_EVIDENCE = EvidenceContractRef(
     contract_key='technical-evaluation-test',
     contract_version='v1',
@@ -119,7 +118,9 @@ def test_occurrence_start_materializes_initial_evidence_and_next_due() -> None:
     evidence = materialized.records.evidence_records[0]
     assert evidence.evidence_id == 'evidence:O1:initial'
     assert evidence.evaluation.status is AlarmStatus.ACTIVE
-    assert 'occurrence_started' in {event.event_key for event in materialized.records.journey_events}
+    assert 'occurrence_started' in {
+        event.event_key for event in materialized.records.journey_events
+    }
     assert materialized.commit.affected_alarms == (alarm.identity,)
     assert alarm.identity in materialized.commit.runtime_state_updates
 
@@ -129,13 +130,16 @@ def test_steady_active_without_due_work_produces_no_commit() -> None:
     at = NOW + timedelta(minutes=1)
     evaluation = physical('risk', AlarmStatus.ACTIVE, at=at)
     decision = _reduce(started.state, (alarm,), (evaluation,), at=at, ids=ids)
-    assert _materialize(
-        started.state,
-        decision,
-        (evaluation,),
-        at=at,
-        previous_commit_id=started.commit.commit_id,
-    ) is None
+    assert (
+        _materialize(
+            started.state,
+            decision,
+            (evaluation,),
+            at=at,
+            previous_commit_id=started.commit.commit_id,
+        )
+        is None
+    )
 
 
 def test_periodic_evidence_due_creates_commit_without_lifecycle_change() -> None:
@@ -263,13 +267,16 @@ def test_repeated_error_inside_hold_without_new_durable_fact_is_noop() -> None:
     at = error_at + timedelta(minutes=1)
     repeated = error('risk', at=at)
     decision = _reduce(hold.state, (alarm,), (repeated,), at=at, ids=ids)
-    assert _materialize(
-        hold.state,
-        decision,
-        (repeated,),
-        at=at,
-        previous_commit_id=hold.commit.commit_id,
-    ) is None
+    assert (
+        _materialize(
+            hold.state,
+            decision,
+            (repeated,),
+            at=at,
+            previous_commit_id=hold.commit.commit_id,
+        )
+        is None
+    )
 
 
 def test_technical_hold_recovery_records_immediate_evidence_and_reanchors() -> None:
@@ -335,7 +342,9 @@ def test_management_additional_creates_receipt_even_without_new_effect() -> None
         actions=(management_action('risk', input_id='M2', at=second_at),),
         ids=ids,
     )
-    assert second_decision.management_action_results[0].outcome is ManagementActionOutcome.ADDITIONAL
+    assert (
+        second_decision.management_action_results[0].outcome is ManagementActionOutcome.ADDITIONAL
+    )
     second = _materialize(
         first.state,
         second_decision,
@@ -388,6 +397,59 @@ def test_deactivation_intent_uses_one_deactivation_request_receipt_for_same_inpu
     assert receipt.input_kind is InputKind.DEACTIVATION_REQUEST
     assert receipt.input_id == 'M1'
     assert receipt.outcome == 'DIRECT'
+    assert len(materialized.records.deactivation_requests) == 1
+    request_record = materialized.records.deactivation_requests[0]
+    assert request_record.request_id == 'DR1'
+    assert request_record.source_management_input_id == 'M1'
+    assert request_record.requested_at == at
+    assert request_record.effective_until == at + timedelta(minutes=30)
+    assert request_record.approval_required is False
+    assert materialized.commit.deactivation_request_ids == ('DR1',)
+
+
+def test_pending_approval_request_is_durable_without_starting_effect() -> None:
+    ids = Ids()
+    alarm = plan('risk', deactivation_approval_required=True)
+    previous = GroupLifecycleState(priority_group='mill-feed')
+    initial_eval = physical('risk', AlarmStatus.ACTIVE)
+    initial_decision = _reduce(previous, (alarm,), (initial_eval,), ids=ids)
+    started = _materialize(previous, initial_decision, (initial_eval,))
+    assert started is not None
+    at = NOW + timedelta(minutes=1)
+    until = at + timedelta(hours=7)
+    evaluation = physical('risk', AlarmStatus.ACTIVE, at=at)
+    decision = _reduce(
+        started.state,
+        (alarm,),
+        (evaluation,),
+        at=at,
+        actions=(management_action('risk', at=at, deactivation_until=until),),
+        ids=ids,
+    )
+    materialized = _materialize(
+        started.state,
+        decision,
+        (evaluation,),
+        at=at,
+        previous_commit_id=started.commit.commit_id,
+    )
+    assert materialized is not None
+    assert materialized.records.deactivation_effects == ()
+    assert materialized.commit.deactivation_effect_ids == ()
+    assert materialized.commit.deactivation_request_ids == ('DR1',)
+    request_record = materialized.records.deactivation_requests[0]
+    assert request_record.as_document() == {
+        'request_id': 'DR1',
+        'alarm_key': 'mill/risk',
+        'source_management_input_id': 'M1',
+        'source_occurrence_id': 'O1',
+        'requested_at': '2026-08-24T14:01:00Z',
+        'effective_until': '2026-08-24T21:01:00Z',
+        'approval_required': True,
+    }
+    receipt = materialized.records.input_receipts[0]
+    assert receipt.input_kind is InputKind.DEACTIVATION_REQUEST
+    assert receipt.outcome == 'PENDING_APPROVAL'
 
 
 def test_deactivation_decision_has_own_receipt() -> None:
@@ -514,9 +576,7 @@ def test_priority_transition_journey_is_emitted_only_when_prior_resolution_is_su
         previous_priority_resolution=first_decision.priority_resolution,
     )
     assert with_prior is not None
-    assert 'priority_suppressed' in {
-        event.event_key for event in with_prior.records.journey_events
-    }
+    assert 'priority_suppressed' in {event.event_key for event in with_prior.records.journey_events}
     current = second_decision.priority_resolution
     assert current is not None
     risk_decision = next(item for item in current.alarms if item.alarm_identity == risk.identity)
@@ -541,13 +601,16 @@ def test_pending_dependency_decision_has_no_receipt_and_no_commit_by_itself() ->
         decisions=(deactivation_decision(request_id='missing', at=at),),
         ids=ids,
     )
-    assert _materialize(
-        started.state,
-        decision,
-        (evaluation,),
-        at=at,
-        previous_commit_id=started.commit.commit_id,
-    ) is None
+    assert (
+        _materialize(
+            started.state,
+            decision,
+            (evaluation,),
+            at=at,
+            previous_commit_id=started.commit.commit_id,
+        )
+        is None
+    )
 
 
 def test_technical_evidence_contract_is_never_inferred() -> None:
@@ -659,9 +722,7 @@ def test_deactivation_expiry_keeps_effect_identity_and_emits_journey() -> None:
     assert cleared.effect_id == effect_id
     assert cleared.effective_until == until
     assert expired.commit.deactivation_effect_ids == (effect_id,)
-    assert 'deactivation_expired' in {
-        event.event_key for event in expired.records.journey_events
-    }
+    assert 'deactivation_expired' in {event.event_key for event in expired.records.journey_events}
 
 
 def test_engine_commit_records_document_contains_full_immutable_payloads() -> None:
@@ -736,9 +797,7 @@ def test_structural_reset_without_evaluation_never_fabricates_final_evidence() -
     )
     assert materialized is not None
     assert materialized.records.evidence_records == ()
-    assert 'occurrence_closed' in {
-        event.event_key for event in materialized.records.journey_events
-    }
+    assert 'occurrence_closed' in {event.event_key for event in materialized.records.journey_events}
 
 
 def test_structural_reset_clears_deactivation_without_calling_it_expiry() -> None:

@@ -7,7 +7,7 @@ _COMMENTED_ROOT = Path('commented/ada/kpis/delivery')
 
 
 def _python_tokens(path: Path) -> list[tuple[int, str]]:
-    tokens: list[tuple[int, str]] = []
+    tokens = []
     for token in tokenize.generate_tokens(io.StringIO(path.read_text()).readline):
         if token.type in {
             tokenize.COMMENT,
@@ -23,7 +23,7 @@ def _python_tokens(path: Path) -> list[tuple[int, str]]:
     return tokens
 
 
-def test_commented_mirror_only_adds_comments() -> None:
+def test_commented_mirror_only_adds_comments():
     for production_path in sorted(_PRODUCTION_ROOT.glob('*.py')):
         commented_path = _COMMENTED_ROOT / production_path.name
         assert commented_path.exists()

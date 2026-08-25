@@ -8,81 +8,104 @@ from ada.kpis.core import (
     KpiValueKind,
     KpiWatermark,
 )
-from ada.kpis.delivery import (
-    KpiDeliveryBinding,
-    KpiDeliveryStatus,
-    calculate_kpi_latest_revision,
-    project_kpi_latest,
-)
+from ada.kpis.delivery import KpiDeliveryConfiguration, KpiDeliveryStatus, project_kpi_latest
 
-_NOW = datetime(2026, 8, 20, 14, 30, tzinfo=UTC)
+_NOW = datetime(2026, 8, 25, 10, 0, 1, tzinfo=UTC)
 
 
-def _evaluation(*results: KpiResult) -> KpiEvaluation:
+def _configuration(*, revision: str = 'config-1') -> KpiDeliveryConfiguration:
+    return KpiDeliveryConfiguration.from_document(
+        {
+            'id': 'kpis',
+            'partition_key': 'kpis',
+            'document_type': 'ada_kpi_configuration_projection',
+            'schema_version': 1,
+            'revision': revision,
+            'tool_projection_revision': 'tools-1',
+            'configuration': {
+                'bindings': [
+                    {
+                        'key': 'tonelaje',
+                        'destination_keys': ['chancado', 'global'],
+                        'latest_enabled': True,
+                        'series_enabled': False,
+                        'series_hours': None,
+                    },
+                    {
+                        'key': 'produccion',
+                        'destination_keys': ['chancado'],
+                        'latest_enabled': True,
+                        'series_enabled': False,
+                        'series_hours': None,
+                    },
+                    {
+                        'key': 'utilizacion',
+                        'destination_keys': ['chancado'],
+                        'latest_enabled': True,
+                        'series_enabled': False,
+                        'series_hours': None,
+                    },
+                    {
+                        'key': 'configurado_sin_latest',
+                        'destination_keys': ['chancado'],
+                        'latest_enabled': True,
+                        'series_enabled': False,
+                        'series_hours': None,
+                    },
+                ]
+            },
+        }
+    )
+
+
+def _evaluation(watermark: KpiWatermark) -> KpiEvaluation:
     return KpiEvaluation(
-        watermark=KpiWatermark(datetime(2026, 8, 20, 12, 55, 30, tzinfo=UTC)),
-        results=results,
+        watermark=watermark,
+        results=(
+            KpiResult(
+                key='tonelaje',
+                area=KpiArea.PLANTA,
+                status=KpiStatus.OK,
+                value_kind=KpiValueKind.VALUE,
+                persist_history=True,
+                value=66.0,
+                parsed_value='66,00',
+            ),
+            KpiResult(
+                key='produccion',
+                area=KpiArea.PLANTA,
+                status=KpiStatus.OK,
+                value_kind=KpiValueKind.JSON,
+                persist_history=True,
+                value={'actual': 100, 'plan': 120},
+            ),
+            KpiResult(
+                key='utilizacion',
+                area=KpiArea.PLANTA,
+                status=KpiStatus.ERROR,
+                value_kind=KpiValueKind.VALUE,
+                persist_history=True,
+                error='RuntimeError',
+            ),
+        ),
     )
 
 
-def _value_result(key: str, *, parsed_value: str) -> KpiResult:
-    return KpiResult(
-        key=key,
-        area=KpiArea.PLANTA,
-        status=KpiStatus.OK,
-        value_kind=KpiValueKind.VALUE,
-        persist_history=True,
-        value=66.0,
-        parsed_value=parsed_value,
-    )
-
-
-def _json_result(key: str) -> KpiResult:
-    return KpiResult(
-        key=key,
-        area=KpiArea.PLANTA,
-        status=KpiStatus.OK,
-        value_kind=KpiValueKind.JSON,
-        persist_history=True,
-        value={'actual': 100, 'plan': 120},
-    )
-
-
-def _error_result(key: str) -> KpiResult:
-    return KpiResult(
-        key=key,
-        area=KpiArea.PLANTA,
-        status=KpiStatus.ERROR,
-        value_kind=KpiValueKind.VALUE,
-        persist_history=True,
-        error='RuntimeError',
-    )
-
-
-def test_projects_value_json_error_and_missing_into_store_snapshot() -> None:
+def test_projects_value_json_error_and_missing_by_destination() -> None:
+    watermark = KpiWatermark(datetime(2026, 8, 25, 10, 0, tzinfo=UTC))
     snapshot = project_kpi_latest(
-        evaluation=_evaluation(
-            _value_result('tonelaje', parsed_value='66,00'),
-            _json_result('produccion'),
-            _error_result('utilizacion'),
-        ),
-        bindings=(
-            KpiDeliveryBinding(store_key='chancado', kpi_key='tonelaje'),
-            KpiDeliveryBinding(store_key='chancado', kpi_key='produccion'),
-            KpiDeliveryBinding(store_key='chancado', kpi_key='utilizacion'),
-            KpiDeliveryBinding(store_key='chancado', kpi_key='configurado_sin_latest'),
-        ),
-        updated_at_utc=_NOW,
+        evaluation=_evaluation(watermark),
+        configuration=_configuration(),
+        watermark=watermark,
+        published_at_utc=_NOW,
     )
 
     document = snapshot.as_document()
 
-    assert document['id'] == 'snapshot'
+    assert document['id'] == 'latest'
     assert document['partition_id'] == 'kpis'
-    assert document['manifest']['schema_version'] == 1
-    assert document['manifest']['updated_at_utc'] == '2026-08-20T14:30:00.000000Z'
-    assert len(document['manifest']['revision']) == 16
-    assert document['stores']['chancado'] == {
+    assert document['document_type'] == 'ada_kpi_latest_delivery'
+    assert document['destinations']['chancado'] == {
         'tonelaje': {'status': 'ok', 'value_kind': 'value', 'value': '66,00'},
         'produccion': {
             'status': 'ok',
@@ -96,109 +119,54 @@ def test_projects_value_json_error_and_missing_into_store_snapshot() -> None:
             'value': None,
         },
     }
+    assert snapshot.destinations['global']['tonelaje'].value == '66,00'
 
 
-def test_empty_configuration_projects_minimum_empty_snapshot() -> None:
-    snapshot = project_kpi_latest(
-        evaluation=_evaluation(_value_result('unused', parsed_value='1')),
-        bindings=(),
-        updated_at_utc=_NOW,
+def test_empty_latest_configuration_projects_empty_destinations() -> None:
+    config = KpiDeliveryConfiguration.from_document(
+        {
+            'id': 'kpis',
+            'partition_key': 'kpis',
+            'document_type': 'ada_kpi_configuration_projection',
+            'schema_version': 1,
+            'revision': 'config-empty',
+            'tool_projection_revision': 'tools-1',
+            'configuration': {'bindings': []},
+        }
     )
 
-    document = snapshot.as_document()
-
-    assert document['stores'] == {}
-    assert document['manifest']['revision'] == calculate_kpi_latest_revision({})
-
-
-def test_revision_is_stable_when_only_timestamp_changes() -> None:
-    evaluation = _evaluation(_value_result('tonelaje', parsed_value='66,00'))
-    bindings = (KpiDeliveryBinding(store_key='chancado', kpi_key='tonelaje'),)
-
-    first = project_kpi_latest(
-        evaluation=evaluation,
-        bindings=bindings,
-        updated_at_utc=_NOW,
-    )
-    second = project_kpi_latest(
-        evaluation=evaluation,
-        bindings=bindings,
-        updated_at_utc=datetime(2026, 8, 20, 14, 31, tzinfo=UTC),
-    )
-
-    assert first.manifest.revision == second.manifest.revision
-
-
-def test_revision_changes_when_consumable_value_changes() -> None:
-    bindings = (KpiDeliveryBinding(store_key='chancado', kpi_key='tonelaje'),)
-
-    first = project_kpi_latest(
-        evaluation=_evaluation(_value_result('tonelaje', parsed_value='66,00')),
-        bindings=bindings,
-        updated_at_utc=_NOW,
-    )
-    second = project_kpi_latest(
-        evaluation=_evaluation(_value_result('tonelaje', parsed_value='67,00')),
-        bindings=bindings,
-        updated_at_utc=_NOW,
-    )
-
-    assert first.manifest.revision != second.manifest.revision
-
-
-def test_duplicate_binding_is_idempotent() -> None:
-    binding = KpiDeliveryBinding(store_key='chancado', kpi_key='tonelaje')
-
-    snapshot = project_kpi_latest(
-        evaluation=_evaluation(_value_result('tonelaje', parsed_value='66,00')),
-        bindings=(binding, binding),
-        updated_at_utc=_NOW,
-    )
-
-    assert tuple(snapshot.stores['chancado']) == ('tonelaje',)
-    assert snapshot.stores['chancado']['tonelaje'].status is KpiDeliveryStatus.OK
-
-
-def test_same_kpi_can_be_projected_to_multiple_stores() -> None:
-    snapshot = project_kpi_latest(
-        evaluation=_evaluation(_value_result('tonelaje', parsed_value='66,00')),
-        bindings=(
-            KpiDeliveryBinding(store_key='chancado', kpi_key='tonelaje'),
-            KpiDeliveryBinding(store_key='global', kpi_key='tonelaje'),
-        ),
-        updated_at_utc=_NOW,
-    )
-
-    assert snapshot.stores['chancado']['tonelaje'].value == '66,00'
-    assert snapshot.stores['global']['tonelaje'].value == '66,00'
-
-
-def test_missing_latest_projects_all_configured_keys_as_missing() -> None:
     snapshot = project_kpi_latest(
         evaluation=None,
-        bindings=(
-            KpiDeliveryBinding(store_key='chancado', kpi_key='tonelaje'),
-            KpiDeliveryBinding(store_key='time-view', kpi_key='hora_pi'),
-        ),
-        updated_at_utc=_NOW,
+        configuration=config,
+        watermark=None,
+        published_at_utc=_NOW,
     )
 
-    assert snapshot.as_document()['stores'] == {
-        'chancado': {
-            'tonelaje': {'status': 'missing', 'value_kind': None, 'value': None},
-        },
-        'time-view': {
-            'hora_pi': {'status': 'missing', 'value_kind': None, 'value': None},
-        },
-    }
+    assert snapshot.destinations == {}
 
 
-def test_empty_configuration_does_not_require_latest() -> None:
-    snapshot = project_kpi_latest(
-        evaluation=None,
-        bindings=(),
-        updated_at_utc=_NOW,
+def test_revision_ignores_publish_time_but_includes_watermark() -> None:
+    first_watermark = KpiWatermark(datetime(2026, 8, 25, 10, 0, tzinfo=UTC))
+    second_watermark = KpiWatermark(datetime(2026, 8, 25, 10, 0, 30, tzinfo=UTC))
+    first = project_kpi_latest(
+        evaluation=_evaluation(first_watermark),
+        configuration=_configuration(),
+        watermark=first_watermark,
+        published_at_utc=_NOW,
+    )
+    same = project_kpi_latest(
+        evaluation=_evaluation(first_watermark),
+        configuration=_configuration(),
+        watermark=first_watermark,
+        published_at_utc=datetime(2026, 8, 25, 10, 0, 20, tzinfo=UTC),
+    )
+    advanced = project_kpi_latest(
+        evaluation=_evaluation(second_watermark),
+        configuration=_configuration(),
+        watermark=second_watermark,
+        published_at_utc=datetime(2026, 8, 25, 10, 0, 31, tzinfo=UTC),
     )
 
-    assert snapshot.stores == {}
-    assert snapshot.manifest.revision == calculate_kpi_latest_revision({})
+    assert first.manifest.revision == same.manifest.revision
+    assert advanced.manifest.revision != first.manifest.revision
+    assert first.destinations['chancado']['utilizacion'].status is KpiDeliveryStatus.ERROR

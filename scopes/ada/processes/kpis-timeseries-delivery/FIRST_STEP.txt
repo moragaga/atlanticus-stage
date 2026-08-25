@@ -1,0 +1,54 @@
+KPIS TIMESERIES DELIVERY - PRIMEROS PASOS
+=========================================
+
+Este proceso consume la KPI Configuration Projection y el dataset kpis/history ya confirmado por
+KPI Historian. Publica una proyección Series compacta para Web. No calcula KPI, no historiza, no
+interpola y no usa pip.
+
+1. CONFIGURACIÓN LOCAL
+----------------------
+
+    cp .env.detail .env
+
+APPLICATION y VOLUMEN_PATH deben apuntar al mismo scope compartido usado por KPI Historian.
+Para Cosmos se configuran endpoint, key y database. Los contenedores son internos al proceso:
+
+    configuration             -> KPI Configuration Projection
+    kpis-timeseries-delivery  -> manifest y páginas Series de consumo
+
+La configuración se lee una sola vez por job y permanece congelada durante toda la ejecución.
+Series usa únicamente bindings con series_enabled=true y series_hours entre 1 y 24.
+
+La resolución inicial del Delivery es interna:
+
+    step_seconds = 120
+
+2. HISTORIA, CHECKPOINT Y SALIDA
+--------------------------------
+
+La autoridad temporal es el committed watermark de KPI Historian, confirmado sólo después de que
+kpis/history fue materializado. El proceso mantiene checkpoint durable propio con el último
+watermark despachado y la última revision de configuración despachada.
+
+La ventana temporal usa (start_utc, end_utc]. Para cada timestamp exacto esperado se entrega el
+valor nativo del Historian; si no existe valor se entrega null. No se interpreta status, no se usa
+nearest, no se interpola y no se hace forward fill.
+
+Con step_seconds=120:
+
+    1 hora  = 30 puntos
+    24 horas = 720 puntos
+
+La lectura máxima de 24 horas requiere como máximo uno o dos Parquet diarios. La publicación se
+divide en documentos bajo el límite seguro de item de Cosmos y el manifest se publica al final.
+Sólo después se confirma el checkpoint.
+
+3. VALIDACIÓN
+-------------
+
+Desde la raíz del proceso:
+
+    scripts/check.sh --clean
+
+El check valida source, genera artifacts/processes/kpis-timeseries-delivery, instala el lock frozen
+del artifact y verifica el comando ada-kpis-timeseries-delivery con Python 3.14.2 y UV.

@@ -22,7 +22,10 @@ def test_process_contract_files_are_present_and_consistent() -> None:
 
     env = (_ROOT / '.env.detail').read_text(encoding='utf-8')
     assert 'APPLICATION=ada-operaciones-integradas-local' in env
-    assert 'COSMOS_CONSUMPTION_CONTAINER_NAME=application-data' in env
+    assert 'COSMOS_CONSUMPTION_ENDPOINT=http://localhost:8081' in env
+    assert 'COSMOS_CONSUMPTION_DATABASE_NAME=ada' in env
+    assert 'COSMOS_CONSUMPTION_CONTAINER_NAME' not in env
+    assert 'COSMOS_CONSUMPTION_ALLOW_INSECURE_HTTP' not in env
     assert 'KPI_DELIVERY_POLL_INTERVAL_SECONDS=1' in env
 
     pyproject = tomllib.loads((_ROOT / 'pyproject.toml').read_text(encoding='utf-8'))
@@ -35,7 +38,7 @@ def test_process_contract_files_are_present_and_consistent() -> None:
     }
 
 
-def test_secrets_detail_declares_consumption_key_as_key_vault_secret() -> None:
+def test_secrets_detail_keeps_container_names_internal() -> None:
     entries = json.loads((_ROOT / 'secrets.detail.json').read_text(encoding='utf-8'))
     by_name = {item['var_name']: item for item in entries}
 
@@ -43,3 +46,5 @@ def test_secrets_detail_declares_consumption_key_as_key_vault_secret() -> None:
     assert cosmos_key['exists_in_key_vault'] is True
     assert cosmos_key['secret_name'] == 'secret-cosmos-consumption-key'
     assert cosmos_key['value'] is None
+    assert 'COSMOS_CONSUMPTION_CONTAINER_NAME' not in by_name
+    assert 'COSMOS_CONSUMPTION_ALLOW_INSECURE_HTTP' not in by_name

@@ -1,9 +1,22 @@
-from ada.kpis.delivery import KpiDeliveryBinding
+from ada.kpis.core import KpiWatermark
+from ada.kpis.delivery import KpiDeliveryConfiguration
 from ada.processes.kpis_delivery import (
-    KpiDeliveryBindingsReader,
+    KpiCommittedWatermarkReader,
+    KpiDeliveryCheckpointStore,
+    KpiDeliveryConfigurationReader,
     KpiLatestReader,
     KpiLatestSnapshotPublisher,
 )
+
+
+class ConfigurationReader:
+    def read(self) -> KpiDeliveryConfiguration:
+        raise NotImplementedError
+
+
+class WatermarkReader:
+    def read_watermark(self) -> KpiWatermark | None:
+        return None
 
 
 class LatestReader:
@@ -11,17 +24,12 @@ class LatestReader:
         return None
 
 
-class BindingsReader:
-    def read_bindings(self):
-        return (KpiDeliveryBinding(store_key='chancado', kpi_key='tonelaje'),)
+class CheckpointStore:
+    def read(self):
+        return None
 
-
-def test_latest_reader_is_structural_contract() -> None:
-    assert isinstance(LatestReader(), KpiLatestReader)
-
-
-def test_bindings_reader_is_structural_contract() -> None:
-    assert isinstance(BindingsReader(), KpiDeliveryBindingsReader)
+    def commit(self, checkpoint):
+        return checkpoint
 
 
 class SnapshotPublisher:
@@ -29,5 +37,9 @@ class SnapshotPublisher:
         return None
 
 
-def test_snapshot_publisher_is_structural_contract() -> None:
+def test_process_contracts_are_structural() -> None:
+    assert isinstance(ConfigurationReader(), KpiDeliveryConfigurationReader)
+    assert isinstance(WatermarkReader(), KpiCommittedWatermarkReader)
+    assert isinstance(LatestReader(), KpiLatestReader)
+    assert isinstance(CheckpointStore(), KpiDeliveryCheckpointStore)
     assert isinstance(SnapshotPublisher(), KpiLatestSnapshotPublisher)
