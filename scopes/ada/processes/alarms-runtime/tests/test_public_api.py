@@ -1,6 +1,8 @@
 import ada.processes.alarms_runtime as alarms_runtime
 from ada.processes.alarms_runtime import (
     AlarmCommitTimeProvider,
+    AlarmDurableInputConsumer,
+    AlarmDurableInputConsumerError,
     AlarmEvaluatorContract,
     AlarmEvaluatorRegistry,
     AlarmExecutionEntry,
@@ -9,11 +11,17 @@ from ada.processes.alarms_runtime import (
     AlarmExecutionSession,
     AlarmExecutionSessionError,
     AlarmGroupCycleResult,
+    AlarmInputCursor,
+    AlarmInputLocator,
+    AlarmInputRecord,
+    AlarmInputSource,
+    AlarmInputStream,
     AlarmIterationLoader,
     AlarmIterationSourceLoader,
     AlarmOperationalCycle,
     AlarmOperationalCycleError,
     AlarmOperationalCycleResult,
+    AlarmOperationalInputs,
     AlarmRuntimeComposition,
     AlarmRuntimeCompositionError,
     AlarmRuntimeGroup,
@@ -28,6 +36,8 @@ from ada.processes.alarms_runtime import (
 
 def test_public_api_and_version() -> None:
     assert AlarmCommitTimeProvider.__name__ == 'AlarmCommitTimeProvider'
+    assert AlarmDurableInputConsumer.__name__ == 'AlarmDurableInputConsumer'
+    assert AlarmDurableInputConsumerError.__name__ == 'AlarmDurableInputConsumerError'
     assert AlarmEvaluatorContract.__name__ == 'AlarmEvaluatorContract'
     assert AlarmEvaluatorRegistry.__name__ == 'AlarmEvaluatorRegistry'
     assert AlarmExecutionEntry.__name__ == 'AlarmExecutionEntry'
@@ -38,7 +48,13 @@ def test_public_api_and_version() -> None:
     assert AlarmIterationLoader.__name__ == 'AlarmIterationLoader'
     assert AlarmIterationSourceLoader.__name__ == 'AlarmIterationSourceLoader'
     assert AlarmGroupCycleResult.__name__ == 'AlarmGroupCycleResult'
+    assert AlarmInputCursor.__name__ == 'AlarmInputCursor'
+    assert AlarmInputLocator.__name__ == 'AlarmInputLocator'
+    assert AlarmInputRecord.__name__ == 'AlarmInputRecord'
+    assert AlarmInputSource.__name__ == 'AlarmInputSource'
+    assert AlarmInputStream.__name__ == 'AlarmInputStream'
     assert AlarmOperationalCycle.__name__ == 'AlarmOperationalCycle'
+    assert AlarmOperationalInputs.__name__ == 'AlarmOperationalInputs'
     assert AlarmOperationalCycleError.__name__ == 'AlarmOperationalCycleError'
     assert AlarmOperationalCycleResult.__name__ == 'AlarmOperationalCycleResult'
     assert AlarmRuntimeComposition.__name__ == 'AlarmRuntimeComposition'
@@ -49,7 +65,7 @@ def test_public_api_and_version() -> None:
     assert callable(compose_engine_commit_record)
     assert callable(decode_group_runtime_snapshot)
     assert callable(encode_group_runtime_snapshot)
-    assert __version__ == '0.5.1'
+    assert __version__ == '0.6.0'
     assert not hasattr(alarms_runtime, 'AlarmRuntimeDurability')
     assert not hasattr(alarms_runtime, 'AlarmRuntimePersistenceComposition')
     assert not hasattr(alarms_runtime, 'build_persistence_composition')

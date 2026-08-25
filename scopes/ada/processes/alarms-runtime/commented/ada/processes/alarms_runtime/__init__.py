@@ -1,10 +1,14 @@
-# La API pública ahora expone cuatro niveles: sesión congelada, inputs frescos, ciclo
-# data-driven y composición durable. R3.3A aún no convierte la library en launcher.
+# Este módulo define la API pública estable del proceso Alarm Runtime.
+# R3.3B incorpora el consumer durable y sus contratos sin exponer detalles físicos de Storage.
 from ada.processes.alarms_runtime.commit import compose_engine_commit_record
 from ada.processes.alarms_runtime.composition import (
     AlarmRuntimeComposition,
     AlarmRuntimeGroup,
     build_alarm_runtime_composition,
+)
+from ada.processes.alarms_runtime.consumer import (
+    AlarmDurableInputConsumer,
+    AlarmDurableInputConsumerError,
 )
 from ada.processes.alarms_runtime.cycle import (
     AlarmCommitTimeProvider,
@@ -12,6 +16,14 @@ from ada.processes.alarms_runtime.cycle import (
     AlarmOperationalCycle,
     AlarmOperationalCycleError,
     AlarmOperationalCycleResult,
+)
+from ada.processes.alarms_runtime.inputs import (
+    AlarmInputCursor,
+    AlarmInputLocator,
+    AlarmInputRecord,
+    AlarmInputSource,
+    AlarmInputStream,
+    AlarmOperationalInputs,
 )
 from ada.processes.alarms_runtime.iteration import (
     AlarmExecutionIteration,
@@ -33,10 +45,12 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.5.1'
+__version__ = '0.6.0'
 
 __all__ = [
     'AlarmCommitTimeProvider',
+    'AlarmDurableInputConsumer',
+    'AlarmDurableInputConsumerError',
     'AlarmEvaluatorContract',
     'AlarmEvaluatorRegistry',
     'AlarmExecutionEntry',
@@ -45,9 +59,15 @@ __all__ = [
     'AlarmExecutionSession',
     'AlarmExecutionSessionError',
     'AlarmGroupCycleResult',
+    'AlarmInputCursor',
+    'AlarmInputLocator',
+    'AlarmInputRecord',
+    'AlarmInputSource',
+    'AlarmInputStream',
     'AlarmIterationLoader',
     'AlarmIterationSourceLoader',
     'AlarmOperationalCycle',
+    'AlarmOperationalInputs',
     'AlarmOperationalCycleError',
     'AlarmOperationalCycleResult',
     'AlarmRuntimeComposition',

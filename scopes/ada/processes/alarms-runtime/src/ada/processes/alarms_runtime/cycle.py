@@ -11,6 +11,8 @@ from ada.alarms.core import (
     AlarmEvaluation,
     AlarmIdentity,
     AlarmStatus,
+    DeactivationEffectIdFactory,
+    DeactivationRequestIdFactory,
     EpisodeIdFactory,
     EvaluationContext,
     EvaluationError,
@@ -19,7 +21,9 @@ from ada.alarms.core import (
     GroupCommitMaterialization,
     GroupLifecycleDecision,
     GroupPriorityResolution,
+    ManagementEffectIdFactory,
     OccurrenceIdFactory,
+    ReappearanceDueAtResolver,
     execute_evaluator,
     materialize_group_commit,
     reduce_group_cycle,
@@ -32,6 +36,7 @@ from ada.processes.alarms_runtime.composition import (
     AlarmRuntimeComposition,
     AlarmRuntimeGroup,
 )
+from ada.processes.alarms_runtime.inputs import AlarmOperationalInputs
 from ada.processes.alarms_runtime.iteration import AlarmExecutionIteration
 from ada.processes.alarms_runtime.session import AlarmExecutionEntry, AlarmExecutionSession
 from atlanticus.runtime import JobRuntimeContext
@@ -162,6 +167,10 @@ class AlarmOperationalCycle:
     runtime_artifact_version: str
     technical_evidence_contract: EvidenceContractRef
     evidence_sampling_interval_seconds: int = DEFAULT_EVIDENCE_SAMPLING_INTERVAL_SECONDS
+    management_effect_id_factory: ManagementEffectIdFactory | None = None
+    reappearance_due_at_resolver: ReappearanceDueAtResolver | None = None
+    deactivation_request_id_factory: DeactivationRequestIdFactory | None = None
+    deactivation_effect_id_factory: DeactivationEffectIdFactory | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.session, AlarmExecutionSession):
@@ -187,12 +196,22 @@ class AlarmOperationalCycle:
             raise TypeError('evidence_sampling_interval_seconds must be an int')
         if self.evidence_sampling_interval_seconds <= 0:
             raise ValueError('evidence_sampling_interval_seconds must be greater than zero')
+        for factory, name in (
+            (self.management_effect_id_factory, 'management_effect_id_factory'),
+            (self.reappearance_due_at_resolver, 'reappearance_due_at_resolver'),
+            (self.deactivation_request_id_factory, 'deactivation_request_id_factory'),
+            (self.deactivation_effect_id_factory, 'deactivation_effect_id_factory'),
+        ):
+            if factory is not None and not callable(factory):
+                raise TypeError(f'{name} must be callable or None')
         self.runtime_artifact_version = self.runtime_artifact_version.strip()
 
     def execute(
         self,
         context: JobRuntimeContext,
         iteration: AlarmExecutionIteration,
+        *,
+        operational_inputs: AlarmOperationalInputs | None = None,
     ) -> AlarmOperationalCycleResult:
         if not isinstance(context, JobRuntimeContext):
             raise TypeError('context must be JobRuntimeContext')
@@ -202,6 +221,12 @@ class AlarmOperationalCycle:
             raise AlarmOperationalCycleError(
                 'iteration must belong to the operational cycle execution session'
             )
+        resolved_inputs = (
+            AlarmOperationalInputs() if operational_inputs is None else operational_inputs
+        )
+        if not isinstance(resolved_inputs, AlarmOperationalInputs):
+            raise TypeError('operational_inputs must be AlarmOperationalInputs or None')
+        self._validate_operational_inputs(resolved_inputs)
         priority_groups = self._priority_groups()
         runtime_groups = {
             priority_group: self._load_group(priority_group) for priority_group in priority_groups
@@ -215,6 +240,7 @@ class AlarmOperationalCycle:
                 runtime_group=runtime_groups[priority_group],
                 iteration=iteration,
                 evaluations=evaluations,
+                operational_inputs=resolved_inputs,
             )
             for priority_group in priority_groups
         )
@@ -273,6 +299,7 @@ class AlarmOperationalCycle:
         runtime_group: AlarmRuntimeGroup,
         iteration: AlarmExecutionIteration,
         evaluations: Sequence[AlarmEvaluation],
+        operational_inputs: AlarmOperationalInputs,
     ) -> _PreparedGroup:
         plans = tuple(
             entry.planned_alarm
@@ -292,6 +319,12 @@ class AlarmOperationalCycle:
                 at=iteration.as_of,
             ),
         )
+        pending_requests = tuple(
+            request
+            for request in operational_inputs.pending_deactivation_requests
+            if request.alarm_identity in identities
+        )
+        pending_request_ids = {request.request_id for request in pending_requests}
         decision = reduce_group_cycle(
             runtime_group.state,
             cycle_at=iteration.as_of,
@@ -299,6 +332,21 @@ class AlarmOperationalCycle:
             evaluations=group_evaluations,
             occurrence_id_factory=self.occurrence_id_factory,
             episode_id_factory=self.episode_id_factory,
+            management_actions=tuple(
+                action
+                for action in operational_inputs.management_actions
+                if action.alarm_identity in identities
+            ),
+            management_effect_id_factory=self.management_effect_id_factory,
+            reappearance_due_at_resolver=self.reappearance_due_at_resolver,
+            pending_deactivation_requests=pending_requests,
+            deactivation_decisions=tuple(
+                decision
+                for decision in operational_inputs.deactivation_decisions
+                if decision.request_id in pending_request_ids
+            ),
+            deactivation_request_id_factory=self.deactivation_request_id_factory,
+            deactivation_effect_id_factory=self.deactivation_effect_id_factory,
         )
         return _PreparedGroup(
             priority_group=priority_group,
@@ -364,6 +412,21 @@ class AlarmOperationalCycle:
 
     def _priority_groups(self) -> tuple[str, ...]:
         return tuple(sorted({entry.planned_alarm.priority_group for entry in self.session.entries}))
+
+    def _validate_operational_inputs(self, operational_inputs: AlarmOperationalInputs) -> None:
+        identities = set(self.session.identities)
+        for action in operational_inputs.management_actions:
+            if action.alarm_identity not in identities:
+                raise AlarmOperationalCycleError(
+                    f'{action.alarm_identity.canonical_key}: management input alarm is not in '
+                    'the execution session'
+                )
+        for request in operational_inputs.pending_deactivation_requests:
+            if request.alarm_identity not in identities:
+                raise AlarmOperationalCycleError(
+                    f'{request.alarm_identity.canonical_key}: deactivation request alarm is not in '
+                    'the execution session'
+                )
 
     def _validate_state_basis(self, snapshot: GroupRuntimeSnapshot | None) -> None:
         if snapshot is None:

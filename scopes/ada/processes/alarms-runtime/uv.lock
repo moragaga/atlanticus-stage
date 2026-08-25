@@ -43,7 +43,7 @@ dev = [
 
 [[package]]
 name = "ada-alarms-runtime-process"
-version = "0.5.1"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "ada-alarms-core" },
@@ -52,6 +52,7 @@ dependencies = [
     { name = "ada-operational-data-planner" },
     { name = "ada-operational-data-sources" },
     { name = "atlanticus-job-runtime" },
+    { name = "atlanticus-state" },
 ]
 
 [package.dev-dependencies]
@@ -68,6 +69,7 @@ requires-dist = [
     { name = "ada-operational-data-planner", editable = "../../data/planner" },
     { name = "ada-operational-data-sources", editable = "../../data/sources" },
     { name = "atlanticus-job-runtime", editable = "../../../../backend/runtime" },
+    { name = "atlanticus-state", editable = "../../../../backend/state" },
 ]
 
 [package.metadata.requires-dev]

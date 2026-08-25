@@ -76,13 +76,24 @@ def test_operational_cycle_orchestrates_without_physical_dataset_clients_or_wall
             assert node.func.attr not in {'now', 'utcnow'}
 
 
-def test_operational_cycle_defers_management_deactivation_and_configuration_adoption() -> None:
+def test_cycle_integrates_management_and_deactivation_but_defers_configuration() -> None:
     source = (_SOURCE_ROOT / 'cycle.py').read_text(encoding='utf-8')
 
-    assert 'management_actions=' not in source
-    assert 'deactivation_decisions=' not in source
+    assert 'management_actions=' in source
+    assert 'deactivation_decisions=' in source
     assert 'configuration_closures=' not in source
     assert 'controlled adoption' in source
+
+
+def test_input_contract_and_consumer_do_not_import_physical_management_storage() -> None:
+    forbidden = ('azure', 'atlanticus.storage', 'ada.processes.alarms_management')
+    for name in ('inputs.py', 'consumer.py'):
+        tree = ast.parse((_SOURCE_ROOT / name).read_text(encoding='utf-8'))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module is not None:
+                assert not node.module.startswith(forbidden)
+            if isinstance(node, ast.Import):
+                assert all(not alias.name.startswith(forbidden) for alias in node.names)
 
 
 def test_low_level_durability_remains_core_agnostic() -> None:
