@@ -124,7 +124,10 @@ class Decoder:
     revisions: dict[tuple[str, str], AlarmConfigurationRevision]
 
     def decode(self, *, bundle: RuntimeRevisionBundle) -> AlarmConfigurationRevision:
-        if bundle.alarm_configuration.get('revision') != bundle.manifest.alarm_configuration_revision:
+        if (
+            bundle.alarm_configuration.get('revision')
+            != bundle.manifest.alarm_configuration_revision
+        ):
             raise RuntimeRevisionContractError('alarm configuration revision mismatch')
         if bundle.tool_registry.get('revision') != bundle.manifest.tool_registry_revision:
             raise RuntimeRevisionContractError('tool registry revision mismatch')
@@ -155,7 +158,7 @@ class CycleFactory:
             occurrence_id_factory=occurrence_id,
             episode_id_factory=episode_id,
             commit_time_provider=CommitClock(),
-            runtime_artifact_version='ada-alarms-runtime/0.13.0',
+            runtime_artifact_version='ada-alarms-runtime/0.14.0',
             technical_evidence_contract=EvidenceContractRef(
                 contract_key='evaluation-error',
                 contract_version='v1',
@@ -305,7 +308,7 @@ def _job(
     adoption_executor = AlarmConfigurationAdoptionExecutor(
         composition=composition,
         commit_time_provider=CommitClock(),
-        runtime_artifact_version='ada-alarms-runtime/0.13.0',
+        runtime_artifact_version='ada-alarms-runtime/0.14.0',
     )
     consumer = AlarmDurableInputConsumer(composition=composition, source=EmptyInputSource())
     cycle_factory = CycleFactory(composition)
@@ -338,8 +341,6 @@ def test_recovery_hook_only_delegates_alarm_persistence_recovery(tmp_path: Path)
 
     assert result.applied_count == 0
     assert composition.durability.persistence.read_head().aligned
-
-
 
 
 def test_iteration_requires_recovery_hook_even_when_empty_journal_is_aligned(
@@ -739,7 +740,9 @@ def test_adoption_with_durable_commit_promotes_cache_and_ends_iteration_before_n
     assert 'mill/risk' not in snapshot.as_document()['alarms']
 
 
-def test_cycle_factory_must_return_cycle_for_effective_session_and_composition(tmp_path: Path) -> None:
+def test_cycle_factory_must_return_cycle_for_effective_session_and_composition(
+    tmp_path: Path,
+) -> None:
     context = _context(tmp_path)
     revision = _revision('AC-1')
     bundle = _bundle('AC-1')
@@ -756,3 +759,180 @@ def test_cycle_factory_must_return_cycle_for_effective_session_and_composition(t
 
     with pytest.raises(TypeError, match='AlarmOperationalCycle'):
         job.iteration(context)
+
+
+def test_default_alarm_runtime_iteration_period_candidate_is_five_seconds() -> None:
+    from ada.processes.alarms_runtime import DEFAULT_ALARM_RUNTIME_ITERATION_PERIOD_SECONDS
+
+    assert DEFAULT_ALARM_RUNTIME_ITERATION_PERIOD_SECONDS == 5.0
+
+
+def test_drain_only_reconciles_durability_without_resolving_revision(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    revision = _revision('AC-1')
+    bundle = _bundle('AC-1')
+    job, composition, _, _, _ = _job(
+        tmp_path,
+        source_revision=revision,
+        target_revision=revision,
+        cached_bundle=bundle,
+        target_bundle=bundle,
+        context=context,
+    )
+    job.recover(context)
+    job.revision_resolver.source.fail_manifest = True
+
+    result = job.drain(context)
+
+    assert result.applied_count == 0
+    assert composition.durability.persistence.read_head().aligned
+
+
+def test_drain_requires_recovery_hook_to_have_completed(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    revision = _revision('AC-1')
+    bundle = _bundle('AC-1')
+    job, _, _, _, _ = _job(
+        tmp_path,
+        source_revision=revision,
+        target_revision=revision,
+        cached_bundle=bundle,
+        target_bundle=bundle,
+        context=context,
+    )
+
+    with pytest.raises(AlarmRuntimeJobCompositionError, match='recovery hook'):
+        job.drain(context)
+
+
+def test_execute_binding_delegates_recovery_iteration_and_drain_to_job_runtime(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import ada.processes.alarms_runtime.job_composition as job_composition_module
+    from ada.processes.alarms_runtime import (
+        DEFAULT_ALARM_RUNTIME_ITERATION_PERIOD_SECONDS,
+        execute_alarm_runtime_job,
+    )
+    from atlanticus.kernel import OperationStatus
+    from atlanticus.runtime import RuntimeExecutionResult
+
+    context = _context(tmp_path)
+    revision = _revision('AC-1')
+    bundle = _bundle('AC-1')
+    job, _, _, _, _ = _job(
+        tmp_path,
+        source_revision=revision,
+        target_revision=revision,
+        cached_bundle=bundle,
+        target_bundle=bundle,
+        context=context,
+    )
+    definition = JobDefinition(
+        module_name='ada.processes.alarms_runtime',
+        service_name='alarms-runtime',
+        job_key='alarms-runtime',
+        sleep_seconds=DEFAULT_ALARM_RUNTIME_ITERATION_PERIOD_SECONDS,
+        iteration_timeout_seconds=10,
+        execution_timeout_seconds=30,
+        shutdown_grace_seconds=5,
+        lease_timeout_seconds=10,
+        lease_renew_seconds=3,
+        lease_wait_seconds=0,
+        resource_sample_seconds=1,
+    )
+    expected = RuntimeExecutionResult(
+        run_id='11111111-1111-1111-1111-111111111111',
+        correlation_id='22222222-2222-2222-2222-222222222222',
+        status=OperationStatus.SUCCESS,
+        iteration_count=1,
+        duration_seconds=1.0,
+        stop_reason='completed',
+    )
+    calls: list[str] = []
+
+    def fake_execute_job(*, definition, iteration, recovery, drain, argv, environ):
+        assert definition.sleep_seconds == 5.0
+        assert argv == ('--run-once',)
+        assert environ == {'ENVIRONMENT': 'local'}
+        calls.append('recovery')
+        recovery(context)
+        calls.append('iteration')
+        result = iteration(context)
+        assert result.cycle_executed is True
+        assert context.get_iteration_fact('revision_origin') == 'cache_current'
+        assert context.get_iteration_fact('alarm_configuration_revision') == 'AC-1'
+        assert context.get_iteration_fact('tool_registry_revision') == 'TR-18'
+        assert context.get_iteration_fact('adoption_outcome') == 'not_required'
+        assert context.get_iteration_fact('cycle_executed') is True
+        assert context._next_iteration_delay() is None
+        calls.append('drain')
+        drain(context)
+        return expected
+
+    monkeypatch.setattr(job_composition_module, 'execute_job', fake_execute_job)
+
+    result = execute_alarm_runtime_job(
+        definition=definition,
+        composition=job,
+        argv=('--run-once',),
+        environ={'ENVIRONMENT': 'local'},
+    )
+
+    assert result is expected
+    assert calls == ['recovery', 'iteration', 'drain']
+
+
+def test_execute_binding_requests_immediate_next_iteration_after_durable_adoption(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import ada.processes.alarms_runtime.job_composition as job_composition_module
+    from ada.processes.alarms_runtime import execute_alarm_runtime_job
+    from atlanticus.kernel import OperationStatus
+    from atlanticus.runtime import RuntimeExecutionResult
+
+    context = _context(tmp_path)
+    revision = _revision('AC-1')
+    bundle = _bundle('AC-1')
+    job, _, _, _, _ = _job(
+        tmp_path,
+        source_revision=revision,
+        target_revision=revision,
+        cached_bundle=bundle,
+        target_bundle=bundle,
+        context=context,
+    )
+    expected_iteration = job_composition_module.AlarmRuntimeJobIterationResult(
+        revision_origin=RuntimeRevisionOrigin.SOURCE_CANDIDATE,
+        effective_revision_key=('AC-2', 'TR-18'),
+        adoption_outcome=AlarmRuntimeJobAdoptionOutcome.ADOPTED,
+        cycle_executed=False,
+    )
+    monkeypatch.setattr(
+        job_composition_module.AlarmRuntimeJobComposition,
+        'iteration',
+        lambda self, _context: expected_iteration,
+    )
+    definition = context.definition
+    expected = RuntimeExecutionResult(
+        run_id='11111111-1111-1111-1111-111111111111',
+        correlation_id='22222222-2222-2222-2222-222222222222',
+        status=OperationStatus.SUCCESS,
+        iteration_count=1,
+        duration_seconds=1.0,
+        stop_reason='completed',
+    )
+
+    def fake_execute_job(*, iteration, recovery, drain, **_kwargs):
+        recovery(context)
+        result = iteration(context)
+        assert result is expected_iteration
+        assert context._next_iteration_delay() == 0.0
+        return expected
+
+    monkeypatch.setattr(job_composition_module, 'execute_job', fake_execute_job)
+
+    result = execute_alarm_runtime_job(definition=definition, composition=job)
+
+    assert result is expected

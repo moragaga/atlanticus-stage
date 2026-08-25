@@ -1,5 +1,6 @@
 import ada.processes.alarms_runtime as alarms_runtime
 from ada.processes.alarms_runtime import (
+    DEFAULT_ALARM_RUNTIME_ITERATION_PERIOD_SECONDS,
     RUNTIME_MANIFEST_SCHEMA_VERSION,
     AlarmCommitTimeProvider,
     AlarmConfigurationAdoptionExecutor,
@@ -64,6 +65,7 @@ from ada.processes.alarms_runtime import (
     compose_engine_commit_record,
     decode_group_runtime_snapshot,
     encode_group_runtime_snapshot,
+    execute_alarm_runtime_job,
     plan_configuration_adoption,
 )
 
@@ -102,6 +104,7 @@ def test_public_api_and_version() -> None:
     assert AlarmRuntimeJobComposition.__name__ == 'AlarmRuntimeJobComposition'
     assert AlarmRuntimeJobCompositionError.__name__ == 'AlarmRuntimeJobCompositionError'
     assert AlarmRuntimeJobIterationResult.__name__ == 'AlarmRuntimeJobIterationResult'
+    assert DEFAULT_ALARM_RUNTIME_ITERATION_PERIOD_SECONDS == 5.0
     assert ConfigurationAdoptionChange.__name__ == 'ConfigurationAdoptionChange'
     assert ConfigurationAdoptionDisposition.__name__ == 'ConfigurationAdoptionDisposition'
     assert ConfigurationAdoptionExecutionError.__name__ == 'ConfigurationAdoptionExecutionError'
@@ -109,10 +112,7 @@ def test_public_api_and_version() -> None:
     assert ConfigurationAdoptionGroupResult.__name__ == 'ConfigurationAdoptionGroupResult'
     assert ConfigurationAdoptionPlan.__name__ == 'ConfigurationAdoptionPlan'
     assert ConfigurationAdoptionPlanError.__name__ == 'ConfigurationAdoptionPlanError'
-    assert (
-        ConfigurationAdoptionRejectionReason.__name__
-        == 'ConfigurationAdoptionRejectionReason'
-    )
+    assert ConfigurationAdoptionRejectionReason.__name__ == 'ConfigurationAdoptionRejectionReason'
     assert FileRuntimeRevisionCache.__name__ == 'FileRuntimeRevisionCache'
     assert FileRuntimeRevisionSource.__name__ == 'FileRuntimeRevisionSource'
     assert RUNTIME_MANIFEST_SCHEMA_VERSION == 'alarm-runtime-manifest.v1'
@@ -135,8 +135,9 @@ def test_public_api_and_version() -> None:
     assert callable(compose_engine_commit_record)
     assert callable(decode_group_runtime_snapshot)
     assert callable(encode_group_runtime_snapshot)
+    assert callable(execute_alarm_runtime_job)
     assert callable(plan_configuration_adoption)
-    assert __version__ == '0.13.0'
+    assert __version__ == '0.14.0'
     assert not hasattr(alarms_runtime, 'AlarmRuntimeDurability')
     assert not hasattr(alarms_runtime, 'AlarmRuntimePersistenceComposition')
     assert not hasattr(alarms_runtime, 'build_persistence_composition')

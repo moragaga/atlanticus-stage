@@ -49,10 +49,12 @@ from ada.processes.alarms_runtime.iteration import (
 
 # R3.4C.1 agrega los hooks de una sola iteración para Job Runtime sin launcher ni loop propio.
 from ada.processes.alarms_runtime.job_composition import (
+    DEFAULT_ALARM_RUNTIME_ITERATION_PERIOD_SECONDS,
     AlarmRuntimeJobAdoptionOutcome,
     AlarmRuntimeJobComposition,
     AlarmRuntimeJobCompositionError,
     AlarmRuntimeJobIterationResult,
+    execute_alarm_runtime_job,
 )
 from ada.processes.alarms_runtime.revision_file import (
     FileRuntimeRevisionCache,
@@ -92,7 +94,7 @@ from ada.processes.alarms_runtime.snapshot import (
 )
 
 # R3.4C.1 compone recovery, resolución, adopción, cache y ciclo en una sola unidad durable.
-__version__ = '0.13.0'
+__version__ = '0.14.0'
 
 __all__ = [
     'AlarmConfigurationRevision',
@@ -137,6 +139,7 @@ __all__ = [
     'AlarmRuntimeJobCompositionError',
     'AlarmRuntimeJobComposition',
     'AlarmRuntimeJobAdoptionOutcome',
+    'DEFAULT_ALARM_RUNTIME_ITERATION_PERIOD_SECONDS',
     'FileRuntimeRevisionCache',
     'FileRuntimeRevisionSource',
     'RUNTIME_MANIFEST_SCHEMA_VERSION',
@@ -160,4 +163,5 @@ __all__ = [
     'compose_engine_commit_record',
     'decode_group_runtime_snapshot',
     'encode_group_runtime_snapshot',
+    'execute_alarm_runtime_job',
 ]

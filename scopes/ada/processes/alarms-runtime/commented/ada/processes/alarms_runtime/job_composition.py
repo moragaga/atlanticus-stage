@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -18,8 +18,15 @@ from ada.processes.alarms_runtime.revision_resolution import (
 )
 from ada.processes.alarms_runtime.revision_resolver import RuntimeRevisionResolver
 from ada.processes.alarms_runtime.session import AlarmExecutionSession
-from atlanticus.runtime import JobRuntimeContext
+from atlanticus.runtime import (
+    JobDefinition,
+    JobRuntimeContext,
+    RuntimeExecutionResult,
+    execute_job,
+)
 
+# Periodo start-to-start candidato; Job Runtime descuenta automáticamente la duración real.
+DEFAULT_ALARM_RUNTIME_ITERATION_PERIOD_SECONDS = 5.0
 _RECOVERY_MEMORY_KEY = 'ada.alarms.runtime.job_composition.recovered'
 
 
@@ -50,7 +57,9 @@ class AlarmRuntimeJobIterationResult:
         if (
             not isinstance(self.effective_revision_key, tuple)
             or len(self.effective_revision_key) != 2
-            or not all(isinstance(item, str) and item.strip() for item in self.effective_revision_key)
+            or not all(
+                isinstance(item, str) and item.strip() for item in self.effective_revision_key
+            )
         ):
             raise ValueError('effective_revision_key must contain two non-empty strings')
         if not isinstance(self.adoption_outcome, AlarmRuntimeJobAdoptionOutcome):
@@ -108,6 +117,14 @@ class AlarmRuntimeJobComposition:
         result = self.composition.recover(context)
         context.set_memory(_RECOVERY_MEMORY_KEY, self)
         return result
+
+    # Drain no acepta trabajo nuevo: sólo reconcilia WAL durable con materialización.
+    def drain(self, context: JobRuntimeContext):
+        if not isinstance(context, JobRuntimeContext):
+            raise TypeError('context must be a JobRuntimeContext')
+        context.assert_lease_current()
+        self._require_recovered(context)
+        return self.composition.recover(context)
 
     # Cada invocación ejecuta como máximo una unidad durable antes de devolver control.
     def iteration(self, context: JobRuntimeContext) -> AlarmRuntimeJobIterationResult:
@@ -217,7 +234,9 @@ class AlarmRuntimeJobComposition:
         if not isinstance(cycle, AlarmOperationalCycle):
             raise TypeError('cycle_factory must return an AlarmOperationalCycle')
         if cycle.session is not session:
-            raise AlarmRuntimeJobCompositionError('cycle factory returned a cycle for another session')
+            raise AlarmRuntimeJobCompositionError(
+                'cycle factory returned a cycle for another session'
+            )
         if cycle.composition is not self.composition:
             raise AlarmRuntimeJobCompositionError(
                 'cycle factory must use the job runtime composition'
@@ -257,3 +276,47 @@ class AlarmRuntimeJobComposition:
     def _has_prior_durable_state(self) -> bool:
         head = self.composition.durability.persistence.read_head()
         return head.durable is not None or self.input_consumer.has_durable_state()
+
+
+# Une la composición ADA al owner transversal del loop, lease, periodo y drain.
+def execute_alarm_runtime_job(
+    *,
+    definition: JobDefinition,
+    composition: AlarmRuntimeJobComposition,
+    argv: Sequence[str] | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> RuntimeExecutionResult:
+    if not isinstance(definition, JobDefinition):
+        raise TypeError('definition must be a JobDefinition')
+    if not isinstance(composition, AlarmRuntimeJobComposition):
+        raise TypeError('composition must be an AlarmRuntimeJobComposition')
+
+    # El wrapper sólo agrega facts y solicita bypass del periodo después de adopción durable.
+    def run_iteration(context: JobRuntimeContext) -> AlarmRuntimeJobIterationResult:
+        result = composition.iteration(context)
+        context.set_iteration_fact('revision_origin', result.revision_origin.value)
+        context.set_iteration_fact(
+            'alarm_configuration_revision',
+            result.effective_revision_key[0],
+        )
+        context.set_iteration_fact(
+            'tool_registry_revision',
+            result.effective_revision_key[1],
+        )
+        context.set_iteration_fact('adoption_outcome', result.adoption_outcome.value)
+        context.set_iteration_fact('cycle_executed', result.cycle_executed)
+        if (
+            result.adoption_outcome is AlarmRuntimeJobAdoptionOutcome.ADOPTED
+            and not result.cycle_executed
+        ):
+            context.set_next_iteration_delay(0)
+        return result
+
+    return execute_job(
+        definition=definition,
+        recovery=composition.recover,
+        iteration=run_iteration,
+        drain=composition.drain,
+        argv=argv,
+        environ=environ,
+    )
