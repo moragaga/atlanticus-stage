@@ -46,6 +46,20 @@ from ada.processes.alarms_runtime.iteration import (
     AlarmIterationLoader,
     AlarmIterationSourceLoader,
 )
+from ada.processes.alarms_runtime.revision_resolution import (
+    RUNTIME_MANIFEST_SCHEMA_VERSION,
+    RuntimeManifest,
+    RuntimeRevisionBundle,
+    RuntimeRevisionCache,
+    RuntimeRevisionCacheError,
+    RuntimeRevisionContractError,
+    RuntimeRevisionDecoder,
+    RuntimeRevisionDocument,
+    RuntimeRevisionOrigin,
+    RuntimeRevisionResolution,
+    RuntimeRevisionSource,
+    RuntimeRevisionSourceError,
+)
 from ada.processes.alarms_runtime.session import (
     AlarmEvaluatorContract,
     AlarmEvaluatorRegistry,
@@ -60,7 +74,7 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.9.0'
+__version__ = '0.10.0'
 
 __all__ = [
     'AlarmConfigurationRevision',
@@ -101,6 +115,18 @@ __all__ = [
     'AlarmRuntimeComposition',
     'AlarmRuntimeCompositionError',
     'AlarmRuntimeGroup',
+    'RUNTIME_MANIFEST_SCHEMA_VERSION',
+    'RuntimeManifest',
+    'RuntimeRevisionBundle',
+    'RuntimeRevisionCache',
+    'RuntimeRevisionCacheError',
+    'RuntimeRevisionContractError',
+    'RuntimeRevisionDecoder',
+    'RuntimeRevisionDocument',
+    'RuntimeRevisionOrigin',
+    'RuntimeRevisionResolution',
+    'RuntimeRevisionSource',
+    'RuntimeRevisionSourceError',
     '__version__',
     'build_alarm_execution_session',
     'build_alarm_runtime_composition',

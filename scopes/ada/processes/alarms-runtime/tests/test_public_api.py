@@ -1,5 +1,6 @@
 import ada.processes.alarms_runtime as alarms_runtime
 from ada.processes.alarms_runtime import (
+    RUNTIME_MANIFEST_SCHEMA_VERSION,
     AlarmCommitTimeProvider,
     AlarmConfigurationAdoptionExecutor,
     AlarmConfigurationRevision,
@@ -37,6 +38,17 @@ from ada.processes.alarms_runtime import (
     ConfigurationAdoptionPlan,
     ConfigurationAdoptionPlanError,
     ConfigurationAdoptionRejectionReason,
+    RuntimeManifest,
+    RuntimeRevisionBundle,
+    RuntimeRevisionCache,
+    RuntimeRevisionCacheError,
+    RuntimeRevisionContractError,
+    RuntimeRevisionDecoder,
+    RuntimeRevisionDocument,
+    RuntimeRevisionOrigin,
+    RuntimeRevisionResolution,
+    RuntimeRevisionSource,
+    RuntimeRevisionSourceError,
     __version__,
     build_alarm_execution_session,
     build_alarm_runtime_composition,
@@ -85,13 +97,25 @@ def test_public_api_and_version() -> None:
     assert ConfigurationAdoptionPlan.__name__ == 'ConfigurationAdoptionPlan'
     assert ConfigurationAdoptionPlanError.__name__ == 'ConfigurationAdoptionPlanError'
     assert ConfigurationAdoptionRejectionReason.__name__ == 'ConfigurationAdoptionRejectionReason'
+    assert RUNTIME_MANIFEST_SCHEMA_VERSION == 'alarm-runtime-manifest.v1'
+    assert RuntimeManifest.__name__ == 'RuntimeManifest'
+    assert RuntimeRevisionBundle.__name__ == 'RuntimeRevisionBundle'
+    assert RuntimeRevisionCache.__name__ == 'RuntimeRevisionCache'
+    assert RuntimeRevisionCacheError.__name__ == 'RuntimeRevisionCacheError'
+    assert RuntimeRevisionContractError.__name__ == 'RuntimeRevisionContractError'
+    assert RuntimeRevisionDecoder.__name__ == 'RuntimeRevisionDecoder'
+    assert RuntimeRevisionDocument is not None
+    assert RuntimeRevisionOrigin.__name__ == 'RuntimeRevisionOrigin'
+    assert RuntimeRevisionResolution.__name__ == 'RuntimeRevisionResolution'
+    assert RuntimeRevisionSource.__name__ == 'RuntimeRevisionSource'
+    assert RuntimeRevisionSourceError.__name__ == 'RuntimeRevisionSourceError'
     assert callable(build_alarm_execution_session)
     assert callable(build_alarm_runtime_composition)
     assert callable(compose_engine_commit_record)
     assert callable(decode_group_runtime_snapshot)
     assert callable(encode_group_runtime_snapshot)
     assert callable(plan_configuration_adoption)
-    assert __version__ == '0.9.0'
+    assert __version__ == '0.10.0'
     assert not hasattr(alarms_runtime, 'AlarmRuntimeDurability')
     assert not hasattr(alarms_runtime, 'AlarmRuntimePersistenceComposition')
     assert not hasattr(alarms_runtime, 'build_persistence_composition')

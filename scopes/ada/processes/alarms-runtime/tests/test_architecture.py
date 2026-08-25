@@ -156,3 +156,18 @@ def _assert_file_does_not_import(path: Path, forbidden: str) -> None:
             assert not node.module.startswith(forbidden)
         if isinstance(node, ast.Import):
             assert all(not alias.name.startswith(forbidden) for alias in node.names)
+
+
+def test_runtime_revision_resolution_contract_has_no_physical_io_or_runtime_dependencies() -> None:
+    resolution_path = _SOURCE_ROOT / 'revision_resolution.py'
+    forbidden = (
+        'azure',
+        'atlanticus',
+        'ada.alarms.persistence',
+    )
+    tree = ast.parse(resolution_path.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            assert not node.module.startswith(forbidden)
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith(forbidden) for alias in node.names)
