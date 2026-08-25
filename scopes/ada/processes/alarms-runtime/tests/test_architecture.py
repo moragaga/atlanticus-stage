@@ -102,9 +102,7 @@ def test_configuration_adoption_contract_has_no_io_or_durability_dependencies() 
             assert all(not alias.name.startswith(forbidden) for alias in node.names)
 
 
-def test_configuration_adoption_execution_uses_contracts_without_physical_configuration_io() -> (
-    None
-):
+def test_configuration_adoption_execution_uses_contracts_without_physical_configuration_io() -> None:
     adoption_path = _SOURCE_ROOT / 'adoption_execution.py'
     forbidden = (
         'azure',
@@ -203,3 +201,21 @@ def test_runtime_revision_file_adapters_do_not_import_cloud_or_job_runtime() -> 
             assert not node.module.startswith(forbidden)
         if isinstance(node, ast.Import):
             assert all(not alias.name.startswith(forbidden) for alias in node.names)
+
+
+def test_job_composition_uses_runtime_contracts_without_launcher_or_cloud_dependencies() -> None:
+    path = _SOURCE_ROOT / 'job_composition.py'
+    source = path.read_text(encoding='utf-8')
+    forbidden = (
+        'azure',
+        'atlanticus.storage',
+        'atlanticus.cosmos',
+    )
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            assert not node.module.startswith(forbidden)
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith(forbidden) for alias in node.names)
+    assert 'execute_job' not in source
+    assert not any(isinstance(node, ast.While) for node in ast.walk(tree))

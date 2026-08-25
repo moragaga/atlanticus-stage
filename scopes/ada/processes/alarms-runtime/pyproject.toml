@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ada-alarms-runtime-process"
-version = "0.12.0"
+version = "0.13.0"
 description = "Alarm Runtime Core-to-Persistence composition for ADA."
 requires-python = "==3.14.2"
 classifiers = ["Private :: Do Not Upload"]
