@@ -1,0 +1,1 @@
+{"application":"ada-alarms-runtime-performance","cpu_peak_percent":34.769,"day_utc":"2026-08-25","environment":"local","errors":0,"executions":1,"failed":0,"memory_peak_percent":0.894,"resource_pressure_events":0,"service":"alarms-runtime-performance","successful":1,"updated_at_utc":"2026-08-25T15:15:02.126156+00:00","warnings":0,"work_iterations":3}

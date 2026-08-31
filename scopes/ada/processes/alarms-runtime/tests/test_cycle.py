@@ -226,6 +226,43 @@ def test_steady_cycle_without_durable_change_skips_commit_batch(tmp_path: Path) 
     assert snapshot.last_commit_id == first.materializations[0].commit.commit_id
 
 
+def test_operational_cycle_uses_batch_group_hydration(tmp_path: Path, monkeypatch) -> None:
+    first_plan = _planned('risk', priority_order=1, priority_group='group-a')
+    second_plan = _planned('impact', priority_order=1, priority_group='group-b')
+    session = _session(
+        (
+            first_plan,
+            _contract(
+                'risk',
+                lambda context: _physical('risk', AlarmStatus.ACTIVE, at=context.now),
+            ),
+        ),
+        (
+            second_plan,
+            _contract(
+                'impact',
+                lambda context: _physical('impact', AlarmStatus.ACTIVE, at=context.now),
+            ),
+        ),
+    )
+    cycle, context, composition, _, _ = _cycle(tmp_path, session)
+    load_groups_calls = 0
+    composition_type = type(composition)
+    original_load_groups = composition_type.load_groups
+
+    def counted_load_groups(self, planned_alarms_by_group):
+        nonlocal load_groups_calls
+        load_groups_calls += 1
+        return original_load_groups(self, planned_alarms_by_group)
+
+    monkeypatch.setattr(composition_type, 'load_groups', counted_load_groups)
+
+    result = cycle.execute(context, _empty_iteration(session, at=NOW))
+
+    assert load_groups_calls == 1
+    assert len(result.materializations) == 2
+
+
 def test_two_priority_groups_are_committed_in_one_batch(tmp_path: Path) -> None:
     first_plan = _planned('risk', priority_order=1, priority_group='group-a')
     second_plan = _planned('impact', priority_order=1, priority_group='group-b')

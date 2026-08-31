@@ -94,7 +94,7 @@ from ada.processes.alarms_runtime.snapshot import (
 )
 
 # R3.4C.1 compone recovery, resolución, adopción, cache y ciclo en una sola unidad durable.
-__version__ = '0.14.0'
+__version__ = '0.14.2'
 
 __all__ = [
     'AlarmConfigurationRevision',

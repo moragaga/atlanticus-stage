@@ -225,10 +225,10 @@ def test_poc_uncertain_renewal_blocks_new_commit(tmp_path, monkeypatch) -> None:
         fence=lease.fenced_mutation,
     )
 
-    def fail_renew(self) -> bool:
+    def fail_renewal_write(payload) -> None:
         raise OSError('renewal transport unavailable')
 
-    monkeypatch.setattr(ExecutionLease, 'renew', fail_renew)
+    monkeypatch.setattr(lease, '_replace_payload', fail_renewal_write)
     lease._renewal_seconds = 0.01
     lease.start_renewal(on_lost=context.request_stop)
     for _ in range(100):

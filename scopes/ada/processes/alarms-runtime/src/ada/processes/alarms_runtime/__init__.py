@@ -91,7 +91,7 @@ from ada.processes.alarms_runtime.snapshot import (
     encode_group_runtime_snapshot,
 )
 
-__version__ = '0.14.0'
+__version__ = '0.14.2'
 
 __all__ = [
     'AlarmConfigurationRevision',

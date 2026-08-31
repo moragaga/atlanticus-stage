@@ -1,0 +1,17 @@
+{
+  "phase_a": {
+    "actual_duration_seconds": 602.876797,
+    "pending_request_count": 540,
+    "planned_duration_seconds": 600.0,
+    "role": "canonical-deactivation-request-setup",
+    "run_id": "f586e4a0-d802-40de-ba6f-90abe8950208",
+    "stop_reason": "insufficient_remaining_time"
+  },
+  "phase_b": {
+    "actual_duration_seconds": 604.813862,
+    "planned_duration_seconds": 600.0,
+    "role": "sustained-approved-decisions",
+    "run_id": "4a45dc70-1f12-47dc-8687-79f59a94b3db",
+    "stop_reason": "insufficient_remaining_time"
+  }
+}

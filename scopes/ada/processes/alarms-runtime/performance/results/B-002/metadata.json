@@ -1,0 +1,21 @@
+{
+  "host": "GLONBW11",
+  "recorded_at": "2026-08-25T14:48:24.783572Z",
+  "run_id": "1d262dd1-8264-4644-8b7c-55968584b09a",
+  "scenario": {
+    "alarm_count": 1000,
+    "backend": "local-filesystem",
+    "columns_per_alarm": 3,
+    "data_profile": "latest-wide",
+    "data_refresh_seconds": 10,
+    "duration_seconds": 600.0,
+    "iteration_period_seconds": 5.0,
+    "source_column_count": 3000,
+    "source_frame_bytes": 24132,
+    "source_row_count": 1,
+    "source_view_count": 1
+  },
+  "stage_commit": "489b7424f5051f7a276dafe8d5f318ccf1368d87",
+  "stop_reason": "insufficient_remaining_time",
+  "test_id": "B-002"
+}

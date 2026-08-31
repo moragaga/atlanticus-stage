@@ -1,0 +1,33 @@
+{
+  "alarm_count": 1000,
+  "classification": "PRODUCT FAIL",
+  "commit_chain_mismatch_count": null,
+  "container_exit_code": 1,
+  "cpu_cores": 1.0,
+  "cpu_peak_percent": null,
+  "cpu_throttled_seconds": null,
+  "duplicate_commit_id_count": null,
+  "durable_record_count": null,
+  "empty_iterations": null,
+  "iterations": null,
+  "journal_aligned": null,
+  "journal_bytes": null,
+  "memory_gib": 2,
+  "memory_peak_percent": null,
+  "oom_killed": false,
+  "overrun_count": null,
+  "overrun_ratio": null,
+  "p95_iteration_ms": null,
+  "p95_start_interval_ms": null,
+  "p99_iteration_ms": null,
+  "reasons": [
+    "container exited with code 1 without a result document"
+  ],
+  "resource_contract_ok": true,
+  "snapshot_alarm_count": null,
+  "snapshot_count": null,
+  "snapshot_last_commit_mismatch_count": null,
+  "stage_id": "e2-a1000",
+  "stop_reason": null,
+  "work_iterations": null
+}

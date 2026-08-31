@@ -1,0 +1,1 @@
+{"consumer_state_schema_version":"alarm-runtime-input-consumer-state.v1","decisions":{"cursor":null,"pending":[]},"management":{"cursor":{"byte_offset":256,"hour_bucket":"2026-08-27T01Z"},"pending":[]},"pending_deactivation_request_ids":[]}

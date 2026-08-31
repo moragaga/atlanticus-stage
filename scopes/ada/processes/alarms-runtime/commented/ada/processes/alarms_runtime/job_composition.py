@@ -124,7 +124,7 @@ class AlarmRuntimeJobComposition:
             raise TypeError('context must be a JobRuntimeContext')
         context.assert_lease_current()
         self._require_recovered(context)
-        return self.composition.recover(context)
+        return self.composition.reconcile_drain(context)
 
     # Cada invocación ejecuta como máximo una unidad durable antes de devolver control.
     def iteration(self, context: JobRuntimeContext) -> AlarmRuntimeJobIterationResult:
@@ -257,7 +257,6 @@ class AlarmRuntimeJobComposition:
     ) -> None:
         context.assert_lease_current()
         with context.fenced_mutation():
-            context.assert_lease_current()
             self.revision_resolver.cache.replace_effective(bundle=resolution.target.bundle)
         context.mark_iteration_work()
 

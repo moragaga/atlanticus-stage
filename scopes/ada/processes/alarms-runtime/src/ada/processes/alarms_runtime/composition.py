@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ada.alarms.core import GroupCommitMaterialization, GroupLifecycleState, PlannedAlarm
@@ -37,30 +37,42 @@ class AlarmRuntimeComposition:
     def recover(self, context: JobRuntimeContext) -> RecoveryResult:
         return self.durability.recover(context)
 
+    def reconcile_drain(self, context: JobRuntimeContext) -> RecoveryResult:
+        return self.durability.reconcile_drain(context)
+
     def load_group(
         self,
         priority_group: str,
         *,
         planned_alarms: Sequence[PlannedAlarm],
     ) -> AlarmRuntimeGroup:
-        if not isinstance(priority_group, str):
-            raise TypeError('priority_group must be a string')
-        if not priority_group.strip():
-            raise ValueError('priority_group must not be empty')
-        snapshot = self.durability.persistence.read_snapshot(priority_group)
-        if snapshot is None:
-            if self._has_durable_group_history(priority_group):
-                raise AlarmRuntimeCompositionError(
-                    'group snapshot is missing for a priority_group with durable history'
-                )
-            return AlarmRuntimeGroup(
-                state=GroupLifecycleState(priority_group=priority_group),
-                snapshot=None,
-            )
-        return AlarmRuntimeGroup(
-            state=decode_group_runtime_snapshot(snapshot, planned_alarms=planned_alarms),
-            snapshot=snapshot,
+        return self.load_groups({priority_group: planned_alarms})[priority_group]
+
+    def load_groups(
+        self,
+        planned_alarms_by_group: Mapping[str, Sequence[PlannedAlarm]],
+    ) -> dict[str, AlarmRuntimeGroup]:
+        if not isinstance(planned_alarms_by_group, Mapping):
+            raise TypeError('planned_alarms_by_group must be a mapping')
+        snapshots: dict[str, GroupRuntimeSnapshot | None] = {}
+        for priority_group in planned_alarms_by_group:
+            self._validate_priority_group(priority_group)
+            snapshots[priority_group] = self.durability.persistence.read_snapshot(priority_group)
+        missing_groups = tuple(
+            priority_group for priority_group, snapshot in snapshots.items() if snapshot is None
         )
+        durable_history_groups = (
+            frozenset() if not missing_groups else self._read_durable_history_groups()
+        )
+        return {
+            priority_group: self._compose_group(
+                priority_group,
+                planned_alarms=planned_alarms,
+                snapshot=snapshots[priority_group],
+                durable_history_groups=durable_history_groups,
+            )
+            for priority_group, planned_alarms in planned_alarms_by_group.items()
+        }
 
     def commit_batch(
         self,
@@ -86,14 +98,46 @@ class AlarmRuntimeComposition:
             )
         return self.durability.commit_batch(context, records)
 
+    def _compose_group(
+        self,
+        priority_group: str,
+        *,
+        planned_alarms: Sequence[PlannedAlarm],
+        snapshot: GroupRuntimeSnapshot | None,
+        durable_history_groups: frozenset[str],
+    ) -> AlarmRuntimeGroup:
+        if snapshot is None:
+            if priority_group in durable_history_groups:
+                raise AlarmRuntimeCompositionError(
+                    'group snapshot is missing for a priority_group with durable history'
+                )
+            return AlarmRuntimeGroup(
+                state=GroupLifecycleState(priority_group=priority_group),
+                snapshot=None,
+            )
+        return AlarmRuntimeGroup(
+            state=decode_group_runtime_snapshot(snapshot, planned_alarms=planned_alarms),
+            snapshot=snapshot,
+        )
+
     def _has_durable_group_history(self, priority_group: str) -> bool:
+        self._validate_priority_group(priority_group)
+        return priority_group in self._read_durable_history_groups()
+
+    def _read_durable_history_groups(self) -> frozenset[str]:
         persistence = self.durability.persistence
         if persistence.read_head().durable is None:
-            return False
-        return any(
-            entry.record.commit.priority_group == priority_group
-            for entry in persistence.read_durable_records()
+            return frozenset()
+        return frozenset(
+            entry.record.commit.priority_group for entry in persistence.read_durable_records()
         )
+
+    @staticmethod
+    def _validate_priority_group(priority_group: str) -> None:
+        if not isinstance(priority_group, str):
+            raise TypeError('priority_group must be a string')
+        if not priority_group.strip():
+            raise ValueError('priority_group must not be empty')
 
 
 def build_alarm_runtime_composition(

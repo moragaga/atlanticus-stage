@@ -6,7 +6,7 @@ Runtime orquesta ejecución, coordinación temporal, lease, autoridad y cierre. 
 
 La API pública se limita a `JobDefinition`, `JobRuntimeContext`, `RuntimeConfiguration`, `RuntimeExecutionResult`, `execute_job` y los errores controlados. Lease, scheduling parser, authority store y resource monitor son detalles internos.
 
-R20C consolidó `0.6.0`; R20E consolida `0.7.0` sin cambiar la regla de compatibilidad: un consumidor que no configura scheduling y no entrega hooks sigue usando el modelo histórico `RELATIVE`.
+R20C consolidó `0.6.0`; R20E consolidó `0.7.0`; R20C.3.2 entrega `0.7.1` corrigiendo starvation del heartbeat frente a mutaciones físicas del mismo owner, sin cambiar la regla de compatibilidad: un consumidor que no configura scheduling y no entrega hooks sigue usando el modelo histórico `RELATIVE`.
 
 ## Fuentes de autoridad
 
@@ -40,7 +40,7 @@ Un late start conserva la frontera del slot real; no crea un slot artificial des
 
 ### SCHEDULED_RESIDENT
 
-Está aceptado como posibilidad arquitectónica, pero no está implementado ni declarado disponible en `0.7.0`.
+Está aceptado como posibilidad arquitectónica, pero no está implementado ni declarado disponible en `0.7.1`.
 
 ## Execution Window
 
@@ -106,7 +106,9 @@ La renovación del heartbeat requiere que el owner siga vigente y que su lease n
 
 Cuando existe scheduled/platform authority, la expiración renovada queda capped por la frontera efectiva. El heartbeat no puede convertir una invocación vencida en autoridad nueva.
 
-`renew()`, `assert_current()`, takeover y `fenced_mutation()` comparten el mismo fence físico por `job_key`. Una ocupación breve se espera de forma acotada; una pérdida real de owner, generation o expiración sigue fallando cerrado.
+`renew()`, `assert_current()`, takeover y `fenced_mutation()` comparten el mismo fence físico por `job_key`. Una pérdida real de owner, generation o expiración sigue fallando cerrado.
+
+R20C.3.2 separa el comportamiento del heartbeat del wait corto usado por checks/mutaciones síncronas. El heartbeat conserva en memoria la última `expires_at_utc` confirmada bajo fence. Si el fence está temporalmente ocupado, reintenta con `try_acquire()` hasta el menor límite entre esa expiración confirmada y el tiempo monotónico equivalente. El stop del heartbeat interrumpe esa espera. Al conseguir el fence, vuelve a validar owner, generation y expiración antes de escribir una nueva expiración. No existe renovación fuera del fence ni revival de una lease ya expirada.
 
 ## Lifecycle
 
@@ -187,7 +189,7 @@ El soporte de recursos permanece separado en modelos, sampler cgroup, detector d
 
 Observability y scheduling son ortogonales. La configuración proyectada a la extensión Azure sigue limitada a sus variables explícitas; Runtime no expone secretos ni serializa configuración de plataforma en logs.
 
-## Compatibilidad y no-alcance de `0.7.0`
+## Compatibilidad y no-alcance de `0.7.1`
 
 R20E no modifica automáticamente la lógica de negocio de ningún proceso consumidor. En particular:
 
@@ -199,4 +201,4 @@ R20E no modifica automáticamente la lógica de negocio de ningún proceso consu
 - no implementa WAL ni snapshot;
 - no declara `SCHEDULED_RESIDENT` disponible.
 
-El cambio coordinado de consumidores se limita a certificar `atlanticus-job-runtime==0.7.0`, regenerar locks con UV y reconstruir los artifacts que transportan el wheel. Los consumidores existentes pueden seguir usando sólo `assert_lease_current()`; `fenced_mutation()` es opt-in para mutaciones que necesitan la frontera física.
+El cambio coordinado de consumidores se limita a certificar `atlanticus-job-runtime==0.7.1`, regenerar locks con UV y reconstruir los artifacts que transportan el wheel. Los consumidores existentes pueden seguir usando sólo `assert_lease_current()`; `fenced_mutation()` es opt-in para mutaciones que necesitan la frontera física.

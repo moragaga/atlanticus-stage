@@ -1,6 +1,6 @@
 # Atlanticus Job Runtime
 
-`atlanticus-job-runtime==0.7.0` coordina ejecución, ventana temporal, lease, autoridad y cierre de jobs backend Atlanticus sin conocer conectores, datasets, State ni reglas de ADA.
+`atlanticus-job-runtime==0.7.1` coordina ejecución, ventana temporal, lease, autoridad y cierre de jobs backend Atlanticus sin conocer conectores, datasets, State ni reglas de ADA.
 
 ## Contrato estable R20C + R20E
 
@@ -22,7 +22,7 @@ Responsabilidades principales:
 
 Runtime no crea clientes, no resuelve secretos, no administra pools de negocio, no lee archivos de deployment y no implementa persistencia transaccional del consumidor.
 
-`SCHEDULED_RESIDENT` no forma parte de la API disponible en `0.7.0`.
+`SCHEDULED_RESIDENT` no forma parte de la API disponible en `0.7.1`.
 
 ## Configuración
 
@@ -134,6 +134,8 @@ Un cierre normal elimina la lease, pero no retrocede la generación durable. Un 
 
 La renovación scheduled nunca puede extender la lease más allá de la autoridad temporal efectiva de la invocación.
 
+Desde `0.7.1`, el heartbeat distingue una pérdida real de autoridad de la contención temporal del `PhysicalAuthorityFence` causada por mutaciones legítimas del mismo owner. Si el fence está ocupado, el heartbeat reintenta mientras la última expiración confirmada siga vigente. Nunca extiende la lease sin adquirir el fence. Si no logra reconfirmar antes de la expiración/authority deadline, o al adquirir el fence observa owner/generation distintos o lease expirada, falla cerrado como antes.
+
 ## Recovery, run y drain
 
 El lifecycle estable es:
@@ -196,4 +198,4 @@ Desde `backend/`:
 ./scripts/validation/check.sh
 ```
 
-El cierre coordinado de `0.7.0` requiere que los consumidores que fijan `atlanticus-job-runtime` regeneren sus `uv.lock` con UV y que los artifacts de procesos vuelvan a transportar el wheel `atlanticus_job_runtime-0.7.0-py3-none-any.whl`.
+El cierre coordinado de `0.7.1` requiere que los consumidores que fijan `atlanticus-job-runtime` regeneren sus `uv.lock` con UV y que los artifacts de procesos vuelvan a transportar el wheel `atlanticus_job_runtime-0.7.1-py3-none-any.whl`.

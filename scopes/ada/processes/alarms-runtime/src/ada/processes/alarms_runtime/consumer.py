@@ -178,7 +178,7 @@ class AlarmDurableInputConsumer:
         for entry in entries:
             records = entry.record.records
             for receipt in records.get('input_receipts', []):
-                receipt_id = f"{receipt['input_kind']}:{receipt['input_id']}"
+                receipt_id = f'{receipt["input_kind"]}:{receipt["input_id"]}'
                 existing = self._index.receipts.get(receipt_id)
                 if existing is not None and dict(existing) != dict(receipt):
                     raise AlarmDurableInputConsumerError(
@@ -268,13 +268,13 @@ class AlarmDurableInputConsumer:
                 AlarmPendingDeactivationRequest(
                     priority_group=priority_group,
                     request=DeactivationRequest(
-                    request_id=request_id,
-                    alarm_identity=identity,
-                    source_management_input_id=document['source_management_input_id'],
-                    source_occurrence_id=document['source_occurrence_id'],
-                    requested_at=_parse_utc(document['requested_at']),
-                    effective_until=_parse_utc(document['effective_until']),
-                    approval_required=document['approval_required'],
+                        request_id=request_id,
+                        alarm_identity=identity,
+                        source_management_input_id=document['source_management_input_id'],
+                        source_occurrence_id=document['source_occurrence_id'],
+                        requested_at=_parse_utc(document['requested_at']),
+                        effective_until=_parse_utc(document['effective_until']),
+                        approval_required=document['approval_required'],
                     ),
                 )
             )
@@ -371,7 +371,6 @@ class AlarmDurableInputConsumer:
         context.assert_lease_current()
         try:
             with context.fenced_mutation():
-                context.assert_lease_current()
                 self._state_store.replace(_CONSUMER_STATE_PATH, document)
         except StateError as error:
             raise AlarmDurableInputConsumerError(

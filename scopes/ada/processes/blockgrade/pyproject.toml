@@ -13,7 +13,7 @@ dependencies = [
     "atlanticus-configuration==0.1.0",
     "atlanticus-data-producers-core==0.1.0",
     "atlanticus-data-producers-sql==0.1.1",
-    "atlanticus-job-runtime==0.7.0",
+    "atlanticus-job-runtime==0.7.1",
     "atlanticus-kernel==0.1.0",
     "atlanticus-key-vault==0.1.0",
     "atlanticus-observability-azure==0.1.0",

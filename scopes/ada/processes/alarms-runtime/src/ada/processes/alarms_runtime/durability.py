@@ -23,6 +23,13 @@ class AlarmRuntimeDurability:
     def recover(self, context: JobRuntimeContext) -> RecoveryResult:
         _require_context(context)
         context.raise_if_cancelled()
+        return self._recover(context)
+
+    def reconcile_drain(self, context: JobRuntimeContext) -> RecoveryResult:
+        _require_context(context)
+        return self._recover(context)
+
+    def _recover(self, context: JobRuntimeContext) -> RecoveryResult:
         result = self.persistence.recover(
             assert_authority=context.assert_lease_current,
             fenced_mutation=context.fenced_mutation,

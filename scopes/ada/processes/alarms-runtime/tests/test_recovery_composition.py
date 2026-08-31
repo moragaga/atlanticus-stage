@@ -189,3 +189,98 @@ def test_load_group_allows_neutral_group_when_durable_history_belongs_to_another
     assert recovered.state.episode is None
     assert recovered.state.alarms == ()
     assert recovered.snapshot is None
+
+
+def test_load_groups_reads_durable_history_once_for_multiple_missing_snapshots(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    composition = _composition(tmp_path)
+    context = build_context(tmp_path)
+    state = group_state(active_runtime_state())
+    current = materialization(state, runtime_state_updates=(identity(),))
+    composition.commit_batch(context, (current,))
+    persistence = composition.durability.persistence
+    original_read_durable_records = persistence.read_durable_records
+    scan_count = 0
+
+    def counted_read_durable_records(*, after=None):
+        nonlocal scan_count
+        scan_count += 1
+        return original_read_durable_records(after=after)
+
+    monkeypatch.setattr(persistence, 'read_durable_records', counted_read_durable_records)
+
+    groups = composition.load_groups(
+        {
+            'mill-feed': (plan(),),
+            'neutral-a': (),
+            'neutral-b': (),
+        }
+    )
+
+    assert scan_count == 1
+    assert groups['mill-feed'].snapshot is not None
+    assert groups['neutral-a'].snapshot is None
+    assert groups['neutral-b'].snapshot is None
+    assert groups['neutral-a'].state.priority_group == 'neutral-a'
+    assert groups['neutral-b'].state.priority_group == 'neutral-b'
+
+
+def test_load_groups_skips_durable_history_scan_when_all_snapshots_exist(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    composition = _composition(tmp_path)
+    context = build_context(tmp_path)
+    state = group_state(active_runtime_state())
+    current = materialization(state, runtime_state_updates=(identity(),))
+    composition.commit_batch(context, (current,))
+    persistence = composition.durability.persistence
+
+    def unexpected_read_durable_records(*, after=None):
+        raise AssertionError('durable journal must not be scanned when every snapshot exists')
+
+    monkeypatch.setattr(persistence, 'read_durable_records', unexpected_read_durable_records)
+
+    groups = composition.load_groups({'mill-feed': (plan(),)})
+
+    assert groups['mill-feed'].snapshot is not None
+    assert groups['mill-feed'].state == state
+
+
+def test_load_groups_allows_multiple_neutral_groups_with_empty_journal(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    composition = _composition(tmp_path)
+    persistence = composition.durability.persistence
+
+    def unexpected_read_durable_records(*, after=None):
+        raise AssertionError('empty durable head must not scan journal records')
+
+    monkeypatch.setattr(persistence, 'read_durable_records', unexpected_read_durable_records)
+
+    groups = composition.load_groups({'neutral-a': (), 'neutral-b': ()})
+
+    assert tuple(groups) == ('neutral-a', 'neutral-b')
+    assert all(group.snapshot is None for group in groups.values())
+    assert all(group.state.alarms == () for group in groups.values())
+
+
+def test_load_groups_fails_closed_when_any_missing_snapshot_has_durable_history(
+    tmp_path: Path,
+) -> None:
+    composition = _composition(tmp_path)
+    context = build_context(tmp_path)
+    state = group_state(active_runtime_state())
+    current = materialization(state, runtime_state_updates=(identity(),))
+    composition.commit_batch(context, (current,))
+    persistence = composition.durability.persistence
+    snapshot_path = persistence.paths.alarms_root / persistence.paths.group_snapshot_relative(
+        'mill-feed'
+    )
+    snapshot_path.unlink()
+
+    with pytest.raises(AlarmRuntimeCompositionError, match='durable history'):
+        composition.load_groups({'mill-feed': (plan(),), 'neutral-a': ()})

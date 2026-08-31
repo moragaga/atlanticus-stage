@@ -1,0 +1,23 @@
+{
+  "aggregate_sha256": "fa89dd1386cbc0b4698d8ffaaa831f354d08aacc71687b033d0f837fa2f9cfac",
+  "bank_sha256": "a495f83bdaa13bc2ca30d125604a1a3bfef32788e0763305dffe6485896e8ea8",
+  "dataset_bank_id": "f007-controlled-physical-bank-v1",
+  "input_root": "/f007/input",
+  "physical_signal_pool_size": 1000,
+  "prewarm_cgroup": {
+    "io_read_bytes_delta": 0,
+    "io_read_operations_delta": 0,
+    "memory_active_file_after": 20480,
+    "memory_anon_after": 101421056,
+    "memory_current_after": 105308160,
+    "memory_current_before": 90628096,
+    "memory_file_after": 32768,
+    "memory_inactive_file_after": 12288
+  },
+  "prewarm_duration_ms": 655.4372600003262,
+  "prewarm_paths": [
+    "datasets/pi/not_pii/interpolated/latest/data.parquet"
+  ],
+  "profile": "WARM_FIXED",
+  "read_only": true
+}

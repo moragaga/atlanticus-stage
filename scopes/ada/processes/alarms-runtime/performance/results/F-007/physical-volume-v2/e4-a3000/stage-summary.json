@@ -1,0 +1,33 @@
+{
+  "alarm_count": 3000,
+  "classification": "SATURATED",
+  "commit_chain_mismatch_count": 0,
+  "container_exit_code": 0,
+  "cpu_cores": 2.0,
+  "cpu_peak_percent": 68.111,
+  "cpu_throttled_seconds": null,
+  "duplicate_commit_id_count": 0,
+  "durable_record_count": 1,
+  "empty_iterations": 59,
+  "iterations": 60,
+  "journal_aligned": true,
+  "journal_bytes": 5785678,
+  "memory_gib": 4,
+  "memory_peak_percent": 4.241,
+  "oom_killed": false,
+  "overrun_count": 1,
+  "overrun_ratio": 0.016666666666666666,
+  "p95_iteration_ms": 4695.65738789961,
+  "p95_start_interval_ms": 5001.234191300864,
+  "p99_iteration_ms": 5275.845038520816,
+  "reasons": [
+    "stage did not complete the expected 61 iterations"
+  ],
+  "resource_contract_ok": true,
+  "snapshot_alarm_count": 3000,
+  "snapshot_count": 1,
+  "snapshot_last_commit_mismatch_count": 0,
+  "stage_id": "e4-a3000",
+  "stop_reason": "insufficient_remaining_time",
+  "work_iterations": 1
+}

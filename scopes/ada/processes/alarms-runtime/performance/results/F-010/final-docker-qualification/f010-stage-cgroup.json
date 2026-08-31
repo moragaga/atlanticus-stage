@@ -1,0 +1,17 @@
+{
+  "cpu_nr_throttled_delta": 1248,
+  "cpu_throttled_usec_delta": 9435548,
+  "cpu_usage_usec_delta": 1203294928,
+  "io_read_bytes_delta": 532480,
+  "io_read_operations_delta": 6,
+  "memory_active_file_after": 20733952,
+  "memory_active_file_before": 24576,
+  "memory_anon_after": 234610688,
+  "memory_anon_before": 89112576,
+  "memory_current_after": 266227712,
+  "memory_current_before": 96382976,
+  "memory_file_after": 25534464,
+  "memory_file_before": 3825664,
+  "memory_inactive_file_after": 4800512,
+  "memory_inactive_file_before": 3801088
+}

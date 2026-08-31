@@ -22,9 +22,20 @@ class AlarmRuntimeDurability:
         if not isinstance(self.persistence, AlarmPersistence):
             raise TypeError('persistence must be an AlarmPersistence')
 
+    # Startup recovery conserva el guard de cancelación: un proceso detenido no puede iniciar trabajo.
     def recover(self, context: JobRuntimeContext) -> RecoveryResult:
         _require_context(context)
         context.raise_if_cancelled()
+        return self._recover(context)
+
+    # Drain necesita reconciliar Persistence aun cuando el mismo contexto ya tiene stop solicitado.
+    # La autoridad no se relaja: se mantienen assert_lease_current y fenced_mutation en _recover.
+    def reconcile_drain(self, context: JobRuntimeContext) -> RecoveryResult:
+        _require_context(context)
+        return self._recover(context)
+
+    # Ambos caminos comparten exactamente la operación física de recovery y sus execution facts.
+    def _recover(self, context: JobRuntimeContext) -> RecoveryResult:
         result = self.persistence.recover(
             assert_authority=context.assert_lease_current,
             fenced_mutation=context.fenced_mutation,

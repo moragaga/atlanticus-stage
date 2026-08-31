@@ -1,0 +1,16 @@
+{
+  "phase_a": {
+    "actual_duration_seconds": 31.389309,
+    "alarm_configuration_revision": "PERF-AC-1",
+    "planned_duration_seconds": 30.0,
+    "run_id": "fcb116ba-6438-46a9-8ba6-a1bfdd11e1ac",
+    "stop_reason": "insufficient_remaining_time"
+  },
+  "phase_b": {
+    "actual_duration_seconds": 243.883478,
+    "alarm_configuration_revision": "PERF-AC-2",
+    "planned_duration_seconds": 240.0,
+    "run_id": "52e52d15-ab29-4d02-ae0b-db8ef8b4346b",
+    "stop_reason": "insufficient_remaining_time"
+  }
+}

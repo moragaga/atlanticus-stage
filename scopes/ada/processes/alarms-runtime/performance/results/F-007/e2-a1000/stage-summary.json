@@ -1,0 +1,33 @@
+{
+  "alarm_count": 1000,
+  "classification": "GREEN-MARGIN",
+  "commit_chain_mismatch_count": 0,
+  "container_exit_code": 0,
+  "cpu_cores": 1.0,
+  "cpu_peak_percent": 99.354,
+  "cpu_throttled_seconds": 0.049281,
+  "duplicate_commit_id_count": 0,
+  "durable_record_count": 2,
+  "empty_iterations": 59,
+  "iterations": 61,
+  "journal_aligned": true,
+  "journal_bytes": 2783099,
+  "memory_gib": 2,
+  "memory_peak_percent": 5.274,
+  "oom_killed": false,
+  "overrun_count": 0,
+  "overrun_ratio": 0.0,
+  "p95_iteration_ms": 941.4761070001987,
+  "p95_start_interval_ms": 5001.226459749523,
+  "p99_iteration_ms": 1329.6371004020327,
+  "reasons": [
+    "stage preserved cadence, integrity, and resource margin"
+  ],
+  "resource_contract_ok": true,
+  "snapshot_alarm_count": 1000,
+  "snapshot_count": 1,
+  "snapshot_last_commit_mismatch_count": 0,
+  "stage_id": "e2-a1000",
+  "stop_reason": "insufficient_remaining_time",
+  "work_iterations": 2
+}

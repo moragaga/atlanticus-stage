@@ -1,0 +1,5330 @@
+{
+  "aggregate_physical": {
+    "compression_codecs": [
+      "zstd"
+    ],
+    "file_count": 4,
+    "projectable_signal_count": 1000,
+    "row_count_sum": 514,
+    "row_group_count_total": 4,
+    "total_bytes": 774701
+  },
+  "calibration": {
+    "dispatch_day_actual_bytes": 122505,
+    "dispatch_day_delta_ratio": -0.20244140625,
+    "dispatch_day_target_bytes": 153600,
+    "dispatch_per_turn": {
+      "actual_bytes": 61159,
+      "attempts": [
+        {
+          "bytes": 7983,
+          "row_count": 1
+        },
+        {
+          "bytes": 8175,
+          "row_count": 2
+        },
+        {
+          "bytes": 8583,
+          "row_count": 4
+        },
+        {
+          "bytes": 9423,
+          "row_count": 8
+        },
+        {
+          "bytes": 11079,
+          "row_count": 16
+        },
+        {
+          "bytes": 14454,
+          "row_count": 32
+        },
+        {
+          "bytes": 21376,
+          "row_count": 64
+        },
+        {
+          "bytes": 35084,
+          "row_count": 128
+        },
+        {
+          "bytes": 61159,
+          "row_count": 256
+        },
+        {
+          "bytes": 114702,
+          "row_count": 512
+        }
+      ],
+      "delta_bytes": -15641,
+      "delta_ratio": -0.20365885416666665,
+      "row_count": 256,
+      "target_bytes": 76800
+    },
+    "pi_daily": {
+      "actual_bytes": 326098,
+      "attempts": [
+        {
+          "bytes": 326098,
+          "row_count": 1
+        }
+      ],
+      "delta_bytes": 121298,
+      "delta_ratio": 0.592275390625,
+      "row_count": 1,
+      "target_bytes": 204800
+    }
+  },
+  "dataset_bank_id": "f007-controlled-physical-pilot-v1",
+  "determinism": {
+    "original_aggregate_sha256": "f38ebf51184843bf975092994c5efeb4cb4f14f35bd494c8440c865720b691ca",
+    "rebuilt_aggregate_sha256": "f38ebf51184843bf975092994c5efeb4cb4f14f35bd494c8440c865720b691ca",
+    "verified": true
+  },
+  "files": [
+    {
+      "bytes": 61159,
+      "column_count": 25,
+      "compression_codecs": [
+        "zstd"
+      ],
+      "materialization": "shift",
+      "mount_relative_path": "datasets/dispatch/std_shift_state/shift/year=2026/month=08/day=30/turn=001/data.parquet",
+      "row_count": 256,
+      "row_group_count": 1,
+      "schema_fingerprint_sha256": "17fb518cbc52a7599df47eda68e818e26fe18738cfadd6e0c50d8db99e25ec30",
+      "sha256": "b81bed43f109c26ac9fcfbfd1f02e48fd293d4ca478b8bd6630aedfe8b253e0c",
+      "source": "dispatch.std_shift_state"
+    },
+    {
+      "bytes": 61346,
+      "column_count": 25,
+      "compression_codecs": [
+        "zstd"
+      ],
+      "materialization": "shift",
+      "mount_relative_path": "datasets/dispatch/std_shift_state/shift/year=2026/month=08/day=30/turn=002/data.parquet",
+      "row_count": 256,
+      "row_group_count": 1,
+      "schema_fingerprint_sha256": "17fb518cbc52a7599df47eda68e818e26fe18738cfadd6e0c50d8db99e25ec30",
+      "sha256": "6bdcb122df4b9a33bd36ba1ffc374e55816612761532b7a3b1b6733b528c16d1",
+      "source": "dispatch.std_shift_state"
+    },
+    {
+      "bytes": 326098,
+      "column_count": 1001,
+      "compression_codecs": [
+        "zstd"
+      ],
+      "materialization": "daily",
+      "mount_relative_path": "datasets/pi/not_pii/interpolated/daily/year=2026/month=08/day=30/data.parquet",
+      "row_count": 1,
+      "row_group_count": 1,
+      "schema_fingerprint_sha256": "44d7e18b6b926f5be1afecc1b15753852131273b6e78c57326f2ae0a31b99824",
+      "sha256": "c3513df5dadda2c720e05db20981361aef1f061a25063cad78dd00c7adc2ce8b",
+      "source": "pi.interpolated"
+    },
+    {
+      "bytes": 326098,
+      "column_count": 1001,
+      "compression_codecs": [
+        "zstd"
+      ],
+      "materialization": "latest",
+      "mount_relative_path": "datasets/pi/not_pii/interpolated/latest/data.parquet",
+      "row_count": 1,
+      "row_group_count": 1,
+      "schema_fingerprint_sha256": "44d7e18b6b926f5be1afecc1b15753852131273b6e78c57326f2ae0a31b99824",
+      "sha256": "863744fa30c1508466daab9e87059f36a4deaed1f44bea975f690a826ee803f6",
+      "source": "pi.interpolated"
+    }
+  ],
+  "fingerprints": {
+    "aggregate_sha256": "f38ebf51184843bf975092994c5efeb4cb4f14f35bd494c8440c865720b691ca",
+    "algorithm": "sha256",
+    "canonicalization": "sort by mount-relative path; '<path>\\t<file_sha256>\\n'"
+  },
+  "generated_at_utc": "2026-08-31T01:21:19.933498Z",
+  "generator": {
+    "configuration": {
+      "dispatch_day_target_bytes": 153600,
+      "dispatch_value_columns": 24,
+      "partition_date": "2026-08-30",
+      "pi_daily_target_bytes": 204800,
+      "seed": 7007,
+      "signal_count": 1000
+    },
+    "name": "performance.f007_dataset_pilot",
+    "version": "0.1.0"
+  },
+  "limitations": [
+    "No operational capture was available.",
+    "Observed PI and Dispatch sizes are calibration anchors only.",
+    "This pilot does not generate the final 61-window bank.",
+    "This pilot does not freeze the final alarm-count ladder."
+  ],
+  "manifest_version": "1.1",
+  "mount_contract": {
+    "container_path": "/f007/input",
+    "read_only": true
+  },
+  "operational_representative": false,
+  "origin_class": "controlled_synthetic_physical",
+  "profiles": {
+    "FIRST_TOUCH_PARTITIONED": {
+      "authoritative_for_alarm_capacity": false,
+      "dispatch_partition": "shift",
+      "final_window_count": 61,
+      "pi_partition": "daily",
+      "pilot_only": true
+    },
+    "WARM_FIXED": {
+      "authoritative_for_alarm_capacity": true,
+      "partition": "latest",
+      "source": "pi.interpolated"
+    }
+  },
+  "schemas": [
+    {
+      "fields": [
+        {
+          "name": "shift_id",
+          "nullable": true,
+          "type": "int64"
+        },
+        {
+          "name": "value_001",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_002",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_003",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_004",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_005",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_006",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_007",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_008",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_009",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_010",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_011",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_012",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_013",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_014",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_015",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_016",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_017",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_018",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_019",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_020",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_021",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_022",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_023",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "value_024",
+          "nullable": true,
+          "type": "double"
+        }
+      ],
+      "fingerprint_sha256": "17fb518cbc52a7599df47eda68e818e26fe18738cfadd6e0c50d8db99e25ec30"
+    },
+    {
+      "fields": [
+        {
+          "name": "timestamp_utc",
+          "nullable": true,
+          "type": "timestamp[us, tz=UTC]"
+        },
+        {
+          "name": "signal_000001",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000002",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000003",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000004",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000005",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000006",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000007",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000008",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000009",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000010",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000011",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000012",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000013",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000014",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000015",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000016",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000017",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000018",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000019",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000020",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000021",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000022",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000023",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000024",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000025",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000026",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000027",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000028",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000029",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000030",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000031",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000032",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000033",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000034",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000035",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000036",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000037",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000038",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000039",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000040",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000041",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000042",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000043",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000044",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000045",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000046",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000047",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000048",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000049",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000050",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000051",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000052",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000053",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000054",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000055",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000056",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000057",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000058",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000059",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000060",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000061",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000062",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000063",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000064",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000065",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000066",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000067",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000068",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000069",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000070",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000071",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000072",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000073",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000074",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000075",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000076",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000077",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000078",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000079",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000080",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000081",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000082",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000083",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000084",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000085",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000086",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000087",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000088",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000089",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000090",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000091",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000092",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000093",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000094",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000095",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000096",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000097",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000098",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000099",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000100",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000101",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000102",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000103",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000104",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000105",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000106",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000107",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000108",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000109",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000110",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000111",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000112",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000113",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000114",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000115",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000116",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000117",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000118",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000119",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000120",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000121",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000122",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000123",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000124",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000125",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000126",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000127",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000128",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000129",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000130",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000131",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000132",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000133",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000134",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000135",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000136",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000137",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000138",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000139",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000140",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000141",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000142",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000143",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000144",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000145",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000146",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000147",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000148",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000149",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000150",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000151",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000152",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000153",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000154",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000155",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000156",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000157",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000158",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000159",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000160",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000161",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000162",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000163",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000164",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000165",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000166",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000167",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000168",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000169",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000170",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000171",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000172",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000173",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000174",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000175",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000176",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000177",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000178",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000179",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000180",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000181",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000182",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000183",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000184",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000185",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000186",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000187",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000188",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000189",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000190",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000191",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000192",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000193",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000194",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000195",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000196",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000197",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000198",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000199",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000200",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000201",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000202",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000203",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000204",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000205",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000206",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000207",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000208",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000209",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000210",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000211",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000212",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000213",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000214",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000215",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000216",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000217",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000218",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000219",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000220",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000221",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000222",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000223",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000224",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000225",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000226",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000227",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000228",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000229",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000230",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000231",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000232",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000233",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000234",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000235",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000236",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000237",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000238",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000239",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000240",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000241",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000242",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000243",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000244",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000245",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000246",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000247",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000248",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000249",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000250",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000251",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000252",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000253",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000254",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000255",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000256",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000257",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000258",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000259",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000260",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000261",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000262",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000263",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000264",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000265",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000266",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000267",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000268",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000269",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000270",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000271",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000272",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000273",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000274",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000275",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000276",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000277",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000278",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000279",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000280",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000281",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000282",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000283",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000284",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000285",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000286",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000287",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000288",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000289",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000290",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000291",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000292",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000293",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000294",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000295",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000296",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000297",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000298",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000299",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000300",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000301",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000302",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000303",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000304",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000305",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000306",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000307",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000308",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000309",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000310",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000311",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000312",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000313",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000314",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000315",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000316",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000317",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000318",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000319",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000320",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000321",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000322",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000323",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000324",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000325",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000326",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000327",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000328",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000329",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000330",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000331",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000332",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000333",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000334",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000335",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000336",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000337",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000338",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000339",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000340",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000341",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000342",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000343",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000344",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000345",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000346",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000347",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000348",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000349",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000350",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000351",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000352",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000353",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000354",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000355",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000356",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000357",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000358",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000359",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000360",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000361",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000362",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000363",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000364",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000365",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000366",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000367",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000368",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000369",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000370",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000371",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000372",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000373",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000374",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000375",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000376",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000377",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000378",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000379",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000380",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000381",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000382",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000383",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000384",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000385",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000386",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000387",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000388",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000389",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000390",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000391",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000392",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000393",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000394",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000395",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000396",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000397",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000398",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000399",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000400",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000401",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000402",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000403",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000404",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000405",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000406",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000407",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000408",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000409",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000410",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000411",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000412",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000413",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000414",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000415",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000416",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000417",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000418",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000419",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000420",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000421",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000422",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000423",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000424",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000425",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000426",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000427",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000428",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000429",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000430",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000431",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000432",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000433",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000434",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000435",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000436",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000437",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000438",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000439",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000440",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000441",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000442",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000443",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000444",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000445",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000446",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000447",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000448",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000449",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000450",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000451",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000452",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000453",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000454",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000455",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000456",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000457",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000458",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000459",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000460",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000461",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000462",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000463",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000464",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000465",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000466",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000467",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000468",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000469",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000470",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000471",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000472",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000473",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000474",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000475",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000476",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000477",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000478",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000479",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000480",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000481",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000482",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000483",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000484",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000485",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000486",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000487",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000488",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000489",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000490",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000491",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000492",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000493",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000494",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000495",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000496",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000497",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000498",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000499",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000500",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000501",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000502",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000503",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000504",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000505",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000506",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000507",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000508",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000509",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000510",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000511",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000512",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000513",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000514",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000515",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000516",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000517",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000518",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000519",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000520",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000521",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000522",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000523",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000524",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000525",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000526",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000527",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000528",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000529",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000530",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000531",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000532",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000533",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000534",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000535",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000536",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000537",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000538",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000539",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000540",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000541",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000542",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000543",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000544",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000545",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000546",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000547",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000548",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000549",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000550",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000551",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000552",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000553",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000554",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000555",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000556",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000557",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000558",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000559",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000560",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000561",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000562",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000563",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000564",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000565",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000566",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000567",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000568",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000569",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000570",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000571",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000572",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000573",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000574",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000575",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000576",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000577",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000578",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000579",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000580",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000581",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000582",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000583",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000584",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000585",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000586",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000587",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000588",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000589",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000590",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000591",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000592",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000593",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000594",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000595",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000596",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000597",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000598",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000599",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000600",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000601",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000602",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000603",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000604",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000605",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000606",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000607",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000608",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000609",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000610",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000611",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000612",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000613",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000614",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000615",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000616",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000617",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000618",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000619",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000620",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000621",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000622",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000623",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000624",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000625",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000626",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000627",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000628",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000629",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000630",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000631",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000632",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000633",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000634",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000635",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000636",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000637",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000638",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000639",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000640",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000641",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000642",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000643",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000644",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000645",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000646",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000647",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000648",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000649",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000650",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000651",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000652",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000653",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000654",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000655",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000656",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000657",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000658",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000659",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000660",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000661",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000662",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000663",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000664",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000665",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000666",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000667",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000668",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000669",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000670",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000671",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000672",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000673",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000674",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000675",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000676",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000677",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000678",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000679",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000680",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000681",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000682",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000683",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000684",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000685",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000686",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000687",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000688",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000689",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000690",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000691",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000692",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000693",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000694",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000695",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000696",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000697",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000698",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000699",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000700",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000701",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000702",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000703",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000704",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000705",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000706",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000707",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000708",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000709",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000710",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000711",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000712",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000713",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000714",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000715",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000716",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000717",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000718",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000719",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000720",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000721",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000722",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000723",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000724",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000725",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000726",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000727",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000728",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000729",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000730",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000731",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000732",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000733",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000734",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000735",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000736",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000737",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000738",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000739",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000740",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000741",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000742",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000743",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000744",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000745",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000746",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000747",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000748",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000749",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000750",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000751",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000752",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000753",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000754",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000755",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000756",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000757",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000758",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000759",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000760",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000761",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000762",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000763",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000764",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000765",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000766",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000767",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000768",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000769",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000770",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000771",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000772",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000773",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000774",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000775",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000776",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000777",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000778",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000779",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000780",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000781",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000782",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000783",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000784",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000785",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000786",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000787",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000788",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000789",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000790",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000791",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000792",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000793",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000794",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000795",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000796",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000797",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000798",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000799",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000800",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000801",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000802",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000803",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000804",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000805",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000806",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000807",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000808",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000809",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000810",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000811",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000812",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000813",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000814",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000815",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000816",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000817",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000818",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000819",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000820",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000821",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000822",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000823",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000824",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000825",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000826",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000827",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000828",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000829",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000830",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000831",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000832",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000833",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000834",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000835",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000836",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000837",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000838",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000839",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000840",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000841",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000842",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000843",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000844",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000845",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000846",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000847",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000848",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000849",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000850",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000851",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000852",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000853",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000854",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000855",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000856",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000857",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000858",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000859",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000860",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000861",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000862",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000863",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000864",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000865",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000866",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000867",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000868",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000869",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000870",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000871",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000872",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000873",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000874",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000875",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000876",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000877",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000878",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000879",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000880",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000881",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000882",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000883",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000884",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000885",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000886",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000887",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000888",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000889",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000890",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000891",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000892",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000893",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000894",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000895",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000896",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000897",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000898",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000899",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000900",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000901",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000902",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000903",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000904",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000905",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000906",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000907",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000908",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000909",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000910",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000911",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000912",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000913",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000914",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000915",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000916",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000917",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000918",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000919",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000920",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000921",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000922",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000923",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000924",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000925",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000926",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000927",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000928",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000929",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000930",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000931",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000932",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000933",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000934",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000935",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000936",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000937",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000938",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000939",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000940",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000941",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000942",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000943",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000944",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000945",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000946",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000947",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000948",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000949",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000950",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000951",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000952",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000953",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000954",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000955",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000956",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000957",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000958",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000959",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000960",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000961",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000962",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000963",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000964",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000965",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000966",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000967",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000968",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000969",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000970",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000971",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000972",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000973",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000974",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000975",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000976",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000977",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000978",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000979",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000980",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000981",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000982",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000983",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000984",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000985",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000986",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000987",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000988",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000989",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000990",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000991",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000992",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000993",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000994",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000995",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000996",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000997",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000998",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_000999",
+          "nullable": true,
+          "type": "double"
+        },
+        {
+          "name": "signal_001000",
+          "nullable": true,
+          "type": "double"
+        }
+      ],
+      "fingerprint_sha256": "44d7e18b6b926f5be1afecc1b15753852131273b6e78c57326f2ae0a31b99824"
+    }
+  ]
+}

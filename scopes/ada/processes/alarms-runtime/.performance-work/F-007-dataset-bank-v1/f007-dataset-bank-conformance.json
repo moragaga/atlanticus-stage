@@ -1,0 +1,61 @@
+{
+  "checks": {
+    "aggregate_fingerprint_present": true,
+    "alarm_count_ladder_remains_unfrozen": true,
+    "alarm_signal_mapping_pool_is_1000": true,
+    "all_file_hashes_present": true,
+    "all_files_use_single_row_group": true,
+    "all_files_use_zstd": true,
+    "bank_fingerprint_present": true,
+    "dispatch_geometry_is_256x25": true,
+    "dispatch_shift_file_count_is_854": true,
+    "every_window_has_14_dispatch_shift_targets": true,
+    "every_window_has_22_targets": true,
+    "every_window_has_8_pi_daily_targets": true,
+    "operational_representative_is_false": true,
+    "origin_class_is_controlled_synthetic_physical": true,
+    "pi_daily_file_count_is_488": true,
+    "pi_daily_geometry_is_8640x3": true,
+    "pi_latest_file_count_is_1": true,
+    "pi_latest_geometry_is_1x1001": true,
+    "sample_deterministic_rebuild_verified": true,
+    "total_file_count_is_1343": true,
+    "warm_replay_uses_same_window_order": true,
+    "window_count_is_61": true,
+    "window_target_paths_are_globally_unique": true
+  },
+  "claims": {
+    "cold_cache_guaranteed": false,
+    "deterministic_fixture_identity_sample_verified": true,
+    "final_61_window_geometry_frozen": true,
+    "operational_representativeness": false,
+    "physical_writer_conformance": true
+  },
+  "dataset_bank_id": "f007-controlled-physical-bank-v1",
+  "next_gate": "Accept final bank evidence, then implement only the Physical Volume v2 harness binding, profiles and telemetry. Phase B remains blocked until that harness gate.",
+  "physical_summary": {
+    "dispatch_shift_file_count": 854,
+    "file_count": 1343,
+    "partitioned_working_set_bytes": 147059328,
+    "pi_daily_file_count": 488,
+    "size_distributions": {
+      "dispatch_shift_bytes": {
+        "max_bytes": 61438,
+        "median_bytes": 61277,
+        "min_bytes": 60800
+      },
+      "pi_daily_bytes": {
+        "max_bytes": 204445,
+        "median_bytes": 194383,
+        "min_bytes": 181198
+      },
+      "pi_latest_bytes": {
+        "max_bytes": 326098,
+        "median_bytes": 326098,
+        "min_bytes": 326098
+      }
+    }
+  },
+  "report_version": "1.1",
+  "status": "PASS"
+}

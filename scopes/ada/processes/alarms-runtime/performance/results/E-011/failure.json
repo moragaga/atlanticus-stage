@@ -1,0 +1,8 @@
+{
+  "exception_message": "injected target revision cache promotion failure",
+  "exception_type": "InjectedCachePromotionError",
+  "failed_iteration": 13,
+  "failed_iteration_ms": 379.65501100006804,
+  "target_promotion_attempt_count": 1,
+  "target_promotion_failure_count": 1
+}

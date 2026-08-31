@@ -1,0 +1,16 @@
+{
+  "host": "GLONBW11",
+  "recorded_at": "2026-08-25T13:09:28.071389Z",
+  "run_id": "90ae9223-a513-4643-aa8c-a2658d41bec9",
+  "scenario": {
+    "alarm_count": 250,
+    "backend": "local-filesystem",
+    "data_profile": "steady-state/latest/shared-signal",
+    "data_refresh_seconds": 10,
+    "duration_seconds": 600.0,
+    "iteration_period_seconds": 5.0
+  },
+  "stage_commit": "489b7424f5051f7a276dafe8d5f318ccf1368d87",
+  "stop_reason": "insufficient_remaining_time",
+  "test_id": "A-002"
+}

@@ -1,0 +1,26 @@
+{
+  "aggregate_sha256": "fa89dd1386cbc0b4698d8ffaaa831f354d08aacc71687b033d0f837fa2f9cfac",
+  "bank_sha256": "a495f83bdaa13bc2ca30d125604a1a3bfef32788e0763305dffe6485896e8ea8",
+  "data_profile": "f010-physical-integrated",
+  "dataset_bank_id": "f007-controlled-physical-bank-v1",
+  "fixed_as_of_utc": "2026-08-30T16:00:00Z",
+  "input_root": "/f007/input",
+  "physical_signal_pool_size": 1000,
+  "prewarm_cgroup": {
+    "io_read_bytes_delta": 528384,
+    "io_read_operations_delta": 5,
+    "memory_active_file_after": 237568,
+    "memory_anon_after": 115093504,
+    "memory_current_after": 123330560,
+    "memory_current_before": 97169408,
+    "memory_file_after": 4382720,
+    "memory_inactive_file_after": 4145152
+  },
+  "prewarm_duration_ms": 678.425611993589,
+  "prewarm_paths": [
+    "datasets/pi/not_pii/interpolated/latest/data.parquet",
+    "datasets/pi/not_pii/interpolated/daily/year=2026/month=08/day=30/data.parquet"
+  ],
+  "profile": "F010_PHYSICAL_INTEGRATED",
+  "read_only": true
+}

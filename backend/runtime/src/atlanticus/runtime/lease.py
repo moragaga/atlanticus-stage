@@ -164,6 +164,7 @@ class ExecutionLease:
         self._renewal_thread: Thread | None = None
         self._renewal_callback: Callable[[str], None] | None = None
         self._failure: AtlanticusRuntimeError | None = None
+        self._confirmed_expires_at_utc: datetime | None = None
         self._state_lock = Lock()
 
     @property
@@ -269,19 +270,7 @@ class ExecutionLease:
         if fence_descriptor is None:
             raise LeaseRenewalError('Lease authority fence is unavailable')
         try:
-            existing = self._read_payload()
-            if not self._owns_payload(existing) or self._is_expired(existing or {}):
-                self._acquired = False
-                return False
-            now = self._now()
-            expiration = self._expiration_from(now)
-            if expiration is None:
-                self._acquired = False
-                return False
-            payload = dict(existing)
-            payload['expires_at_utc'] = expiration.isoformat()
-            self._replace_payload(payload)
-            return True
+            return self._renew_under_fence()
         finally:
             self._physical_fence.release(fence_descriptor)
 
@@ -302,6 +291,7 @@ class ExecutionLease:
             existing = self._read_payload()
             if not self._owns_payload(existing):
                 self._acquired = False
+                self._confirmed_expires_at_utc = None
                 return False
             if completed and self._scheduled_at_utc is not None:
                 state = self._authority_store.read()
@@ -318,6 +308,7 @@ class ExecutionLease:
                 _fsync_directory(self._directory)
                 released = True
             self._acquired = False
+            self._confirmed_expires_at_utc = None
             return released
         finally:
             self._physical_fence.release(fence_descriptor)
@@ -397,6 +388,7 @@ class ExecutionLease:
         self._generation = advanced.generation
         self._acquired = True
         self._acquisition = acquisition
+        self._confirmed_expires_at_utc = expiration
         with self._state_lock:
             self._failure = None
         return acquisition
@@ -404,12 +396,14 @@ class ExecutionLease:
     def _renewal_loop(self) -> None:
         while not self._renewal_stop.wait(self._renewal_seconds):
             try:
-                renewed = self.renew()
+                renewed = self._renew_from_heartbeat()
             except Exception:
                 self._mark_failure(
                     LeaseRenewalError('Lease renewal failed'),
                     'lease_renewal_failed',
                 )
+                return
+            if renewed is None:
                 return
             if not renewed:
                 self._mark_failure(
@@ -417,6 +411,59 @@ class ExecutionLease:
                     'lease_ownership_lost',
                 )
                 return
+
+    def _renew_from_heartbeat(self) -> bool | None:
+        if not self._acquired or self._generation is None:
+            return False
+        confirmed_expiration = self._confirmed_expires_at_utc
+        if confirmed_expiration is None:
+            raise LeaseRenewalError('Lease confirmed expiration is unavailable')
+
+        now = self._now()
+        remaining_seconds = (confirmed_expiration - now).total_seconds()
+        if remaining_seconds <= 0:
+            self._acquired = False
+            return False
+        monotonic_deadline = time.monotonic() + remaining_seconds
+        poll_seconds = min(0.05, self._poll_seconds)
+
+        while True:
+            if self._renewal_stop.is_set():
+                return None
+            fence_descriptor = self._physical_fence.try_acquire()
+            if fence_descriptor is not None:
+                try:
+                    return self._renew_under_fence()
+                finally:
+                    self._physical_fence.release(fence_descriptor)
+
+            now = self._now()
+            wall_remaining = (confirmed_expiration - now).total_seconds()
+            monotonic_remaining = monotonic_deadline - time.monotonic()
+            remaining_seconds = min(wall_remaining, monotonic_remaining)
+            if remaining_seconds <= 0:
+                raise LeaseRenewalError(
+                    'Lease authority could not be reconfirmed before expiration'
+                )
+            self._renewal_stop.wait(min(poll_seconds, remaining_seconds))
+
+    def _renew_under_fence(self) -> bool:
+        existing = self._read_payload()
+        if not self._owns_payload(existing) or self._is_expired(existing or {}):
+            self._acquired = False
+            self._confirmed_expires_at_utc = None
+            return False
+        now = self._now()
+        expiration = self._expiration_from(now)
+        if expiration is None:
+            self._acquired = False
+            self._confirmed_expires_at_utc = None
+            return False
+        payload = dict(existing)
+        payload['expires_at_utc'] = expiration.isoformat()
+        self._replace_payload(payload)
+        self._confirmed_expires_at_utc = expiration
+        return True
 
     def assert_current(self) -> None:
         self.raise_if_unhealthy()
@@ -457,6 +504,7 @@ class ExecutionLease:
             or state.generation != self._generation
         ):
             self._acquired = False
+            self._confirmed_expires_at_utc = None
             error = LeaseOwnershipLostError('Lease ownership was lost')
             self._mark_failure(error, 'lease_ownership_lost')
             raise error

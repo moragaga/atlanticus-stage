@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import signal
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -158,7 +159,7 @@ class CycleFactory:
             occurrence_id_factory=occurrence_id,
             episode_id_factory=episode_id,
             commit_time_provider=CommitClock(),
-            runtime_artifact_version='ada-alarms-runtime/0.14.0',
+            runtime_artifact_version='ada-alarms-runtime/0.14.1',
             technical_evidence_contract=EvidenceContractRef(
                 contract_key='evaluation-error',
                 contract_version='v1',
@@ -244,7 +245,12 @@ def _source_for(*bundles: RuntimeRevisionBundle, current: RuntimeRevisionBundle)
     return Source(manifest=current.manifest, documents=documents)
 
 
-def _context(tmp_path: Path, *, fence_events: list[str] | None = None) -> JobRuntimeContext:
+def _context(
+    tmp_path: Path,
+    *,
+    fence_events: list[str] | None = None,
+    strict_non_reentrant_fence: bool = False,
+) -> JobRuntimeContext:
     configuration = RuntimeConfiguration.from_sources(
         environ={
             'ENVIRONMENT': 'local',
@@ -270,15 +276,27 @@ def _context(tmp_path: Path, *, fence_events: list[str] | None = None) -> JobRun
         correlation_id='22222222-2222-2222-2222-222222222222',
     )
 
+    fence_state = {'active': False}
+
+    def checker():
+        if strict_non_reentrant_fence and fence_state['active']:
+            raise AssertionError('authority must not be reacquired inside a mutation fence')
+
     @contextmanager
     def fence():
+        if strict_non_reentrant_fence and fence_state['active']:
+            raise AssertionError('mutation fence must not be re-entered')
+        fence_state['active'] = True
         if fence_events is not None:
             fence_events.append('enter')
-        yield
-        if fence_events is not None:
-            fence_events.append('exit')
+        try:
+            yield
+        finally:
+            if fence_events is not None:
+                fence_events.append('exit')
+            fence_state['active'] = False
 
-    context._bind_lease_authority(generation=1, checker=lambda: None, fence=fence)
+    context._bind_lease_authority(generation=1, checker=checker, fence=fence)
     return context
 
 
@@ -308,7 +326,7 @@ def _job(
     adoption_executor = AlarmConfigurationAdoptionExecutor(
         composition=composition,
         commit_time_provider=CommitClock(),
-        runtime_artifact_version='ada-alarms-runtime/0.14.0',
+        runtime_artifact_version='ada-alarms-runtime/0.14.1',
     )
     consumer = AlarmDurableInputConsumer(composition=composition, source=EmptyInputSource())
     cycle_factory = CycleFactory(composition)
@@ -509,6 +527,31 @@ def test_first_bootstrap_promotes_cache_before_running_target_cycle(tmp_path: Pa
     assert cycle_factory.sessions == [target.session]
     assert events[:2] == ['enter', 'exit']
     assert len(events) >= 2
+
+
+def test_bootstrap_and_consumer_state_do_not_reacquire_authority_inside_fence(
+    tmp_path: Path,
+) -> None:
+    context = _context(tmp_path, strict_non_reentrant_fence=True)
+    target = _revision('AC-1')
+    target_bundle = _bundle('AC-1')
+    job, composition, cache, cycle_factory, _ = _job(
+        tmp_path,
+        source_revision=target,
+        target_revision=target,
+        cached_bundle=None,
+        target_bundle=target_bundle,
+        context=context,
+    )
+    job.recover(context)
+
+    result = job.iteration(context)
+
+    assert result.adoption_outcome is AlarmRuntimeJobAdoptionOutcome.BOOTSTRAPPED
+    assert result.cycle_executed is True
+    assert cache.replace_calls == [target_bundle]
+    assert cycle_factory.sessions == [target.session]
+    assert composition.durability.persistence.read_head().aligned
 
 
 def test_bootstrap_cache_promotion_failure_prevents_first_operational_cycle(
@@ -781,10 +824,132 @@ def test_drain_only_reconciles_durability_without_resolving_revision(tmp_path: P
     )
     job.recover(context)
     job.revision_resolver.source.fail_manifest = True
+    context.request_stop('performance_drain_boundary')
 
     result = job.drain(context)
 
     assert result.applied_count == 0
+    assert context.should_stop is True
+    assert context.stop_reason == 'performance_drain_boundary'
+    assert composition.durability.persistence.read_head().aligned
+
+
+def test_execute_binding_cooperative_stop_drains_alarm_runtime_without_next_iteration(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from ada.processes.alarms_runtime import execute_alarm_runtime_job
+
+    context = _context(tmp_path)
+    revision = _revision('AC-1')
+    bundle = _bundle('AC-1')
+    job, composition, _, _, _ = _job(
+        tmp_path,
+        source_revision=revision,
+        target_revision=revision,
+        cached_bundle=bundle,
+        target_bundle=bundle,
+        context=context,
+    )
+    original_iteration = AlarmRuntimeJobComposition.iteration
+    calls = {'iteration': 0}
+
+    def stop_after_iteration(self, runtime_context):
+        result = original_iteration(self, runtime_context)
+        calls['iteration'] += 1
+        runtime_context.request_stop('performance_drain_boundary')
+        return result
+
+    monkeypatch.setattr(AlarmRuntimeJobComposition, 'iteration', stop_after_iteration)
+    definition = JobDefinition(
+        module_name='ada.processes.alarms_runtime',
+        service_name='alarms-runtime',
+        job_key='alarms-runtime-cooperative-drain-test',
+        sleep_seconds=5,
+        iteration_timeout_seconds=10,
+        execution_timeout_seconds=30,
+        shutdown_grace_seconds=5,
+        lease_timeout_seconds=10,
+        lease_renew_seconds=3,
+        lease_wait_seconds=0,
+        resource_sample_seconds=1,
+    )
+
+    result = execute_alarm_runtime_job(
+        definition=definition,
+        composition=job,
+        argv=(),
+        environ={
+            'ENVIRONMENT': 'local',
+            'APPLICATION': 'ada-alarms-runtime-test',
+            'VOLUMEN_PATH': str(tmp_path),
+        },
+    )
+
+    assert result.status.value == 'warning'
+    assert result.stop_reason == 'performance_drain_boundary'
+    assert result.iteration_count == 1
+    assert calls['iteration'] == 1
+    assert composition.durability.persistence.read_head().aligned
+
+
+def test_execute_binding_sigterm_drains_alarm_runtime_and_preserves_reason(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from ada.processes.alarms_runtime import execute_alarm_runtime_job
+
+    context = _context(tmp_path)
+    revision = _revision('AC-1')
+    bundle = _bundle('AC-1')
+    job, composition, _, _, _ = _job(
+        tmp_path,
+        source_revision=revision,
+        target_revision=revision,
+        cached_bundle=bundle,
+        target_bundle=bundle,
+        context=context,
+    )
+    original_iteration = AlarmRuntimeJobComposition.iteration
+    previous_handler = signal.getsignal(signal.SIGTERM)
+
+    def sigterm_after_iteration(self, runtime_context):
+        result = original_iteration(self, runtime_context)
+        handler = signal.getsignal(signal.SIGTERM)
+        assert callable(handler)
+        handler(signal.SIGTERM, None)
+        return result
+
+    monkeypatch.setattr(AlarmRuntimeJobComposition, 'iteration', sigterm_after_iteration)
+    definition = JobDefinition(
+        module_name='ada.processes.alarms_runtime',
+        service_name='alarms-runtime',
+        job_key='alarms-runtime-sigterm-drain-test',
+        sleep_seconds=5,
+        iteration_timeout_seconds=10,
+        execution_timeout_seconds=30,
+        shutdown_grace_seconds=5,
+        lease_timeout_seconds=10,
+        lease_renew_seconds=3,
+        lease_wait_seconds=0,
+        resource_sample_seconds=1,
+    )
+
+    result = execute_alarm_runtime_job(
+        definition=definition,
+        composition=job,
+        argv=(),
+        environ={
+            'ENVIRONMENT': 'local',
+            'APPLICATION': 'ada-alarms-runtime-test',
+            'VOLUMEN_PATH': str(tmp_path),
+        },
+    )
+
+    assert result.status.value == 'warning'
+    assert result.stop_reason == 'sigterm'
+    assert result.iteration_count == 1
+    assert signal.getsignal(signal.SIGTERM) == previous_handler
     assert composition.durability.persistence.read_head().aligned
 
 

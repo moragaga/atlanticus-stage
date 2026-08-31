@@ -232,9 +232,7 @@ class AlarmOperationalCycle:
             raise TypeError('operational_inputs must be AlarmOperationalInputs or None')
         self._validate_operational_inputs(resolved_inputs)
         priority_groups = self._priority_groups(resolved_inputs)
-        runtime_groups = {
-            priority_group: self._load_group(priority_group) for priority_group in priority_groups
-        }
+        runtime_groups = self._load_groups(priority_groups)
         evaluations = tuple(
             self._evaluate_entry(iteration, entry) for entry in self.session.entries
         )
@@ -360,15 +358,22 @@ class AlarmOperationalCycle:
             previous_priority_resolution=previous_priority_resolution,
         )
 
-    def _load_group(self, priority_group: str) -> AlarmRuntimeGroup:
-        plans = tuple(
-            entry.planned_alarm
-            for entry in self.session.entries
-            if entry.planned_alarm.priority_group == priority_group
-        )
-        runtime_group = self.composition.load_group(priority_group, planned_alarms=plans)
-        self._validate_state_basis(runtime_group.snapshot)
-        return runtime_group
+    def _load_groups(
+        self,
+        priority_groups: Sequence[str],
+    ) -> dict[str, AlarmRuntimeGroup]:
+        planned_alarms_by_group = {
+            priority_group: tuple(
+                entry.planned_alarm
+                for entry in self.session.entries
+                if entry.planned_alarm.priority_group == priority_group
+            )
+            for priority_group in priority_groups
+        }
+        runtime_groups = self.composition.load_groups(planned_alarms_by_group)
+        for runtime_group in runtime_groups.values():
+            self._validate_state_basis(runtime_group.snapshot)
+        return runtime_groups
 
     def _materialize_group(
         self,

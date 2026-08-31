@@ -255,7 +255,7 @@ requires-dist = [
 
 [[package]]
 name = "atlanticus-job-runtime"
-version = "0.7.0"
+version = "0.7.1"
 source = { editable = "../../../../backend/runtime" }
 dependencies = [
     { name = "atlanticus-kernel" },

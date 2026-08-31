@@ -4,7 +4,11 @@ import pytest
 
 from ada.alarms.persistence import AlarmPersistence
 from ada.processes.alarms_runtime.durability import AlarmRuntimeDurability
-from atlanticus.runtime import JobRuntimeContext, RuntimeContractError
+from atlanticus.runtime import (
+    JobRuntimeContext,
+    RuntimeCancellationRequested,
+    RuntimeContractError,
+)
 from tests.support import build_context, build_record
 
 
@@ -18,6 +22,28 @@ def test_recovery_runs_under_runtime_authority(tmp_path: Path) -> None:
     assert result.discarded_tail_bytes == 0
     assert context.get_execution_fact('alarm_recovery_applied_count') == 0
     assert context.get_execution_fact('alarm_recovery_discarded_tail_bytes') == 0
+
+
+def test_startup_recovery_rejects_cancelled_context(tmp_path: Path) -> None:
+    context = build_context(tmp_path)
+    durability = AlarmRuntimeDurability(persistence=AlarmPersistence(shared_volume_path=tmp_path))
+    context.request_stop('already_stopped')
+
+    with pytest.raises(RuntimeCancellationRequested, match='already_stopped'):
+        durability.recover(context)
+
+
+def test_drain_reconciliation_accepts_cancelled_context_and_preserves_stop(tmp_path: Path) -> None:
+    context = build_context(tmp_path)
+    durability = AlarmRuntimeDurability(persistence=AlarmPersistence(shared_volume_path=tmp_path))
+    context.request_stop('performance_drain_boundary')
+
+    result = durability.reconcile_drain(context)
+
+    assert result.applied_count == 0
+    assert result.discarded_tail_bytes == 0
+    assert context.should_stop is True
+    assert context.stop_reason == 'performance_drain_boundary'
 
 
 def test_commit_batch_uses_runtime_fencing_and_records_summary(tmp_path: Path) -> None:

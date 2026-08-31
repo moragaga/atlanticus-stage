@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from atlanticus.runtime import AtlanticusRuntimeError, LeaseOwnershipLostError
+from atlanticus.runtime import AtlanticusRuntimeError, LeaseOwnershipLostError, LeaseRenewalError
 from atlanticus.runtime.lease import ExecutionLease
 
 
@@ -312,3 +312,145 @@ def test_poc_physical_fence_linearizes_commit_before_takeover(tmp_path) -> None:
 
     assert sequence == ['generation_1_commit', 'generation_2_takeover']
     assert second.release()
+
+
+def test_poc_heartbeat_retries_long_self_fence_without_false_renewal_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    lease = ExecutionLease(
+        volume_path=tmp_path,
+        application='ada',
+        service_name='authority-job',
+        module_name='authority_job',
+        run_id='run-1',
+        lease_timeout_seconds=0.4,
+        renewal_seconds=0.03,
+        wait_seconds=0,
+        poll_seconds=0.005,
+        instance_id='instance-run-1',
+        process_id=101,
+    )
+    assert lease.acquire().generation == 1
+    initial_expiration = datetime.fromisoformat(
+        json.loads(lease.path.read_text(encoding='utf-8'))['expires_at_utc']
+    )
+    lost = threading.Event()
+
+    monkeypatch.setattr(
+        lease,
+        '_acquire_authority_fence',
+        lambda: lease._physical_fence.acquire(wait_seconds=0.02, poll_seconds=0.005),
+    )
+
+    with lease.fenced_mutation():
+        lease.start_renewal(on_lost=lambda reason: lost.set())
+        time.sleep(0.08)
+        assert lease.failure is None
+        assert lost.is_set() is False
+
+    deadline = time.monotonic() + 0.3
+    renewed_expiration = initial_expiration
+    while renewed_expiration <= initial_expiration and time.monotonic() < deadline:
+        time.sleep(0.01)
+        renewed_expiration = datetime.fromisoformat(
+            json.loads(lease.path.read_text(encoding='utf-8'))['expires_at_utc']
+        )
+
+    lease.stop_renewal()
+    assert renewed_expiration > initial_expiration
+    assert lease.failure is None
+    assert lost.is_set() is False
+    assert lease.release()
+
+
+def test_poc_heartbeat_retries_repeated_transient_fence_contention(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    lease = ExecutionLease(
+        volume_path=tmp_path,
+        application='ada',
+        service_name='authority-job',
+        module_name='authority_job',
+        run_id='run-1',
+        lease_timeout_seconds=0.4,
+        renewal_seconds=0.01,
+        wait_seconds=0,
+        poll_seconds=0.005,
+        instance_id='instance-run-1',
+        process_id=101,
+    )
+    assert lease.acquire().generation == 1
+    initial_expiration = datetime.fromisoformat(
+        json.loads(lease.path.read_text(encoding='utf-8'))['expires_at_utc']
+    )
+    original_try_acquire = lease._physical_fence.try_acquire
+    heartbeat_contention_attempts = 0
+
+    def transient_try_acquire() -> int | None:
+        nonlocal heartbeat_contention_attempts
+        if (
+            threading.current_thread().name.startswith('lease-heartbeat-')
+            and heartbeat_contention_attempts < 12
+        ):
+            heartbeat_contention_attempts += 1
+            return None
+        return original_try_acquire()
+
+    monkeypatch.setattr(lease._physical_fence, 'try_acquire', transient_try_acquire)
+    monkeypatch.setattr(lease, '_acquire_authority_fence', lease._physical_fence.try_acquire)
+    lease.start_renewal()
+
+    deadline = time.monotonic() + 0.3
+    renewed_expiration = initial_expiration
+    while renewed_expiration <= initial_expiration and time.monotonic() < deadline:
+        time.sleep(0.01)
+        renewed_expiration = datetime.fromisoformat(
+            json.loads(lease.path.read_text(encoding='utf-8'))['expires_at_utc']
+        )
+
+    lease.stop_renewal()
+    assert heartbeat_contention_attempts == 12
+    assert renewed_expiration > initial_expiration
+    assert lease.failure is None
+    assert lease.release()
+
+
+def test_poc_heartbeat_contention_still_fails_closed_at_authority_deadline(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    authority_deadline = datetime.now(UTC) + timedelta(seconds=0.15)
+    lease = ExecutionLease(
+        volume_path=tmp_path,
+        application='ada',
+        service_name='authority-job',
+        module_name='authority_job',
+        run_id='run-1',
+        lease_timeout_seconds=1,
+        renewal_seconds=0.02,
+        wait_seconds=0,
+        poll_seconds=0.005,
+        instance_id='instance-run-1',
+        process_id=101,
+        authority_deadline_utc=authority_deadline,
+    )
+    assert lease.acquire().generation == 1
+    original_try_acquire = lease._physical_fence.try_acquire
+
+    def blocked_heartbeat_try_acquire() -> int | None:
+        if threading.current_thread().name.startswith('lease-heartbeat-'):
+            return None
+        return original_try_acquire()
+
+    monkeypatch.setattr(lease._physical_fence, 'try_acquire', blocked_heartbeat_try_acquire)
+    stopped = threading.Event()
+    lease.start_renewal(on_lost=lambda reason: stopped.set())
+
+    assert stopped.wait(timeout=0.5)
+    assert isinstance(lease.failure, LeaseRenewalError)
+    with pytest.raises(LeaseRenewalError, match='Lease renewal failed'):
+        with lease.fenced_mutation():
+            raise AssertionError('unreachable')
+    assert lease.release()

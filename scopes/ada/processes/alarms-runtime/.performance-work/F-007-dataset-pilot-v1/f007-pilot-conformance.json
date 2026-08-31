@@ -1,0 +1,89 @@
+{
+  "checks": {
+    "aggregate_fingerprint_present": true,
+    "all_file_hashes_present": true,
+    "all_row_group_metadata_present": true,
+    "deterministic_rebuild_verified": true,
+    "dispatch_two_shifts_exist": true,
+    "operational_representative_is_false": true,
+    "origin_class_is_controlled_synthetic_physical": true,
+    "pi_daily_exists": true,
+    "pi_latest_exists": true,
+    "projectable_signal_count_established": true
+  },
+  "claims": {
+    "deterministic_fixture_identity": true,
+    "operational_representativeness": false,
+    "physical_writer_conformance": true
+  },
+  "dataset_bank_id": "f007-controlled-physical-pilot-v1",
+  "next_gate": "Freeze final bank geometry and alarm-count ladder before harness changes.",
+  "report_version": "1.1",
+  "size_anchor_calibration": {
+    "dispatch_day_actual_bytes": 122505,
+    "dispatch_day_target_bytes": 153600,
+    "dispatch_per_turn": {
+      "actual_bytes": 61159,
+      "attempts": [
+        {
+          "bytes": 7983,
+          "row_count": 1
+        },
+        {
+          "bytes": 8175,
+          "row_count": 2
+        },
+        {
+          "bytes": 8583,
+          "row_count": 4
+        },
+        {
+          "bytes": 9423,
+          "row_count": 8
+        },
+        {
+          "bytes": 11079,
+          "row_count": 16
+        },
+        {
+          "bytes": 14454,
+          "row_count": 32
+        },
+        {
+          "bytes": 21376,
+          "row_count": 64
+        },
+        {
+          "bytes": 35084,
+          "row_count": 128
+        },
+        {
+          "bytes": 61159,
+          "row_count": 256
+        },
+        {
+          "bytes": 114702,
+          "row_count": 512
+        }
+      ],
+      "delta_bytes": -15641,
+      "delta_ratio": -0.20365885416666665,
+      "row_count": 256,
+      "target_bytes": 76800
+    },
+    "pi_daily": {
+      "actual_bytes": 326098,
+      "attempts": [
+        {
+          "bytes": 326098,
+          "row_count": 1
+        }
+      ],
+      "delta_bytes": 121298,
+      "delta_ratio": 0.592275390625,
+      "row_count": 1,
+      "target_bytes": 204800
+    }
+  },
+  "status": "PASS"
+}

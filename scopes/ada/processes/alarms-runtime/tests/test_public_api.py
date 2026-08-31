@@ -137,7 +137,7 @@ def test_public_api_and_version() -> None:
     assert callable(encode_group_runtime_snapshot)
     assert callable(execute_alarm_runtime_job)
     assert callable(plan_configuration_adoption)
-    assert __version__ == '0.14.0'
+    assert __version__ == '0.14.2'
     assert not hasattr(alarms_runtime, 'AlarmRuntimeDurability')
     assert not hasattr(alarms_runtime, 'AlarmRuntimePersistenceComposition')
     assert not hasattr(alarms_runtime, 'build_persistence_composition')

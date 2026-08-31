@@ -14,7 +14,7 @@ dependencies = [
     "ada-kpis-persistence==0.1.1",
     "atlanticus-configuration==0.1.0",
     "atlanticus-cosmos==0.1.0",
-    "atlanticus-job-runtime==0.7.0",
+    "atlanticus-job-runtime==0.7.1",
     "atlanticus-json==0.1.0",
     "atlanticus-kernel==0.1.0",
     "atlanticus-key-vault==0.1.0",

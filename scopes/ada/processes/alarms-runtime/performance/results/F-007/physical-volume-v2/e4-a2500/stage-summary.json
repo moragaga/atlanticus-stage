@@ -1,0 +1,33 @@
+{
+  "alarm_count": 2500,
+  "classification": "BOUNDARY/REVIEW",
+  "commit_chain_mismatch_count": 0,
+  "container_exit_code": 0,
+  "cpu_cores": 2.0,
+  "cpu_peak_percent": 53.901,
+  "cpu_throttled_seconds": null,
+  "duplicate_commit_id_count": 0,
+  "durable_record_count": 2,
+  "empty_iterations": 59,
+  "iterations": 61,
+  "journal_aligned": true,
+  "journal_bytes": 7025461,
+  "memory_gib": 4,
+  "memory_peak_percent": 4.2,
+  "oom_killed": false,
+  "overrun_count": 1,
+  "overrun_ratio": 0.01639344262295082,
+  "p95_iteration_ms": 3938.1846959950053,
+  "p95_start_interval_ms": 5001.165451747511,
+  "p99_iteration_ms": 5031.800611999643,
+  "reasons": [
+    "stage entered the reduced-margin boundary band"
+  ],
+  "resource_contract_ok": true,
+  "snapshot_alarm_count": 2500,
+  "snapshot_count": 1,
+  "snapshot_last_commit_mismatch_count": 0,
+  "stage_id": "e4-a2500",
+  "stop_reason": "safe_execution_window_elapsed",
+  "work_iterations": 2
+}

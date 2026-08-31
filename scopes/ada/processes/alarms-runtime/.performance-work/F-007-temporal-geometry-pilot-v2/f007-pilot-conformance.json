@@ -1,0 +1,75 @@
+{
+  "checks": {
+    "aggregate_fingerprint_present": true,
+    "all_file_hashes_present": true,
+    "all_row_group_metadata_present": true,
+    "deterministic_rebuild_verified": true,
+    "dispatch_geometry_is_fixed": true,
+    "dispatch_two_shifts_exist": true,
+    "operational_representative_is_false": true,
+    "origin_class_is_controlled_synthetic_physical": true,
+    "pi_daily_exists": true,
+    "pi_daily_full_day_span_verified": true,
+    "pi_daily_row_count_is_8640": true,
+    "pi_daily_signal_count_established": true,
+    "pi_daily_spacing_is_10_seconds": true,
+    "pi_latest_exists": true,
+    "projectable_signal_count_established": true
+  },
+  "claims": {
+    "deterministic_fixture_identity": true,
+    "operational_representativeness": false,
+    "physical_writer_conformance": true,
+    "pi_daily_temporal_geometry_conformance": true
+  },
+  "dataset_bank_id": "f007-controlled-physical-temporal-pilot-v2",
+  "next_gate": "Freeze the final 61-window bank geometry and alarm-count mapping before harness changes.",
+  "report_version": "1.1",
+  "size_anchor_calibration": {
+    "dispatch_fixed": {
+      "day_actual_bytes": 122505,
+      "day_delta_ratio": -0.20244140625,
+      "day_target_bytes": 153600,
+      "row_count_per_turn": 256,
+      "turns": [
+        {
+          "bytes": 61159,
+          "column_count": 25,
+          "mount_relative_path": "datasets/dispatch/std_shift_state/shift/year=2026/month=08/day=30/turn=001/data.parquet",
+          "row_count": 256
+        },
+        {
+          "bytes": 61346,
+          "column_count": 25,
+          "mount_relative_path": "datasets/dispatch/std_shift_state/shift/year=2026/month=08/day=30/turn=002/data.parquet",
+          "row_count": 256
+        }
+      ],
+      "value_columns": 24
+    },
+    "pi_daily": {
+      "actual_bytes": 188898,
+      "attempts": [
+        {
+          "bytes": 116402,
+          "signal_count": 1
+        },
+        {
+          "bytes": 188898,
+          "signal_count": 2
+        },
+        {
+          "bytes": 340335,
+          "signal_count": 4
+        }
+      ],
+      "delta_bytes": -15902,
+      "delta_ratio": -0.077646484375,
+      "interval_seconds": 10,
+      "row_count": 8640,
+      "signal_count": 2,
+      "target_bytes": 204800
+    }
+  },
+  "status": "PASS"
+}
